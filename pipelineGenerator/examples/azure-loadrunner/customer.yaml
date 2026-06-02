@@ -1,0 +1,48 @@
+version: 1
+incomplete: false
+setup:
+  id: azure-devops-loadrunner-professional-storefront
+  working_location: central_repo
+  final_pipeline_destination: copy_to_customer_repo
+  ci_can_use_central_repo_directly: false
+  target_repository: dev.azure.com/acme/storefront
+  generation_mode: both
+cicd:
+  type: azure_devops
+tool:
+  type: loadrunner_professional
+  auth:
+    type: network_vpn_manual_setup
+  connection:
+    controller_host: lr-controller.acme.local
+    controller_results_path: C:\Results
+manual_pipeline:
+  enabled: true
+  name: Azure Performance Manual Run
+  timeout_minutes: 240
+automated_jobs:
+  - name: release-check
+    enabled: true
+    environment_ref: prod
+    scenario_ref: prod_release_validation
+    timeout_minutes: 180
+catalog:
+  environments:
+    - key: prod
+      name: Production
+      identifier: env-prod
+  scenarios:
+    - key: prod_release_validation
+      name: Prod Release Validation
+      identifier: LR_PROD_RELEASE
+pre_run_checks:
+  - verify_controller_access
+  - verify_scenario_exists
+  - collect_results
+artifacts:
+  download_remote_results: true
+  fail_on_partial_download: false
+readme:
+  include_manual_usage: true
+  include_automated_usage: true
+
