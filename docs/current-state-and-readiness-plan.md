@@ -17,6 +17,12 @@ packages. Runtime execution is present as an architectural skeleton, but real
 remote execution against BlazeMeter and LoadRunner Professional has not yet been
 implemented.
 
+The readiness plan in this document is intended to strengthen the original
+idea, not replace it. In particular, the project should continue to support
+draft-friendly onboarding with TODO placeholders. Stricter validation should
+apply when a setup is being treated as ready for handoff or execution, while
+draft generation should remain available through explicit user intent.
+
 ## Current Project Status
 
 The project is a scaffolded v1 foundation.
@@ -198,6 +204,10 @@ Generates a setup-specific output directory containing:
 Current behavior: generation stops only on validation errors. Warning-only
 configs can still generate files.
 
+Recommended future behavior: production-ready generation should be stricter,
+but draft generation should remain supported through an explicit flag such as
+`--allow-incomplete` or `--allow-warnings`.
+
 ### Run
 
 Manual dry run:
@@ -337,8 +347,10 @@ Risk:
 
 Recommended change:
 
-- Make `generate` strict by default, or add explicit `--allow-warnings` /
-  `--allow-incomplete` flags.
+- Preserve the draft-friendly workflow, but make the user's intent explicit.
+  Production-ready generation should fail on warnings by default, while draft
+  generation should be available through a flag such as `--allow-warnings` or
+  `--allow-incomplete`.
 
 ### Runtime Errors Are Not User-Friendly
 
@@ -393,7 +405,9 @@ Risk:
 Recommended change:
 
 - Implement adapters incrementally, starting with BlazeMeter because it is
-  likely API-driven and easier to automate consistently.
+  likely API-driven and easier to automate consistently. This is a sequencing
+  recommendation only; LoadRunner Professional remains part of the core
+  roadmap.
 
 ### Test Coverage Is Minimal
 
@@ -427,6 +441,8 @@ Goals:
 - Prevent incomplete or internally inconsistent configs from generating broken
   assets by default.
 - Give users clear messages about what must be fixed.
+- Preserve the original draft-friendly onboarding flow for configs that still
+  contain TODO placeholders.
 
 Tasks:
 
@@ -438,19 +454,26 @@ Tasks:
 - Validate timeout values as positive integers.
 - Validate job names for CI/CD compatibility.
 - Validate environment and scenario keys for uniqueness.
-- Decide whether `incomplete: true` configs can be generated.
-- Add CLI flags for strictness, such as `--strict` or `--allow-incomplete`.
+- Treat `incomplete: true` configs as drafts.
+- Allow draft generation only when explicitly requested, such as with
+  `--allow-incomplete` or `--allow-warnings`.
+- Add clear CLI language that distinguishes draft validation from
+  ready-for-handoff validation.
 
 ### 2. Formalize the Schema
 
 Goals:
 
 - Make the config contract explicit and easier to evolve.
+- Support both draft configs and ready-to-generate configs without losing the
+  wizard's TODO-based onboarding model.
 
 Tasks:
 
 - Introduce typed config models or a JSON Schema.
 - Document every field, type, allowed value, and default.
+- Define validation profiles for draft, generation-ready, and execution-ready
+  configs.
 - Add config version handling.
 - Add a migration strategy before introducing future breaking changes.
 
@@ -575,14 +598,17 @@ Tasks:
 Goals:
 
 - Fail early when a run cannot succeed.
+- Keep existing config semantics stable while clarifying which actions happen
+  before execution and which happen after execution.
 
 Tasks:
 
 - Implement `verify_controller_access`.
 - Implement `verify_scenario_exists`.
 - Implement `verify_load_generators_connected`.
-- Reconsider `collect_results`; it may belong after execution rather than
-  before execution.
+- Preserve compatibility for the existing `collect_results` value, but clarify
+  whether it represents a pre-run artifact readiness check or migrate it into a
+  future `post_run_steps` section.
 - Return structured check statuses: `passed`, `failed`, `warning`, `skipped`.
 - Let config decide whether failed checks block execution.
 
@@ -606,7 +632,8 @@ Tasks:
 1. Fix README/schema mismatch.
 2. Add development dependencies and make tests easy to run.
 3. Add CI for the generator project.
-4. Make validation stricter for generation.
+4. Make production-ready generation stricter while preserving explicit draft
+   generation.
 5. Improve CLI error handling.
 6. Add renderer tests and YAML validation.
 7. Harden GitHub Actions rendering.
@@ -650,7 +677,8 @@ Recommended first changes:
 1. Fix the README value for `final_pipeline_destination`.
 2. Add `dev` dependencies in `pyproject.toml`.
 3. Add tests for every example config.
-4. Make `generate` fail on warnings unless explicitly overridden.
+4. Make `generate` fail on warnings for ready handoff unless explicitly
+   overridden for draft output.
 5. Add renderer output tests.
 6. Add clean CLI error handling.
 
