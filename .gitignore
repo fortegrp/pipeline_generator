@@ -1,7 +1,3 @@
 .DS_Store
-artifacts/*
-!artifacts/.gitkeep
-scripts-workspace/
-jenkins-runs/
-__pycache__/
-.env
+artifacts/
+node_modules/
