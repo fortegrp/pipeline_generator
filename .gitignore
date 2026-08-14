@@ -1,10 +1,7 @@
-.venv/
-__pycache__/
-*.py[cod]
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
 .DS_Store
-dist/
-build/
+artifacts/*
+!artifacts/.gitkeep
+scripts-workspace/
+jenkins-runs/
+__pycache__/
+.env
