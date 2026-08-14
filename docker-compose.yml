@@ -1,0 +1,92 @@
+name: performance-execution
+
+services:
+  jenkins:
+    build:
+      context: ./jenkins
+    container_name: performance-execution-jenkins
+    user: root
+    ports:
+      - "${JENKINS_HTTP_PORT:-8080}:8080"
+      - "${JENKINS_AGENT_PORT:-50000}:50000"
+    environment:
+      CASC_JENKINS_CONFIG: /var/jenkins_home/casc.yaml
+      JAVA_OPTS: -Djenkins.install.runSetupWizard=false
+      PERFORMANCE_ROOT: ${PERFORMANCE_ROOT:-${PWD}}
+      INFLUXDB_HOST_URL: http://localhost:${INFLUXDB_HTTP_PORT:-8086}
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./jenkins/casc.yaml:/var/jenkins_home/casc.yaml:ro
+      - ./jenkins/jobs/performance-test-job.xml:/var/jenkins_home/jobs/performance-test/config.xml:ro
+      - ./jenkins/scripts:/var/jenkins_home/scripts:ro
+      - ./.env:/var/jenkins_home/performance.env:ro
+      - ${PERFORMANCE_ROOT:-${PWD}}:${PERFORMANCE_ROOT:-${PWD}}
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    networks:
+      - performance-execution
+
+  influxdb:
+    image: influxdb:2.7
+    container_name: performance-execution-influxdb
+    ports:
+      - "${INFLUXDB_HTTP_PORT:-8086}:8086"
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUXDB_ADMIN_USER:-admin}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD:-local-password}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUXDB_ORG:-forte}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUXDB_BUCKET:-perf_metrics}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_TOKEN:-local-token}
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+      - influxdb_config:/etc/influxdb2
+    healthcheck:
+      test: ["CMD", "influx", "ping", "--host", "http://localhost:8086"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - performance-execution
+
+  grafana:
+    image: grafana/grafana:13.1.1
+    container_name: performance-execution-grafana
+    ports:
+      - "${GRAFANA_HTTP_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_DEFAULT_THEME: dark
+      GF_USERS_EDITORS_CAN_ADMIN: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/single-run-monitoring.json
+      INFLUXDB_ORG: ${INFLUXDB_ORG:-forte}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET:-perf_metrics}
+      INFLUXDB_TOKEN: ${INFLUXDB_TOKEN:-local-token}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/api/health | grep -q '\"database\": \"ok\"'"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks:
+      - performance-execution
+
+volumes:
+  jenkins_home:
+  influxdb_data:
+  influxdb_config:
+  grafana_data:
+
+networks:
+  performance-execution:
+    name: performance-execution
+    driver: bridge

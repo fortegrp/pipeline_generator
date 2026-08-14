@@ -1,0 +1,1067 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 100,
+      "panels": [],
+      "title": "Test Review",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-performance"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 0,
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Baseline"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Target"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 5,
+        "x": 0,
+        "y": 1
+      },
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "query": "u = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"performance_http_request\" and r._field == \"response_time_ms\")\nk = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"http_req_duration\" and r._field == \"value\")\nunion(tables: [u, k]) |> filter(fn: (r) => r.project =~ /^${project:regex}$/ and r.scenario =~ /^${scenario:regex}$/ and r.testRunID == \"${baselineRun}\" and r.transaction =~ /^${transaction:regex}$/) |> group() |> count() |> map(fn: (r) => ({ r with _field: \"Baseline\" }))",
+          "refId": "A"
+        },
+        {
+          "query": "u = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"performance_http_request\" and r._field == \"response_time_ms\")\nk = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"http_req_duration\" and r._field == \"value\")\nunion(tables: [u, k]) |> filter(fn: (r) => r.project =~ /^${project:regex}$/ and r.scenario =~ /^${scenario:regex}$/ and r.testRunID == \"${targetRun}\" and r.transaction =~ /^${transaction:regex}$/) |> group() |> count() |> map(fn: (r) => ({ r with _field: \"Target\" }))",
+          "refId": "B"
+        }
+      ],
+      "title": "Total requests",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-performance"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 1,
+          "unit": "reqps"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Baseline"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Target"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 5,
+        "x": 5,
+        "y": 1
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "query": "u = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"performance_http_request\" and r._field == \"response_time_ms\")\nk = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"http_req_duration\" and r._field == \"value\")\nunion(tables: [u, k]) |> filter(fn: (r) => r.project =~ /^${project:regex}$/ and r.scenario =~ /^${scenario:regex}$/ and r.testRunID == \"${baselineRun}\" and r.transaction =~ /^${transaction:regex}$/) |> group() |> aggregateWindow(every: 1s, fn: count, createEmpty: false) |> mean() |> map(fn: (r) => ({ r with _field: \"Baseline\" }))",
+          "refId": "A"
+        },
+        {
+          "query": "u = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"performance_http_request\" and r._field == \"response_time_ms\")\nk = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"http_req_duration\" and r._field == \"value\")\nunion(tables: [u, k]) |> filter(fn: (r) => r.project =~ /^${project:regex}$/ and r.scenario =~ /^${scenario:regex}$/ and r.testRunID == \"${targetRun}\" and r.transaction =~ /^${transaction:regex}$/) |> group() |> aggregateWindow(every: 1s, fn: count, createEmpty: false) |> mean() |> map(fn: (r) => ({ r with _field: \"Target\" }))",
+          "refId": "B"
+        }
+      ],
+      "title": "Avg RPS",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-performance"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 0,
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Baseline"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Target"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 4,
+        "x": 10,
+        "y": 1
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "query": "from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"vus\" and r._field == \"value\" and r.testRunID == \"${baselineRun}\") |> group() |> max() |> map(fn: (r) => ({ r with _field: \"Baseline\" }))",
+          "refId": "A"
+        },
+        {
+          "query": "from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"vus\" and r._field == \"value\" and r.testRunID == \"${targetRun}\") |> group() |> max() |> map(fn: (r) => ({ r with _field: \"Target\" }))",
+          "refId": "B"
+        }
+      ],
+      "title": "Peak VUs",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-performance"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 1,
+          "unit": "ms"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Baseline"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Target"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 5,
+        "x": 14,
+        "y": 1
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "query": "u = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"performance_http_request\" and r._field == \"response_time_ms\") |> map(fn: (r) => ({ r with _value: float(v: r._value) }))\nk = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"http_req_duration\" and r._field == \"value\") |> map(fn: (r) => ({ r with _value: float(v: r._value) }))\nunion(tables: [u, k]) |> filter(fn: (r) => r.testRunID == \"${baselineRun}\" and r.transaction =~ /^${transaction:regex}$/) |> group() |> quantile(q: ${latencyStat}, method: \"estimate_tdigest\") |> map(fn: (r) => ({ r with _field: \"Baseline\" }))",
+          "refId": "A"
+        },
+        {
+          "query": "u = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"performance_http_request\" and r._field == \"response_time_ms\") |> map(fn: (r) => ({ r with _value: float(v: r._value) }))\nk = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"http_req_duration\" and r._field == \"value\") |> map(fn: (r) => ({ r with _value: float(v: r._value) }))\nunion(tables: [u, k]) |> filter(fn: (r) => r.testRunID == \"${targetRun}\" and r.transaction =~ /^${transaction:regex}$/) |> group() |> quantile(q: ${latencyStat}, method: \"estimate_tdigest\") |> map(fn: (r) => ({ r with _field: \"Target\" }))",
+          "refId": "B"
+        }
+      ],
+      "title": "Latency (${latencyStat:text})",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-performance"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Baseline"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Target"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 5,
+        "x": 19,
+        "y": 1
+      },
+      "id": 5,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "query": "u = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"performance_http_request\" and r._field == \"failed\") |> map(fn: (r) => ({ r with _value: if r._value then 1.0 else 0.0 }))\nk = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"http_req_failed\" and r._field == \"value\") |> map(fn: (r) => ({ r with _value: float(v: r._value) }))\nunion(tables: [u, k]) |> filter(fn: (r) => r.testRunID == \"${baselineRun}\" and r.transaction =~ /^${transaction:regex}$/) |> group() |> mean() |> map(fn: (r) => ({ r with _field: \"Baseline\", _value: r._value * 100.0 }))",
+          "refId": "A"
+        },
+        {
+          "query": "u = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"performance_http_request\" and r._field == \"failed\") |> map(fn: (r) => ({ r with _value: if r._value then 1.0 else 0.0 }))\nk = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"http_req_failed\" and r._field == \"value\") |> map(fn: (r) => ({ r with _value: float(v: r._value) }))\nunion(tables: [u, k]) |> filter(fn: (r) => r.testRunID == \"${targetRun}\" and r.transaction =~ /^${transaction:regex}$/) |> group() |> mean() |> map(fn: (r) => ({ r with _field: \"Target\", _value: r._value * 100.0 }))",
+          "refId": "B"
+        }
+      ],
+      "title": "Error rate",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 7
+      },
+      "id": 101,
+      "panels": [],
+      "title": "Request Summary",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-performance"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "decimals": 1
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/Count/"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/Error|delta/"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/Avg|latency/"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "id": 6,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "Latency delta %"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "query": "latencyU = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"performance_http_request\" and r._field == \"response_time_ms\") |> map(fn: (r) => ({ r with _value: float(v: r._value) }))\nlatencyK = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"http_req_duration\" and r._field == \"value\") |> map(fn: (r) => ({ r with _value: float(v: r._value) }))\nlatency = union(tables: [latencyU, latencyK]) |> filter(fn: (r) => r.transaction =~ /^${transaction:regex}$/)\nerrorsU = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"performance_http_request\" and r._field == \"failed\") |> map(fn: (r) => ({ r with _value: if r._value then 1.0 else 0.0 }))\nerrorsK = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"http_req_failed\" and r._field == \"value\") |> map(fn: (r) => ({ r with _value: float(v: r._value) }))\nerrors = union(tables: [errorsU, errorsK]) |> filter(fn: (r) => r.transaction =~ /^${transaction:regex}$/)\nbLatency = latency |> filter(fn: (r) => r.testRunID == \"${baselineRun}\")\ntLatency = latency |> filter(fn: (r) => r.testRunID == \"${targetRun}\")\nbErrors = errors |> filter(fn: (r) => r.testRunID == \"${baselineRun}\")\ntErrors = errors |> filter(fn: (r) => r.testRunID == \"${targetRun}\")\nbCount = bLatency |> group(columns: [\"transaction\"]) |> count() |> map(fn: (r) => ({ r with _field: \"Baseline count\", _value: float(v: r._value) }))\ntCount = tLatency |> group(columns: [\"transaction\"]) |> count() |> map(fn: (r) => ({ r with _field: \"Target count\", _value: float(v: r._value) }))\nbAvg = bLatency |> group(columns: [\"transaction\"]) |> mean() |> map(fn: (r) => ({ r with _field: \"Baseline Avg\" }))\ntAvg = tLatency |> group(columns: [\"transaction\"]) |> mean() |> map(fn: (r) => ({ r with _field: \"Target Avg\" }))\nbSelected = bLatency |> group(columns: [\"transaction\"]) |> quantile(q: ${latencyStat}, method: \"estimate_tdigest\") |> map(fn: (r) => ({ r with _field: \"Baseline latency\" }))\ntSelected = tLatency |> group(columns: [\"transaction\"]) |> quantile(q: ${latencyStat}, method: \"estimate_tdigest\") |> map(fn: (r) => ({ r with _field: \"Target latency\" }))\nbErrorRate = bErrors |> group(columns: [\"transaction\"]) |> mean() |> map(fn: (r) => ({ r with _field: \"Baseline Error %\", _value: r._value * 100.0 }))\ntErrorRate = tErrors |> group(columns: [\"transaction\"]) |> mean() |> map(fn: (r) => ({ r with _field: \"Target Error %\", _value: r._value * 100.0 }))\nunion(tables: [bCount, tCount, bErrorRate, tErrorRate, bAvg, tAvg, bSelected, tSelected])\n  |> group()\n  |> pivot(rowKey: [\"transaction\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> map(fn: (r) => ({ r with latency_delta_pct: if r[\"Baseline latency\"] == 0.0 then 0.0 else (r[\"Target latency\"] - r[\"Baseline latency\"]) / r[\"Baseline latency\"] * 100.0 }))\n  |> rename(columns: {transaction: \"Request\", latency_delta_pct: \"Latency delta %\"})\n  |> keep(columns: [\"Request\", \"Baseline count\", \"Target count\", \"Baseline Error %\", \"Target Error %\", \"Baseline Avg\", \"Target Avg\", \"Baseline latency\", \"Target latency\", \"Latency delta %\"])\n  |> sort(columns: [\"Latency delta %\"], desc: true)",
+          "refId": "A"
+        }
+      ],
+      "title": "Requests: baseline vs target (${latencyStat:text})",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "id": 102,
+      "panels": [],
+      "title": "Runtime Comparison",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-performance"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 1,
+            "pointSize": 3,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            }
+          },
+          "min": 0,
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Baseline VUs"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Target VUs"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 21
+      },
+      "id": 7,
+      "options": {
+        "legend": {
+          "calcs": [
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "query": "import \"experimental\"\nfrom(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"vus\" and r._field == \"value\" and r.testRunID == \"${baselineRun}\") |> experimental.alignTime(alignTo: v.timeRangeStart) |> group() |> aggregateWindow(every: v.windowPeriod, fn: max, createEmpty: false) |> map(fn: (r) => ({ r with _field: \"Baseline VUs\" }))",
+          "refId": "A"
+        },
+        {
+          "query": "import \"experimental\"\nfrom(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"vus\" and r._field == \"value\" and r.testRunID == \"${targetRun}\") |> experimental.alignTime(alignTo: v.timeRangeStart) |> group() |> aggregateWindow(every: v.windowPeriod, fn: max, createEmpty: false) |> map(fn: (r) => ({ r with _field: \"Target VUs\" }))",
+          "refId": "B"
+        }
+      ],
+      "title": "Virtual users",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-performance"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 1,
+            "pointSize": 3,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            }
+          },
+          "min": 0,
+          "unit": "reqps"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Baseline - ${__field.labels.transaction}"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Target - ${__field.labels.transaction}"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 21
+      },
+      "id": 8,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "query": "import \"experimental\"\nu = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"performance_http_request\" and r._field == \"response_time_ms\")\nk = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"http_req_duration\" and r._field == \"value\")\nunion(tables: [u, k]) |> filter(fn: (r) => r.testRunID == \"${baselineRun}\" and r.transaction =~ /^${transaction:regex}$/) |> experimental.alignTime(alignTo: v.timeRangeStart) |> group(columns: [\"transaction\"]) |> aggregateWindow(every: 1s, fn: count, createEmpty: false) |> map(fn: (r) => ({ r with _field: \"Baseline - \" + r.transaction }))",
+          "refId": "A"
+        },
+        {
+          "query": "import \"experimental\"\nu = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"performance_http_request\" and r._field == \"response_time_ms\")\nk = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"http_req_duration\" and r._field == \"value\")\nunion(tables: [u, k]) |> filter(fn: (r) => r.testRunID == \"${targetRun}\" and r.transaction =~ /^${transaction:regex}$/) |> experimental.alignTime(alignTo: v.timeRangeStart) |> group(columns: [\"transaction\"]) |> aggregateWindow(every: 1s, fn: count, createEmpty: false) |> map(fn: (r) => ({ r with _field: \"Target - \" + r.transaction }))",
+          "refId": "B"
+        }
+      ],
+      "title": "Requests per second",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-performance"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 20,
+            "lineWidth": 1,
+            "pointSize": 3,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            }
+          },
+          "min": 0,
+          "unit": "ops"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Baseline - ${__field.labels.transaction}"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Target - ${__field.labels.transaction}"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 30
+      },
+      "id": 9,
+      "options": {
+        "legend": {
+          "calcs": [
+            "sum"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "query": "import \"experimental\"\nu = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"performance_http_request\" and r._field == \"failed\") |> map(fn: (r) => ({ r with _value: if r._value then 1.0 else 0.0 }))\nk = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"http_req_failed\" and r._field == \"value\") |> map(fn: (r) => ({ r with _value: float(v: r._value) }))\nunion(tables: [u, k]) |> filter(fn: (r) => r.testRunID == \"${baselineRun}\" and r.transaction =~ /^${transaction:regex}$/) |> experimental.alignTime(alignTo: v.timeRangeStart) |> group(columns: [\"transaction\"]) |> aggregateWindow(every: 1s, fn: sum, createEmpty: false) |> map(fn: (r) => ({ r with _field: \"Baseline - \" + r.transaction }))",
+          "refId": "A"
+        },
+        {
+          "query": "import \"experimental\"\nu = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"performance_http_request\" and r._field == \"failed\") |> map(fn: (r) => ({ r with _value: if r._value then 1.0 else 0.0 }))\nk = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"http_req_failed\" and r._field == \"value\") |> map(fn: (r) => ({ r with _value: float(v: r._value) }))\nunion(tables: [u, k]) |> filter(fn: (r) => r.testRunID == \"${targetRun}\" and r.transaction =~ /^${transaction:regex}$/) |> experimental.alignTime(alignTo: v.timeRangeStart) |> group(columns: [\"transaction\"]) |> aggregateWindow(every: 1s, fn: sum, createEmpty: false) |> map(fn: (r) => ({ r with _field: \"Target - \" + r.transaction }))",
+          "refId": "B"
+        }
+      ],
+      "title": "Errors per second",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-performance"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 1,
+            "pointSize": 3,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            }
+          },
+          "min": 0,
+          "unit": "ms"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Baseline - ${__field.labels.transaction}"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Target - ${__field.labels.transaction}"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 30
+      },
+      "id": 10,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "query": "import \"experimental\"\nu = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"performance_http_request\" and r._field == \"response_time_ms\") |> map(fn: (r) => ({ r with _value: float(v: r._value) }))\nk = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"http_req_duration\" and r._field == \"value\") |> map(fn: (r) => ({ r with _value: float(v: r._value) }))\nunion(tables: [u, k]) |> filter(fn: (r) => r.testRunID == \"${baselineRun}\" and r.transaction =~ /^${transaction:regex}$/) |> experimental.alignTime(alignTo: v.timeRangeStart) |> group(columns: [\"transaction\"]) |> aggregateWindow(every: v.windowPeriod, fn: (column, tables=<-) => tables |> quantile(q: ${latencyStat}, column: column, method: \"estimate_tdigest\"), createEmpty: false) |> map(fn: (r) => ({ r with _field: \"Baseline - \" + r.transaction }))",
+          "refId": "A"
+        },
+        {
+          "query": "import \"experimental\"\nu = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"performance_http_request\" and r._field == \"response_time_ms\") |> map(fn: (r) => ({ r with _value: float(v: r._value) }))\nk = from(bucket: v.defaultBucket) |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"http_req_duration\" and r._field == \"value\") |> map(fn: (r) => ({ r with _value: float(v: r._value) }))\nunion(tables: [u, k]) |> filter(fn: (r) => r.testRunID == \"${targetRun}\" and r.transaction =~ /^${transaction:regex}$/) |> experimental.alignTime(alignTo: v.timeRangeStart) |> group(columns: [\"transaction\"]) |> aggregateWindow(every: v.windowPeriod, fn: (column, tables=<-) => tables |> quantile(q: ${latencyStat}, column: column, method: \"estimate_tdigest\"), createEmpty: false) |> map(fn: (r) => ({ r with _field: \"Target - \" + r.transaction }))",
+          "refId": "B"
+        }
+      ],
+      "title": "Response time (${latencyStat:text})",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 42,
+  "style": "dark",
+  "tags": [
+    "performance",
+    "comparison",
+    "test-review"
+  ],
+  "templating": {
+    "list": [
+      {
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb-performance"
+        },
+        "definition": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: v.defaultBucket, tag: \"project\", predicate: (r) => r._measurement == \"performance_http_request\" or r._measurement == \"http_req_duration\", start: -365d)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Project",
+        "multi": true,
+        "name": "project",
+        "options": [],
+        "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: v.defaultBucket, tag: \"project\", predicate: (r) => r._measurement == \"performance_http_request\" or r._measurement == \"http_req_duration\", start: -365d)",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb-performance"
+        },
+        "definition": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: v.defaultBucket, tag: \"scenario\", predicate: (r) => r.project =~ /^${project:regex}$/, start: -365d)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Scenario",
+        "multi": true,
+        "name": "scenario",
+        "options": [],
+        "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: v.defaultBucket, tag: \"scenario\", predicate: (r) => r.project =~ /^${project:regex}$/, start: -365d)",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb-performance"
+        },
+        "definition": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: v.defaultBucket, tag: \"testRunID\", predicate: (r) => (r._measurement == \"performance_http_request\" or r._measurement == \"http_req_duration\") and r.project =~ /^${project:regex}$/ and r.scenario =~ /^${scenario:regex}$/, start: -365d)",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Baseline run",
+        "multi": false,
+        "name": "baselineRun",
+        "options": [],
+        "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: v.defaultBucket, tag: \"testRunID\", predicate: (r) => (r._measurement == \"performance_http_request\" or r._measurement == \"http_req_duration\") and r.project =~ /^${project:regex}$/ and r.scenario =~ /^${scenario:regex}$/, start: -365d)",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 2,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb-performance"
+        },
+        "definition": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: v.defaultBucket, tag: \"testRunID\", predicate: (r) => (r._measurement == \"performance_http_request\" or r._measurement == \"http_req_duration\") and r.project =~ /^${project:regex}$/ and r.scenario =~ /^${scenario:regex}$/, start: -365d)",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Target run",
+        "multi": false,
+        "name": "targetRun",
+        "options": [],
+        "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: v.defaultBucket, tag: \"testRunID\", predicate: (r) => (r._measurement == \"performance_http_request\" or r._measurement == \"http_req_duration\") and r.project =~ /^${project:regex}$/ and r.scenario =~ /^${scenario:regex}$/, start: -365d)",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 2,
+        "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb-performance"
+        },
+        "definition": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: v.defaultBucket, tag: \"transaction\", predicate: (r) => r.testRunID == \"${targetRun}\" or r.testRunID == \"${baselineRun}\", start: -365d)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Transaction",
+        "multi": true,
+        "name": "transaction",
+        "options": [],
+        "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: v.defaultBucket, tag: \"transaction\", predicate: (r) => r.testRunID == \"${targetRun}\" or r.testRunID == \"${baselineRun}\", start: -365d)",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "text": "p95",
+          "value": "0.95"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Latency stat",
+        "multi": false,
+        "name": "latencyStat",
+        "options": [
+          {
+            "selected": false,
+            "text": "p50",
+            "value": "0.50"
+          },
+          {
+            "selected": false,
+            "text": "p75",
+            "value": "0.75"
+          },
+          {
+            "selected": false,
+            "text": "p90",
+            "value": "0.90"
+          },
+          {
+            "selected": true,
+            "text": "p95",
+            "value": "0.95"
+          },
+          {
+            "selected": false,
+            "text": "p99",
+            "value": "0.99"
+          }
+        ],
+        "query": "p50 : 0.50,p75 : 0.75,p90 : 0.90,p95 : 0.95,p99 : 0.99",
+        "skipUrlSync": false,
+        "type": "custom"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-90d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Performance Run Comparison",
+  "uid": "performance-run-comparison",
+  "version": 2,
+  "weekStart": ""
+}

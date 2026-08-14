@@ -1,0 +1,161 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<flow-definition plugin="workflow-job">
+  <actions/>
+  <description>Run a performance test script in Docker, stream metrics to InfluxDB, and archive one artifact bundle.</description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <jenkins.model.BuildDiscarderProperty>
+      <strategy class="hudson.tasks.LogRotator">
+        <daysToKeep>-1</daysToKeep>
+        <numToKeep>30</numToKeep>
+        <artifactDaysToKeep>-1</artifactDaysToKeep>
+        <artifactNumToKeep>30</artifactNumToKeep>
+      </strategy>
+    </jenkins.model.BuildDiscarderProperty>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <org.biouno.unochoice.ChoiceParameter plugin="uno-choice">
+          <name>PROJECT</name>
+          <description>Project folder from perf_scripts that contains at least one supported script.</description>
+          <randomName>choice-parameter-project</randomName>
+          <visibleItemCount>1</visibleItemCount>
+          <script class="org.biouno.unochoice.model.GroovyScript">
+            <secureScript class="org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.SecureGroovyScript" plugin="script-security">
+              <script><![CDATA[
+def branch = binding.variables.get('SCRIPT_BRANCH') ?: 'main'
+def output = ['/var/jenkins_home/scripts/performance-choices.sh', 'projects', branch].execute().text
+def choices = output.readLines().collect { it.trim() }.findAll { it }
+return choices ?: ['forte']
+]]></script>
+              <sandbox>false</sandbox>
+            </secureScript>
+            <secureFallbackScript class="org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.SecureGroovyScript" plugin="script-security">
+              <script>return ['forte']</script>
+              <sandbox>true</sandbox>
+            </secureFallbackScript>
+          </script>
+          <projectName>performance-test</projectName>
+          <choiceType>PT_SINGLE_SELECT</choiceType>
+          <filterable>false</filterable>
+          <filterLength>1</filterLength>
+        </org.biouno.unochoice.ChoiceParameter>
+        <hudson.model.StringParameterDefinition>
+          <name>SCRIPT_BRANCH</name>
+          <description>Git branch for the performance scripts repository.</description>
+          <defaultValue>main</defaultValue>
+          <trim>true</trim>
+        </hudson.model.StringParameterDefinition>
+        <org.biouno.unochoice.CascadeChoiceParameter plugin="uno-choice">
+          <name>TOOL</name>
+          <description>Detected from script files inside the selected project. If only one tool exists, this field has one option.</description>
+          <randomName>choice-parameter-tool</randomName>
+          <visibleItemCount>1</visibleItemCount>
+          <script class="org.biouno.unochoice.model.GroovyScript">
+            <secureScript class="org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.SecureGroovyScript" plugin="script-security">
+              <script><![CDATA[
+def project = binding.variables.get('PROJECT') ?: 'forte'
+def branch = binding.variables.get('SCRIPT_BRANCH') ?: 'main'
+def output = ['/var/jenkins_home/scripts/performance-choices.sh', 'tools', branch, project].execute().text
+def choices = output.readLines().collect { it.trim() }.findAll { it }
+return choices ?: ['k6']
+]]></script>
+              <sandbox>false</sandbox>
+            </secureScript>
+            <secureFallbackScript class="org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.SecureGroovyScript" plugin="script-security">
+              <script>return ['k6']</script>
+              <sandbox>true</sandbox>
+            </secureFallbackScript>
+          </script>
+          <projectName>performance-test</projectName>
+          <parameters class="linked-hash-map"/>
+          <referencedParameters>PROJECT,SCRIPT_BRANCH</referencedParameters>
+          <choiceType>PT_SINGLE_SELECT</choiceType>
+          <filterable>false</filterable>
+          <filterLength>1</filterLength>
+        </org.biouno.unochoice.CascadeChoiceParameter>
+        <org.biouno.unochoice.CascadeChoiceParameter plugin="uno-choice">
+          <name>SCRIPT_PATH</name>
+          <description>Detected script path inside the selected project for the selected tool.</description>
+          <randomName>choice-parameter-script-path</randomName>
+          <visibleItemCount>8</visibleItemCount>
+          <script class="org.biouno.unochoice.model.GroovyScript">
+            <secureScript class="org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.SecureGroovyScript" plugin="script-security">
+              <script><![CDATA[
+def project = binding.variables.get('PROJECT') ?: 'forte'
+def branch = binding.variables.get('SCRIPT_BRANCH') ?: 'main'
+def tool = binding.variables.get('TOOL') ?: 'k6'
+def output = ['/var/jenkins_home/scripts/performance-choices.sh', 'scripts', branch, project, tool].execute().text
+def choices = output.readLines().collect { it.trim() }.findAll { it }
+return choices ?: ['perf_scripts/forte/k6/smoke.js']
+]]></script>
+              <sandbox>false</sandbox>
+            </secureScript>
+            <secureFallbackScript class="org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.SecureGroovyScript" plugin="script-security">
+              <script>return ['perf_scripts/forte/k6/smoke.js']</script>
+              <sandbox>true</sandbox>
+            </secureFallbackScript>
+          </script>
+          <projectName>performance-test</projectName>
+          <parameters class="linked-hash-map"/>
+          <referencedParameters>PROJECT,SCRIPT_BRANCH,TOOL</referencedParameters>
+          <choiceType>PT_SINGLE_SELECT</choiceType>
+          <filterable>true</filterable>
+          <filterLength>1</filterLength>
+        </org.biouno.unochoice.CascadeChoiceParameter>
+        <hudson.model.ChoiceParameterDefinition>
+          <name>SCENARIO</name>
+          <description>Scenario tag saved to InfluxDB and artifacts.</description>
+          <choices class="java.util.Arrays$ArrayList">
+            <a class="string-array">
+              <string>smoke</string>
+              <string>load</string>
+              <string>soak</string>
+              <string>stress</string>
+            </a>
+          </choices>
+        </hudson.model.ChoiceParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>DESCRIPTION</name>
+          <description>Short human-readable note saved in artifacts and InfluxDB tag runDescription.</description>
+          <defaultValue>Local Jenkins performance run</defaultValue>
+          <trim>true</trim>
+        </hudson.model.StringParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+  </properties>
+  <definition class="org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition" plugin="workflow-cps">
+    <script>node {
+  def candidates = []
+  if (env.PERFORMANCE_ROOT) {
+    candidates.add(env.PERFORMANCE_ROOT)
+    candidates.add("${env.PERFORMANCE_ROOT}/performance-execution")
+  }
+  candidates.add('/workspace/performance-execution')
+
+  def selectedRoot = null
+  for (candidate in candidates) {
+    dir(candidate) {
+      if (fileExists('jenkins/pipelines/Jenkinsfile')) {
+        selectedRoot = candidate
+      }
+    }
+    if (selectedRoot) {
+      break
+    }
+  }
+
+  if (!selectedRoot) {
+    error "Could not find jenkins/pipelines/Jenkinsfile. Checked: ${candidates.join(', ')}"
+  }
+
+  dir(selectedRoot) {
+    withEnv(["PERFORMANCE_ROOT=${selectedRoot}"]) {
+      load 'jenkins/pipelines/Jenkinsfile'
+    }
+  }
+}</script>
+    <sandbox>true</sandbox>
+  </definition>
+  <triggers/>
+  <disabled>false</disabled>
+</flow-definition>
