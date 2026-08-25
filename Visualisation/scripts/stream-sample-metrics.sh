@@ -22,30 +22,28 @@ while [ "$i" -lt "$POINTS" ]; do
   timestamp="$(date +%s)000000000"
   case $((i % 3)) in
     0)
-      request="GET_/cart"
+      transaction="GET_/cart"
       offset=0
       ;;
     1)
-      request="POST_/orders"
+      transaction="POST_/orders"
       offset=18
       ;;
     *)
-      request="GET_/orders_id"
+      transaction="GET_/orders_id"
       offset=10
       ;;
   esac
 
   latency=$((95 + offset + (i % 18)))
-  throughput=$((880 - offset + (i % 20) * 5))
-  cpu=$((52 + (i % 16)))
 
+  status=200
   if [ $((i % 37)) -eq 0 ]; then
-    error_rate="0.018"
-  else
-    error_rate="0.004"
+    status=500
   fi
+  failed=$([ "$status" = 500 ] && echo true || echo false)
 
-  write_line "performance,run=${RUN},suite=checkout,test=submit_order,request=${request} latency_ms=${latency},throughput_ops_s=${throughput},error_rate=${error_rate},cpu_percent=${cpu} ${timestamp}"
+  write_line "performance_http_request,project=checkout,environment=local,testRunID=${RUN},tool=sample,scenario=submit_order,transaction=${transaction} response_time_ms=${latency}i,status_code=${status}i,failed=${failed} ${timestamp}"
   echo "Wrote point $((i + 1))/${POINTS} for ${RUN}"
 
   i=$((i + 1))

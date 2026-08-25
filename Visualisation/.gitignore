@@ -1,2 +1,5 @@
 .env
 .DS_Store
+gatling/target/
+gatling/.mvn/wrapper/dists/
+__pycache__/

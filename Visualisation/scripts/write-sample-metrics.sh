@@ -17,11 +17,12 @@ write_line() {
 }
 
 i=0
+n=0
 while [ "$i" -lt 60 ]; do
   timestamp=$((NOW_NS - (60 - i) * 1000000000))
 
-  for request in GET_/cart POST_/orders GET_/orders_id; do
-    case "$request" in
+  for transaction in GET_/cart POST_/orders GET_/orders_id; do
+    case "$transaction" in
       GET_/cart)
         baseline_offset=0
         candidate_offset=0
@@ -38,11 +39,25 @@ while [ "$i" -lt 60 ]; do
 
     baseline_latency=$((120 + baseline_offset + (i % 8)))
     candidate_latency=$((95 + candidate_offset + (i % 6)))
-    baseline_throughput=$((780 - baseline_offset + (i % 10) * 3))
-    candidate_throughput=$((910 - candidate_offset + (i % 12) * 4))
 
-    write_line "performance,run=${RUN_PREFIX}-baseline,suite=checkout,test=submit_order,request=${request} latency_ms=${baseline_latency},throughput_ops_s=${baseline_throughput},error_rate=0.012,cpu_percent=63 ${timestamp}"
-    write_line "performance,run=${RUN_PREFIX}-candidate,suite=checkout,test=submit_order,request=${request} latency_ms=${candidate_latency},throughput_ops_s=${candidate_throughput},error_rate=0.006,cpu_percent=58 ${timestamp}"
+    # n runs 0-179 across all (i, transaction) points, so these moduli fire
+    # several times spread across the run instead of only once at i=0.
+    baseline_status=200
+    if [ $((n % 45)) -eq 0 ]; then
+      baseline_status=500
+    fi
+    baseline_failed=$([ "$baseline_status" = 500 ] && echo true || echo false)
+
+    candidate_status=200
+    if [ $((n % 90)) -eq 0 ]; then
+      candidate_status=500
+    fi
+    candidate_failed=$([ "$candidate_status" = 500 ] && echo true || echo false)
+
+    write_line "performance_http_request,project=checkout,environment=local,testRunID=${RUN_PREFIX}-baseline,tool=sample,scenario=submit_order,transaction=${transaction} response_time_ms=${baseline_latency}i,status_code=${baseline_status}i,failed=${baseline_failed} ${timestamp}"
+    write_line "performance_http_request,project=checkout,environment=local,testRunID=${RUN_PREFIX}-candidate,tool=sample,scenario=submit_order,transaction=${transaction} response_time_ms=${candidate_latency}i,status_code=${candidate_status}i,failed=${candidate_failed} ${timestamp}"
+
+    n=$((n + 1))
   done
 
   i=$((i + 1))
