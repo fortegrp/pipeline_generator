@@ -37,14 +37,14 @@
             <stringProp name="Argument.value">${__P(environment,local)}</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
-          <elementProp name="branch" elementType="Argument">
-            <stringProp name="Argument.name">branch</stringProp>
-            <stringProp name="Argument.value">${__P(branch,unknown)}</stringProp>
+          <elementProp name="project" elementType="Argument">
+            <stringProp name="Argument.name">project</stringProp>
+            <stringProp name="Argument.value">${__P(project,google-search-demo)}</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
-          <elementProp name="commit" elementType="Argument">
-            <stringProp name="Argument.name">commit</stringProp>
-            <stringProp name="Argument.value">${__P(commit,unknown)}</stringProp>
+          <elementProp name="scenario" elementType="Argument">
+            <stringProp name="Argument.name">scenario</stringProp>
+            <stringProp name="Argument.value">${__P(scenario,google-search)}</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
         </collectionProp>
@@ -156,41 +156,36 @@ def tag = { value -&gt;
     text.replace(&quot;\\&quot;, &quot;\\\\&quot;).replace(&quot; &quot;, &quot;\\ &quot;).replace(&quot;,&quot;, &quot;\\,&quot;).replace(&quot;=&quot;, &quot;\\=&quot;)
 }
 
-def fieldString = { value -&gt;
-    def text = (value == null) ? &quot;&quot; : value.toString()
-    &quot;\&quot;&quot; + text.replace(&quot;\\&quot;, &quot;\\\\&quot;).replace(&quot;\&quot;&quot;, &quot;\\\&quot;&quot;) + &quot;\&quot;&quot;
-}
-
 def influxUrl = vars.get(&quot;influx_url&quot;)
 def org = vars.get(&quot;influx_org&quot;)
 def bucket = vars.get(&quot;influx_bucket&quot;)
 def token = vars.get(&quot;influx_token&quot;)
-def run = vars.get(&quot;run_id&quot;)
+def testRunID = vars.get(&quot;run_id&quot;)
 def environment = vars.get(&quot;environment&quot;)
-def branch = vars.get(&quot;branch&quot;)
-def commit = vars.get(&quot;commit&quot;)
+def project = vars.get(&quot;project&quot;)
+def scenario = vars.get(&quot;scenario&quot;)
 
 def elapsedMs = sampleResult.getTime()
-def requestsPerSecond = elapsedMs &gt; 0 ? 1000.0d / elapsedMs : 0.0d
-def errorRate = sampleResult.isSuccessful() ? 0.0d : 1.0d
+def failed = !sampleResult.isSuccessful()
+def statusCode
+try {
+    statusCode = Integer.parseInt(sampleResult.getResponseCode()?.trim())
+} catch (Exception ignored) {
+    statusCode = 0
+}
 def timestampNs = sampleResult.getEndTime() * 1000000L
 
 def line = String.format(Locale.US,
-    &quot;performance,run=%s,suite=%s,test=%s,request=%s,environment=%s,branch=%s,commit=%s latency_ms=%.3f,throughput_ops_s=%.6f,error_rate=%.6f,response_code=%s,response_message=%s,bytes=%di,sent_bytes=%di %d&quot;,
-    tag(run),
-    tag(&quot;google&quot;),
-    tag(&quot;search&quot;),
-    tag(sampleResult.getSampleLabel()),
+    &quot;performance_http_request,project=%s,environment=%s,testRunID=%s,tool=%s,scenario=%s,transaction=%s response_time_ms=%di,status_code=%di,failed=%b %d&quot;,
+    tag(project),
     tag(environment),
-    tag(branch),
-    tag(commit),
-    elapsedMs as double,
-    requestsPerSecond,
-    errorRate,
-    fieldString(sampleResult.getResponseCode()),
-    fieldString(sampleResult.getResponseMessage()),
-    sampleResult.getBytesAsLong(),
-    sampleResult.getSentBytes(),
+    tag(testRunID),
+    tag(&quot;jmeter&quot;),
+    tag(scenario),
+    tag(sampleResult.getSampleLabel()),
+    elapsedMs,
+    statusCode,
+    failed,
     timestampNs
 )
 
