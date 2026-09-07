@@ -199,6 +199,15 @@ def _prompt_connection(config: dict) -> None:
             "BlazeMeter project ID",
             default=connection.get("project_id", TODO_VALUE),
         ) or TODO_VALUE
+    elif tool_type == "jmeter":
+        connection["test_plan_path"] = prompt_text(
+            "Path to the JMeter test plan (.jmx) in the target repository",
+            default=connection.get("test_plan_path", TODO_VALUE),
+        ) or TODO_VALUE
+        connection["jmeter_bin"] = prompt_text(
+            "Optional path to the jmeter executable (blank uses PATH)",
+            default=connection.get("jmeter_bin", ""),
+        )
 
 
 def _prompt_catalog_items(kind: str) -> list[dict]:

@@ -52,5 +52,9 @@ def get_adapter(tool_type: str) -> ToolAdapter:
         from pipeline_generator.adapters.loadrunner_professional import LoadRunnerProfessionalAdapter
 
         return LoadRunnerProfessionalAdapter()
+    if tool_type == "jmeter":
+        from pipeline_generator.adapters.jmeter import JMeterAdapter
+
+        return JMeterAdapter()
     raise ValueError(f"Unsupported adapter: {tool_type}")
 

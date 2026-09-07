@@ -16,6 +16,7 @@ A Python scaffold for onboarding customer-specific performance testing setups an
 - Provides a runtime wrapper skeleton for:
   - BlazeMeter
   - LoadRunner Professional
+  - JMeter (local/self-hosted, not a SaaS tool — no remote auth needed)
 
 ## Status
 
@@ -23,7 +24,8 @@ This is a scaffolded v1 foundation:
 
 - Wizard, validation, and generation are working
 - Runtime command flow and adapter interfaces are implemented
-- Actual remote execution for BlazeMeter and LoadRunner Professional is still a TODO
+- Actual execution for BlazeMeter, LoadRunner Professional, and JMeter is
+  still a TODO — all three adapters are scaffolded stubs
 
 ## Install
 
@@ -277,13 +279,18 @@ artifacts:
 ```
 
 `cicd.type` supports `github_actions`, `azure_devops`, and `jenkins`.
-`tool.type` supports `loadrunner_professional` and `blazemeter`.
-Ready-made examples for every CI/CD × tool combination are under
+`tool.type` supports `loadrunner_professional`, `blazemeter`, and `jmeter`.
+JMeter is local/self-hosted rather than a remote SaaS tool, so its
+`tool.auth.type` is typically `none`, and its `tool.connection` only needs a
+`test_plan_path` (and optionally `jmeter_bin` if the executable isn't on
+`PATH`). Ready-made examples for every CI/CD × tool combination are under
 [`examples/`](examples/).
 
 ## Recommended Next Work
 
 - Implement real BlazeMeter API adapter methods
 - Implement remote Windows execution for LoadRunner Professional
+- Implement local JMeter subprocess execution (start_run/wait_for_completion/
+  collect_artifacts in `adapters/jmeter.py`)
 - Add a GitLab CI renderer
 - Add non-interactive `generate` workflows around completed YAML inputs

@@ -1,0 +1,46 @@
+version: 1
+incomplete: false
+setup:
+  id: azure-devops-jmeter-storefront
+  working_location: central_repo
+  final_pipeline_destination: stay_in_central_repo
+  ci_can_use_central_repo_directly: true
+  target_repository: dev.azure.com/acme/storefront
+  generation_mode: both
+cicd:
+  type: azure_devops
+tool:
+  type: jmeter
+  auth:
+    type: none
+  connection:
+    test_plan_path: performance/checkout.jmx
+    jmeter_bin: ""
+manual_pipeline:
+  enabled: true
+  name: Azure JMeter Manual Run
+  timeout_minutes: 90
+automated_jobs:
+  - name: post-deploy-smoke
+    enabled: true
+    environment_ref: qa
+    scenario_ref: qa_smoke
+    timeout_minutes: 45
+catalog:
+  environments:
+    - key: qa
+      name: QA
+      identifier: env-qa
+  scenarios:
+    - key: qa_smoke
+      name: QA Smoke
+      identifier: checkout.jmx
+pre_run_checks:
+  - verify_scenario_exists
+  - collect_results
+artifacts:
+  download_remote_results: false
+  fail_on_partial_download: false
+readme:
+  include_manual_usage: true
+  include_automated_usage: true
