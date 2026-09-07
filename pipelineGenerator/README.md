@@ -42,6 +42,13 @@ If your environment has an older `pip`, this fallback can help:
 pip install --no-build-isolation -e .
 ```
 
+For development, install the `dev` extra to get `pytest`, then run the test suite:
+
+```bash
+pip install -e ".[dev]"
+pytest
+```
+
 ## Quick Start
 
 Create a new draft config interactively:
@@ -116,7 +123,7 @@ incomplete: false
 setup:
   id: acme-github-actions-loadrunner-professional-storefront
   working_location: central_repo
-  final_pipeline_destination: customer_repo
+  final_pipeline_destination: copy_to_customer_repo
   ci_can_use_central_repo_directly: false
   target_repository: github.com/acme/storefront
   generation_mode: both
