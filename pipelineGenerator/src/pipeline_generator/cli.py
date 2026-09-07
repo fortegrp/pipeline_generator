@@ -48,7 +48,20 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.command == "wizard":
-        config = run_wizard(args.output, resume=args.resume)
+        if args.output.exists() and not args.resume:
+            print(
+                f"{args.output} already exists. Pass --resume to continue editing it, "
+                "or choose a different --output path to start a new setup."
+            )
+            return 1
+        try:
+            config = run_wizard(args.output, resume=args.resume)
+        except (EOFError, KeyboardInterrupt):
+            if args.output.exists():
+                print(f"\nWizard cancelled. Progress up to the last completed step was saved to {args.output}.")
+            else:
+                print("\nWizard cancelled before any progress was saved.")
+            return 130
         print(f"Saved setup draft to {args.output}")
         print(json.dumps({"setup_id": config["setup"]["id"], "incomplete": config["incomplete"]}, indent=2))
         return 0

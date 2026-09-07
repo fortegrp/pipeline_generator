@@ -15,7 +15,7 @@ from pipeline_generator.config.schema import (
     merged_base_config,
 )
 from pipeline_generator.wizard.id_builder import build_setup_id
-from pipeline_generator.wizard.prompts import prompt_bool, prompt_choice, prompt_text
+from pipeline_generator.wizard.prompts import prompt_bool, prompt_choice, prompt_positive_int, prompt_text
 
 
 def run_wizard(output_path: Path, resume: bool = False) -> dict:
@@ -97,6 +97,10 @@ def run_wizard(output_path: Path, resume: bool = False) -> dict:
             "Manual pipeline name",
             default=config["manual_pipeline"]["name"],
         ) or "Performance Manual Run"
+        config["manual_pipeline"]["timeout_minutes"] = prompt_positive_int(
+            "Manual pipeline timeout minutes",
+            default=int(config["manual_pipeline"]["timeout_minutes"]),
+        )
         save_config(output_path, config)
     else:
         config["manual_pipeline"]["enabled"] = False
@@ -176,15 +180,22 @@ def _prompt_catalog_items(kind: str) -> list[dict]:
 
 def _prompt_automated_jobs(config: dict) -> list[dict]:
     jobs: list[dict] = []
+    environment_keys = [item["key"] for item in config["catalog"]["environments"]]
+    scenario_keys = [item["key"] for item in config["catalog"]["scenarios"]]
     print("Enter automated jobs. Leave name blank to finish.")
     while True:
         name = prompt_text("Automated job name", allow_blank=True)
         if not name:
             break
-        environment_ref = prompt_text("Environment key", default=TODO_VALUE) or TODO_VALUE
-        scenario_ref = prompt_text("Scenario key", default=TODO_VALUE) or TODO_VALUE
-        timeout_raw = prompt_text("Timeout minutes", default="240")
-        timeout_minutes = int(timeout_raw) if timeout_raw.isdigit() else 240
+        if environment_keys:
+            environment_ref = prompt_choice("Environment key", environment_keys, default=environment_keys[0])
+        else:
+            environment_ref = prompt_text("Environment key", default=TODO_VALUE) or TODO_VALUE
+        if scenario_keys:
+            scenario_ref = prompt_choice("Scenario key", scenario_keys, default=scenario_keys[0])
+        else:
+            scenario_ref = prompt_text("Scenario key", default=TODO_VALUE) or TODO_VALUE
+        timeout_minutes = prompt_positive_int("Timeout minutes", default=240)
         jobs.append(
             {
                 "name": name,
