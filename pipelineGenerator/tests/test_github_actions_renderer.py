@@ -1,9 +1,11 @@
+import re
 from pathlib import Path
 
 import yaml
 
 from pipeline_generator.generator.context import build_generic_package
 from pipeline_generator.renderers.github_actions import render_github_actions
+from pipeline_generator.renderers.quoting import shell_quote
 
 
 def _config() -> dict:
@@ -49,4 +51,57 @@ def test_render_github_actions_writes_valid_workflows(tmp_path: Path) -> None:
     automated_doc = yaml.safe_load(automated_text)
     assert automated_doc["jobs"]["post-deploy-smoke"]["timeout-minutes"] == 60
     assert "--mode automated" in automated_text
-    assert '--job "post-deploy-smoke"' in automated_text
+    assert "--job post-deploy-smoke" in automated_text
+
+
+def test_render_github_actions_escapes_adversarial_values(tmp_path: Path) -> None:
+    nasty_env_value = 'qa" evil: true'
+    nasty_job_name = 'weird "job"; rm -rf / : ../../etc'
+    nasty_pipeline_name = 'My "Perf" Pipeline: v2'
+    config = {
+        "setup": {"id": "gha-adversarial", "generation_mode": "both"},
+        "cicd": {"type": "github_actions"},
+        "catalog": {
+            "environments": [{"key": nasty_env_value, "name": "QA"}],
+            "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke"}],
+        },
+        "manual_pipeline": {"enabled": True, "name": nasty_pipeline_name, "timeout_minutes": 30},
+        "automated_jobs": [
+            {
+                "name": nasty_job_name,
+                "enabled": True,
+                "environment_ref": nasty_env_value,
+                "scenario_ref": "checkout_smoke",
+                "timeout_minutes": 15,
+            }
+        ],
+    }
+    package = build_generic_package(config)
+
+    outputs = render_github_actions(config, package, tmp_path)
+
+    # A hostile job name must never escape the intended output directory or
+    # produce filesystem-unsafe filenames.
+    for output in outputs:
+        filename = Path(output).name
+        assert "/" not in filename
+        assert ".." not in filename
+        assert " " not in filename
+
+    manual_path = tmp_path / ".github" / "workflows" / "performance-manual.yml"
+    manual_text = manual_path.read_text(encoding="utf-8")
+    manual_doc = yaml.safe_load(manual_text)  # raises if the escaping broke YAML syntax
+    assert manual_doc["name"] == nasty_pipeline_name
+    # PyYAML's default resolver reads the bare "on:" key as boolean True.
+    assert nasty_env_value in manual_doc[True]["workflow_dispatch"]["inputs"]["environment"]["options"]
+
+    workflows_dir = tmp_path / ".github" / "workflows"
+    automated_files = [p for p in workflows_dir.iterdir() if p.name.startswith("performance-automated-")]
+    assert len(automated_files) == 1
+    automated_text = automated_files[0].read_text(encoding="utf-8")
+    automated_doc = yaml.safe_load(automated_text)  # raises if the escaping broke YAML syntax
+
+    assert automated_doc["name"] == f"Performance Automated Job - {nasty_job_name}"
+    job_id = next(iter(automated_doc["jobs"]))
+    assert re.match(r"^[A-Za-z_][A-Za-z0-9_-]*$", job_id)
+    assert shell_quote(nasty_job_name) in automated_text
