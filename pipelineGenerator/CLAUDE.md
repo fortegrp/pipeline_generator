@@ -20,8 +20,11 @@ source .venv/bin/activate
 pip install -e .
 ```
 
-There is no dev-dependency group in `pyproject.toml` — `pytest` must be
-installed manually into the venv (`pip install pytest`) before running tests.
+Install the `dev` extra to get `pytest`:
+
+```bash
+pip install -e ".[dev]"
+```
 
 Run all tests:
 
@@ -48,9 +51,9 @@ pipeline-generator run --config setups/acme.yaml --mode manual --environment qa 
 pipeline-generator run --config setups/acme.yaml --mode automated --job post-deploy-smoke --dry-run
 ```
 
-`examples/{github,azure}-{blazemeter,loadrunner}/customer.yaml` are ready-made
-configs covering the supported CI/CD × tool matrix — use them for manual
-testing instead of writing new configs from scratch.
+`examples/{github,azure,jenkins}-{blazemeter,loadrunner}/customer.yaml` are
+ready-made configs covering the supported CI/CD × tool matrix — use them for
+manual testing instead of writing new configs from scratch.
 
 ## Architecture
 
@@ -64,16 +67,23 @@ Pipeline: **customer YAML → validate → generic pipeline model → CI/CD rend
 - `config/` — the config's source-of-truth shape (`schema.py`: supported
   enums and `base_config()`), YAML load/save/merge with defaults
   (`loader.py`), TODO-placeholder handling (`placeholders.py`), and
-  `validator.py`, which separates **errors** (always block) from **warnings**
-  (only block `generate`/`run` when `config["incomplete"]` is `False` — see
-  `is_placeholder` checks in `validator.py`). This error/warning split is the
-  key mechanism that lets a config be a legitimate in-progress draft (via
-  `incomplete: true`) while still being loadable and partially useful.
+  `validator.py`, which separates **errors** (always reported) from
+  **warnings**. `validate_config()` never blocks anything on its own — the
+  CLI decides what to do with the result: `cli.py`'s
+  `_blocks_action()` always blocks on errors, and additionally blocks on
+  warnings unless `config["incomplete"]` is `True`. This is the mechanism
+  that lets a config be a legitimate in-progress draft (`incomplete: true`)
+  while still being loadable and partially useful, while a config that
+  declares itself `incomplete: false` has that claim actually enforced by
+  `generate`/`run`.
 - `wizard/` — interactive flow (`flow.py`) that builds/resumes a draft YAML
   using `merged_base_config`, so re-running the wizard against an existing
-  file only fills in what's missing. `id_builder.py` slugifies
-  `cicd_type + tool_type + repo_name` into the setup ID used as the generated
-  folder name.
+  file only fills in what's missing. `cli.py` refuses to touch an existing
+  `--output` file unless `--resume` is passed (no silent overwrite), and
+  resuming a draft with existing environments/scenarios/automated jobs offers
+  keep-as-is/add-more/start-over rather than discarding the list.
+  `id_builder.py` slugifies `cicd_type + tool_type + repo_name` into the
+  setup ID used as the generated folder name.
 - `generator/` — `context.py` reads validated config and builds a
   `GenericPipelinePackage` (`generic_model.py`): a CI/CD-agnostic
   representation of the manual pipeline (inputs, timeout, run command) and
@@ -102,9 +112,12 @@ Pipeline: **customer YAML → validate → generic pipeline model → CI/CD rend
   implemented — only `--dry-run` currently produces real output for `run`.
 
 `generate` and `run` both re-validate the config before doing anything
-(`cli.py` calls `validate_config` in every branch), and `generate` only stops
-on `result.errors`, not `result.warnings` — a config with warnings (e.g.
-missing catalog entries) can still generate files.
+(`cli.py` calls `validate_config` in every branch, then `_blocks_action()` —
+see the `config/` bullet above for the errors-vs-warnings rule). `run`'s own
+`ValueError`s (bad `--job`, missing `--environment`) and the adapters'
+`NotImplementedError` are not caught anywhere — they still surface as raw
+tracebacks; only the `wizard` command has clean error handling
+(`EOFError`/`KeyboardInterrupt`) so far.
 
 See `docs/current-state-and-readiness-plan.md` for the full known-gaps list
 and multi-milestone readiness plan (stricter validation profiles, YAML-safe
