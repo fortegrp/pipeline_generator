@@ -7,6 +7,7 @@ from pipeline_generator.config.placeholders import TODO_VALUE
 SUPPORTED_CICD = [
     "github_actions",
     "azure_devops",
+    "jenkins",
 ]
 
 SUPPORTED_TOOLS = [

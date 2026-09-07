@@ -12,6 +12,7 @@ A Python scaffold for onboarding customer-specific performance testing setups an
 - Supports a generic internal pipeline model with renderers for:
   - GitHub Actions
   - Azure DevOps
+  - Jenkins
 - Provides a runtime wrapper skeleton for:
   - BlazeMeter
   - LoadRunner Professional
@@ -102,7 +103,8 @@ generated/
     .github/workflows/performance-automated.yml
 ```
 
-Azure DevOps setups will render Azure YAML files instead.
+Azure DevOps setups will render Azure YAML files instead, and Jenkins setups
+will render Jenkinsfiles under `jenkins/` instead.
 
 ## Config Shape
 
@@ -160,5 +162,5 @@ artifacts:
 
 - Implement real BlazeMeter API adapter methods
 - Implement remote Windows execution for LoadRunner Professional
-- Add GitLab CI and Jenkins renderers
+- Add a GitLab CI renderer
 - Add non-interactive `generate` workflows around completed YAML inputs

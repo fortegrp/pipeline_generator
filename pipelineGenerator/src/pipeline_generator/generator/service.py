@@ -6,6 +6,7 @@ from pipeline_generator.config.loader import save_config
 from pipeline_generator.generator.context import build_generic_package
 from pipeline_generator.renderers.azure_devops import render_azure_devops
 from pipeline_generator.renderers.github_actions import render_github_actions
+from pipeline_generator.renderers.jenkins import render_jenkins
 from pipeline_generator.renderers.readme import render_setup_readme
 
 
@@ -21,6 +22,8 @@ def generate_assets(config: dict, output_dir: Path) -> list[str]:
         outputs.extend(render_github_actions(config, package, setup_dir))
     elif package.cicd_type == "azure_devops":
         outputs.extend(render_azure_devops(config, package, setup_dir))
+    elif package.cicd_type == "jenkins":
+        outputs.extend(render_jenkins(config, package, setup_dir))
     else:  # pragma: no cover
         raise ValueError(f"Unsupported renderer: {package.cicd_type}")
 
