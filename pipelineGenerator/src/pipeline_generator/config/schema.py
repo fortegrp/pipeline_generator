@@ -13,6 +13,7 @@ SUPPORTED_CICD = [
 SUPPORTED_TOOLS = [
     "loadrunner_professional",
     "blazemeter",
+    "jmeter",
 ]
 
 GENERATION_MODES = [
@@ -26,6 +27,7 @@ AUTH_TYPES = [
     "username_password",
     "service_account",
     "network_vpn_manual_setup",
+    "none",
 ]
 
 WORKING_LOCATIONS = [

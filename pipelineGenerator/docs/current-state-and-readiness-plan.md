@@ -40,7 +40,7 @@ Implemented:
 - Generated setup README.
 - Runtime dry-run path.
 - Adapter interfaces for performance testing tools.
-- Stub adapters for BlazeMeter and LoadRunner Professional.
+- Stub adapters for BlazeMeter, LoadRunner Professional, and JMeter.
 - Example customer configs for the supported CI/CD and tool combinations.
 - Renderer tests for all three CI/CD platforms (GitHub Actions and Azure
   DevOps tests also parse the generated YAML to catch syntax breakage).
@@ -85,9 +85,15 @@ The config model currently supports:
 
 - `blazemeter`
 - `loadrunner_professional`
+- `jmeter` — local/self-hosted rather than a remote SaaS tool; typically
+  paired with `tool.auth.type: none` and a `test_plan_path` connection field.
 
-Tool adapters exist, but both are stubs. They define the expected execution
-interface and raise `NotImplementedError` for real remote execution.
+Tool adapters exist, but all three are stubs. They define the expected
+execution interface and raise `NotImplementedError`. For BlazeMeter and
+LoadRunner Professional this means real *remote* execution; for JMeter it
+means a real *local* `jmeter` subprocess invocation, which — unlike the other
+two — needs no remote API or credentials to implement, making it the
+lowest-effort adapter to finish for real.
 
 ### Authentication Types
 
@@ -97,6 +103,7 @@ Supported auth type values are:
 - `username_password`
 - `service_account`
 - `network_vpn_manual_setup`
+- `none` — for tools like JMeter that run locally and need no remote auth.
 
 The current project validates these values but does not yet implement secret
 resolution, credential injection, or remote authentication behavior.
@@ -345,14 +352,17 @@ wait, and artifact collection.
 
 ## Current Examples
 
-The repository includes six example customer configs:
+The repository includes nine example customer configs:
 
 - `examples/github-blazemeter/customer.yaml`
 - `examples/github-loadrunner/customer.yaml`
+- `examples/github-jmeter/customer.yaml`
 - `examples/azure-blazemeter/customer.yaml`
 - `examples/azure-loadrunner/customer.yaml`
+- `examples/azure-jmeter/customer.yaml`
 - `examples/jenkins-blazemeter/customer.yaml`
 - `examples/jenkins-loadrunner/customer.yaml`
+- `examples/jenkins-jmeter/customer.yaml`
 
 These examples demonstrate the intended matrix of supported CI/CD platforms and
 performance tools.
@@ -429,8 +439,8 @@ Still open:
 
 ### Adapter Implementations Are Stubs
 
-BlazeMeter and LoadRunner Professional adapters define the right shape but do
-not execute real tests.
+BlazeMeter, LoadRunner Professional, and JMeter adapters define the right
+shape but do not execute real tests.
 
 Risk:
 
@@ -439,10 +449,13 @@ Risk:
 
 Recommended change:
 
-- Implement adapters incrementally, starting with BlazeMeter because it is
-  likely API-driven and easier to automate consistently. This is a sequencing
-  recommendation only; LoadRunner Professional remains part of the core
-  roadmap.
+- Implement adapters incrementally. JMeter is the lowest-effort of the three
+  to make real, since it only needs a local subprocess call
+  (`jmeter -n -t <plan> -l <results> -e -o <report>`) rather than a remote
+  API or controller — no credentials, polling, or network reliability
+  concerns. BlazeMeter is next, since it's API-driven. LoadRunner
+  Professional remains the most involved, since it also requires deciding
+  the remote-execution mechanism (see Milestone 2 below).
 
 ### Test Coverage Is Minimal
 
@@ -688,11 +701,13 @@ Tasks:
       Strings" below for what's still open).
 - [x] 8. Harden Azure DevOps rendering (same treatment as GitHub Actions).
 - [ ] 9. Improve generated README content.
-- [ ] 10. Implement BlazeMeter adapter.
-- [ ] 11. Decide and implement LoadRunner execution strategy.
-- [ ] 12. Replace precheck stubs with real checks.
-- [ ] 13. Add runtime integration tests with mocked remote systems.
-- [ ] 14. Publish an internal release candidate.
+- [ ] 10. Implement JMeter adapter (local subprocess call — lowest effort of
+      the three since it needs no remote API or credentials).
+- [ ] 11. Implement BlazeMeter adapter.
+- [ ] 12. Decide and implement LoadRunner execution strategy.
+- [ ] 13. Replace precheck stubs with real checks.
+- [ ] 14. Add runtime integration tests with mocked remote systems.
+- [ ] 15. Publish an internal release candidate.
 
 ## Definition of Ready
 

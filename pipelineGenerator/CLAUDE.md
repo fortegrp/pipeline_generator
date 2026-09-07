@@ -51,7 +51,7 @@ pipeline-generator run --config setups/acme.yaml --mode manual --environment qa 
 pipeline-generator run --config setups/acme.yaml --mode automated --job post-deploy-smoke --dry-run
 ```
 
-`examples/{github,azure,jenkins}-{blazemeter,loadrunner}/customer.yaml` are
+`examples/{github,azure,jenkins}-{blazemeter,loadrunner,jmeter}/customer.yaml` are
 ready-made configs covering the supported CI/CD × tool matrix — use them for
 manual testing instead of writing new configs from scratch.
 
@@ -105,11 +105,14 @@ Pipeline: **customer YAML → validate → generic pipeline model → CI/CD rend
   drives a tool adapter through `run_prechecks → start_run →
   wait_for_completion → collect_artifacts` and writes `summary.json`.
 - `adapters/` — `base.py` defines the `ToolAdapter` protocol and
-  `get_adapter(tool_type)` factory. `blazemeter.py` and
-  `loadrunner_professional.py` are stubs: prechecks are stubbed as "planned",
-  and `start_run`/`wait_for_completion`/`collect_artifacts` all raise
-  `NotImplementedError`. Real remote execution against either tool is not yet
+  `get_adapter(tool_type)` factory. `blazemeter.py`, `loadrunner_professional.py`,
+  and `jmeter.py` are all stubs: prechecks are stubbed as "planned", and
+  `start_run`/`wait_for_completion`/`collect_artifacts` all raise
+  `NotImplementedError`. Real execution for any of the three is not yet
   implemented — only `--dry-run` currently produces real output for `run`.
+  Unlike the other two, JMeter runs locally (no remote API/credentials), so
+  its `tool.auth.type` is `none` and it needs no `SUPPORTED_TOOLS`-adjacent
+  remote-connection story — see `AUTH_TYPES` in `config/schema.py`.
 
 `generate` and `run` both re-validate the config before doing anything
 (`cli.py` calls `validate_config` in every branch, then `_blocks_action()` —

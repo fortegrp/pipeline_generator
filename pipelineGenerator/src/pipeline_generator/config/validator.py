@@ -104,5 +104,12 @@ def validate_config(config: dict) -> ValidationResult:
             if is_placeholder(value):
                 result.warnings.append(f"tool.connection.{key} is missing for BlazeMeter.")
 
+    if tool_type == "jmeter":
+        connection = tool.get("connection", {})
+        for key in ["test_plan_path"]:
+            value = connection.get(key)
+            if is_placeholder(value):
+                result.warnings.append(f"tool.connection.{key} is missing for JMeter.")
+
     return result
 
