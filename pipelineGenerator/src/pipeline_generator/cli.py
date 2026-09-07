@@ -62,8 +62,9 @@ def main() -> int:
             else:
                 print("\nWizard cancelled before any progress was saved.")
             return 130
-        print(f"Saved setup draft to {args.output}")
+        print(f"\nSaved setup draft to {args.output}")
         print(json.dumps({"setup_id": config["setup"]["id"], "incomplete": config["incomplete"]}, indent=2))
+        print(f"\nNext step: pipeline-generator generate --config {args.output} --output-dir generated")
         return 0
 
     if args.command == "validate":
