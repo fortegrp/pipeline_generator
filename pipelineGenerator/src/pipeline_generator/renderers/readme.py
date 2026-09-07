@@ -54,7 +54,7 @@ def render_setup_readme(config: dict, package: GenericPipelinePackage) -> str:
             "## Files",
             "",
             "- `customer.yaml`: setup source of truth",
-            "- generated pipeline YAML files: CI/CD-specific assets",
+            "- generated pipeline files: CI/CD-specific assets",
             "- this README: setup guidance",
             "",
         ]

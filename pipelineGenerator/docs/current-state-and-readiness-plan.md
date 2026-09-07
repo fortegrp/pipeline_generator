@@ -36,6 +36,7 @@ Implemented:
 - Generic internal pipeline model.
 - GitHub Actions renderer.
 - Azure DevOps renderer.
+- Jenkins renderer.
 - Generated setup README.
 - Runtime dry-run path.
 - Adapter interfaces for performance testing tools.
@@ -61,11 +62,13 @@ The generator currently supports:
 
 - `github_actions`
 - `azure_devops`
+- `jenkins`
 
 Renderer output locations:
 
 - GitHub Actions files are written under `.github/workflows/`.
 - Azure DevOps files are written under `azure/`.
+- Jenkins files are written under `jenkins/` as declarative `Jenkinsfile.*` files.
 
 ### Performance Testing Tools
 
@@ -142,8 +145,8 @@ intended to keep renderer logic separate from raw config parsing.
 
 `src/pipeline_generator/renderers/`
 
-Converts the generic pipeline model into CI/CD-specific YAML files for GitHub
-Actions and Azure DevOps.
+Converts the generic pipeline model into CI/CD-specific files for GitHub
+Actions, Azure DevOps, and Jenkins.
 
 `src/pipeline_generator/runtime/`
 
@@ -321,12 +324,14 @@ wait, and artifact collection.
 
 ## Current Examples
 
-The repository includes four example customer configs:
+The repository includes six example customer configs:
 
 - `examples/github-blazemeter/customer.yaml`
 - `examples/github-loadrunner/customer.yaml`
 - `examples/azure-blazemeter/customer.yaml`
 - `examples/azure-loadrunner/customer.yaml`
+- `examples/jenkins-blazemeter/customer.yaml`
+- `examples/jenkins-loadrunner/customer.yaml`
 
 These examples demonstrate the intended matrix of supported CI/CD platforms and
 performance tools.

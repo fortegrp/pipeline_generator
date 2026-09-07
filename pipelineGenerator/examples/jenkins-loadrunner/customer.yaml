@@ -1,0 +1,56 @@
+version: 1
+incomplete: false
+setup:
+  id: jenkins-loadrunner-professional-storefront
+  working_location: central_repo
+  final_pipeline_destination: copy_to_customer_repo
+  ci_can_use_central_repo_directly: false
+  target_repository: github.com/acme/storefront
+  generation_mode: both
+cicd:
+  type: jenkins
+tool:
+  type: loadrunner_professional
+  auth:
+    type: username_password
+  connection:
+    controller_host: lr-controller.acme.local
+    controller_results_path: C:\Results
+    domain: DEFAULT
+    project: STOREFRONT
+manual_pipeline:
+  enabled: true
+  name: Performance Manual Run
+  timeout_minutes: 240
+automated_jobs:
+  - name: post-deploy-smoke
+    enabled: true
+    environment_ref: qa
+    scenario_ref: checkout_smoke
+    timeout_minutes: 90
+catalog:
+  environments:
+    - key: qa
+      name: QA
+      identifier: env-qa
+    - key: staging
+      name: Staging
+      identifier: env-stg
+  scenarios:
+    - key: checkout_smoke
+      name: Checkout Smoke
+      identifier: LR_CHECKOUT_SMOKE
+    - key: browse_baseline
+      name: Browse Baseline
+      identifier: LR_BROWSE_BASELINE
+pre_run_checks:
+  - verify_controller_access
+  - verify_scenario_exists
+  - verify_load_generators_connected
+  - collect_results
+artifacts:
+  download_remote_results: true
+  fail_on_partial_download: false
+readme:
+  include_manual_usage: true
+  include_automated_usage: true
