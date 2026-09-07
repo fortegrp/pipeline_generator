@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from pipeline_generator.config.loader import load_config
-from pipeline_generator.config.validator import validate_config
+from pipeline_generator.config.validator import ValidationResult, validate_config
 from pipeline_generator.generator.service import generate_assets
 from pipeline_generator.runtime.orchestrator import run_execution
 from pipeline_generator.wizard.flow import run_wizard
@@ -43,6 +43,19 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _blocks_action(result: ValidationResult, config: dict, action: str) -> bool:
+    print(result.to_console())
+    if result.errors:
+        return True
+    if result.warnings and not config.get("incomplete", False):
+        print(
+            f"This setup is marked complete (incomplete: false) but has warnings above. "
+            f"Fix them, or set incomplete: true in the config to {action} as a draft anyway."
+        )
+        return True
+    return False
+
+
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
@@ -78,8 +91,7 @@ def main() -> int:
     if args.command == "generate":
         config = load_config(args.config)
         result = validate_config(config)
-        print(result.to_console())
-        if result.errors:
+        if _blocks_action(result, config, "generate"):
             return 1
         outputs = generate_assets(config, args.output_dir)
         for output in outputs:
@@ -89,8 +101,7 @@ def main() -> int:
     if args.command == "run":
         config = load_config(args.config)
         result = validate_config(config)
-        print(result.to_console())
-        if result.errors:
+        if _blocks_action(result, config, "run"):
             return 1
         execution = run_execution(
             config,
