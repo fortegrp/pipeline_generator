@@ -14,8 +14,37 @@ from pipeline_generator.config.schema import (
     WORKING_LOCATIONS,
     merged_base_config,
 )
+from pipeline_generator.config.validator import validate_config
 from pipeline_generator.wizard.id_builder import build_setup_id
-from pipeline_generator.wizard.prompts import prompt_bool, prompt_choice, prompt_positive_int, prompt_text
+from pipeline_generator.wizard.prompts import (
+    prompt_bool,
+    prompt_choice,
+    prompt_multi_choice,
+    prompt_positive_int,
+    prompt_text,
+)
+
+TOTAL_STEPS = 8
+
+WORKING_LOCATION_HINTS = {
+    "central_repo": "Setup files are authored and maintained in this generator's own repo.",
+    "customer_repo": "Setup files are authored directly inside the customer's repository.",
+}
+
+PIPELINE_DESTINATION_HINTS = {
+    "stay_in_central_repo": "Generated pipeline files stay in this central repo; the customer repo references them from there.",
+    "copy_to_customer_repo": "Generated pipeline files are copied into the customer's own repository.",
+}
+
+GENERATION_MODE_HINTS = {
+    "manual_only": "Only generate the on-demand pipeline performance engineers trigger by hand.",
+    "automated_only": "Only generate the reusable automated job DevOps wires into their own pipelines.",
+    "both": "Generate both the manual pipeline and the automated job.",
+}
+
+
+def _section(step: int, title: str) -> None:
+    print(f"\n[Step {step}/{TOTAL_STEPS}] {title}")
 
 
 def run_wizard(output_path: Path, resume: bool = False) -> dict:
@@ -25,21 +54,23 @@ def run_wizard(output_path: Path, resume: bool = False) -> dict:
     print("Performance automation wizard")
     print("Leave fields blank when you want to keep TODO placeholders and finish later.")
 
+    _section(1, "Setup basics")
     config["setup"]["working_location"] = prompt_choice(
         "Working location",
         WORKING_LOCATIONS,
         default=config["setup"]["working_location"],
+        descriptions=WORKING_LOCATION_HINTS,
     )
-    save_config(output_path, config)
-
     config["setup"]["final_pipeline_destination"] = prompt_choice(
         "Final pipeline destination",
         PIPELINE_DESTINATIONS,
         default=config["setup"]["final_pipeline_destination"],
+        descriptions=PIPELINE_DESTINATION_HINTS,
     )
     config["setup"]["ci_can_use_central_repo_directly"] = prompt_bool(
         "Can the CI/CD system consume files directly from the central repo?",
         default=bool(config["setup"]["ci_can_use_central_repo_directly"]),
+        hint="If yes, generated files can be referenced straight from the central repo without copying them anywhere.",
     )
     config["setup"]["target_repository"] = prompt_text(
         "Target repository identity",
@@ -49,9 +80,11 @@ def run_wizard(output_path: Path, resume: bool = False) -> dict:
         "Generation mode",
         GENERATION_MODES,
         default=config["setup"]["generation_mode"],
+        descriptions=GENERATION_MODE_HINTS,
     )
     save_config(output_path, config)
 
+    _section(2, "CI/CD platform and performance tool")
     config["cicd"]["type"] = prompt_choice(
         "CI/CD platform",
         SUPPORTED_CICD,
@@ -73,6 +106,7 @@ def run_wizard(output_path: Path, resume: bool = False) -> dict:
     )
     save_config(output_path, config)
 
+    _section(3, "Setup identifier")
     generated_id = build_setup_id(
         config["cicd"]["type"],
         config["tool"]["type"],
@@ -85,9 +119,11 @@ def run_wizard(output_path: Path, resume: bool = False) -> dict:
     )
     save_config(output_path, config)
 
+    _section(4, "Tool connection details")
     _prompt_connection(config)
     save_config(output_path, config)
 
+    _section(5, "Manual pipeline")
     if config["setup"]["generation_mode"] in {"manual_only", "both"}:
         config["manual_pipeline"]["enabled"] = prompt_bool(
             "Generate manual pipeline?",
@@ -101,32 +137,32 @@ def run_wizard(output_path: Path, resume: bool = False) -> dict:
             "Manual pipeline timeout minutes",
             default=int(config["manual_pipeline"]["timeout_minutes"]),
         )
-        save_config(output_path, config)
     else:
         config["manual_pipeline"]["enabled"] = False
+    save_config(output_path, config)
 
-    if prompt_bool("Add environments now?", default=bool(config["catalog"]["environments"])):
-        config["catalog"]["environments"] = _prompt_catalog_items("environment")
-        save_config(output_path, config)
+    _section(6, "Environments and scenarios")
+    config["catalog"]["environments"] = _prompt_catalog_section("environment", config["catalog"]["environments"])
+    config["catalog"]["scenarios"] = _prompt_catalog_section("scenario", config["catalog"]["scenarios"])
+    save_config(output_path, config)
 
-    if prompt_bool("Add scenarios now?", default=bool(config["catalog"]["scenarios"])):
-        config["catalog"]["scenarios"] = _prompt_catalog_items("scenario")
-        save_config(output_path, config)
-
-    if config["setup"]["generation_mode"] in {"automated_only", "both"} and prompt_bool(
-        "Add automated jobs now?",
-        default=bool(config["automated_jobs"]),
-    ):
-        config["automated_jobs"] = _prompt_automated_jobs(config)
-        save_config(output_path, config)
+    _section(7, "Automated jobs")
+    if config["setup"]["generation_mode"] in {"automated_only", "both"}:
+        config["automated_jobs"] = _prompt_automated_jobs_section(config)
     elif config["setup"]["generation_mode"] == "manual_only":
         config["automated_jobs"] = []
+    save_config(output_path, config)
 
+    _section(8, "Pre-run checks")
     config["pre_run_checks"] = _prompt_checks(config.get("pre_run_checks", []))
     config["readme"]["include_manual_usage"] = config["manual_pipeline"]["enabled"]
     config["readme"]["include_automated_usage"] = bool(config["automated_jobs"])
     config["incomplete"] = _is_incomplete(config)
     save_config(output_path, config)
+
+    _print_summary(config)
+    print("\n" + validate_config(config).to_console())
+
     return config
 
 
@@ -178,6 +214,24 @@ def _prompt_catalog_items(kind: str) -> list[dict]:
     return items
 
 
+def _prompt_catalog_section(kind: str, existing: list[dict]) -> list[dict]:
+    if existing:
+        print(f"Existing {kind}s: {', '.join(item['key'] for item in existing)}")
+        action = prompt_choice(
+            f"What do you want to do with {kind}s?",
+            ["keep as-is", "add more", "start over"],
+            default="keep as-is",
+        )
+        if action == "keep as-is":
+            return existing
+        if action == "start over":
+            return _prompt_catalog_items(kind)
+        return existing + _prompt_catalog_items(kind)
+    if prompt_bool(f"Add {kind}s now?", default=False):
+        return _prompt_catalog_items(kind)
+    return existing
+
+
 def _prompt_automated_jobs(config: dict) -> list[dict]:
     jobs: list[dict] = []
     environment_keys = [item["key"] for item in config["catalog"]["environments"]]
@@ -208,12 +262,40 @@ def _prompt_automated_jobs(config: dict) -> list[dict]:
     return jobs
 
 
+def _prompt_automated_jobs_section(config: dict) -> list[dict]:
+    existing = config["automated_jobs"]
+    if existing:
+        print(f"Existing automated jobs: {', '.join(job['name'] for job in existing)}")
+        action = prompt_choice(
+            "What do you want to do with automated jobs?",
+            ["keep as-is", "add more", "start over"],
+            default="keep as-is",
+        )
+        if action == "keep as-is":
+            return existing
+        if action == "start over":
+            return _prompt_automated_jobs(config)
+        return existing + _prompt_automated_jobs(config)
+    if prompt_bool("Add automated jobs now?", default=False):
+        return _prompt_automated_jobs(config)
+    return existing
+
+
 def _prompt_checks(existing: list[str]) -> list[str]:
-    checks: list[str] = []
-    print("Select pre-run checks. Answer yes/no for each.")
-    for check in PRE_RUN_CHECKS:
-        checks.append(check) if prompt_bool(f"Enable {check}?", default=check in existing) else None
-    return checks
+    return prompt_multi_choice("Select pre-run checks", PRE_RUN_CHECKS, default=existing)
+
+
+def _print_summary(config: dict) -> None:
+    setup = config["setup"]
+    print("\nSetup summary")
+    print(f"  ID: {setup['id']}")
+    print(f"  CI/CD: {config['cicd']['type']}")
+    print(f"  Tool: {config['tool']['type']}")
+    print(f"  Target repository: {setup['target_repository']}")
+    print(f"  Manual pipeline: {'enabled' if config['manual_pipeline']['enabled'] else 'disabled'}")
+    print(f"  Environments: {len(config['catalog']['environments'])}")
+    print(f"  Scenarios: {len(config['catalog']['scenarios'])}")
+    print(f"  Automated jobs: {len(config['automated_jobs'])}")
 
 
 def _is_incomplete(config: dict) -> bool:
