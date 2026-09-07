@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from pipeline_generator.generator.generic_model import GenericPipelinePackage
+from pipeline_generator.renderers.quoting import safe_filename_component, shell_quote, yaml_dquote
 
 
 def render_azure_devops(config: dict, package: GenericPipelinePackage, setup_dir: Path) -> list[str]:
@@ -17,17 +19,29 @@ def render_azure_devops(config: dict, package: GenericPipelinePackage, setup_dir
 
     if package.automated_jobs:
         for job in package.automated_jobs:
-            automated_path = azure_dir / f"performance-automated-{job.name}.yml"
+            automated_path = azure_dir / f"performance-automated-{safe_filename_component(job.name)}.yml"
             automated_path.write_text(_render_automated_job(job), encoding="utf-8")
             outputs.append(str(automated_path))
 
     return outputs
 
 
+def _safe_job_id(value: str) -> str:
+    """Sanitize a job name into a valid Azure Pipelines job id (`[A-Za-z0-9_]`, no leading digit)."""
+    text = re.sub(r"[^A-Za-z0-9_]", "_", value)
+    if not text or text[0].isdigit():
+        text = f"job_{text}"
+    return text
+
+
 def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
     assert package.manual_pipeline is not None
-    environment_values = "\n".join(f"      - {item.value}" for item in package.manual_pipeline.inputs[0].options)
-    scenario_values = "\n".join(f"      - {item.value}" for item in package.manual_pipeline.inputs[1].options)
+    environment_options = package.manual_pipeline.inputs[0].options
+    scenario_options = package.manual_pipeline.inputs[1].options
+    environment_values = "\n".join(f"      - {yaml_dquote(item.value)}" for item in environment_options)
+    scenario_values = "\n".join(f"      - {yaml_dquote(item.value)}" for item in scenario_options)
+    environment_default = yaml_dquote(environment_options[0].value if environment_options else "TODO")
+    scenario_default = yaml_dquote(scenario_options[0].value if scenario_options else "TODO")
     return f"""trigger: none
 pr: none
 
@@ -35,13 +49,13 @@ parameters:
   - name: environment
     displayName: Environment
     type: string
-    default: {package.manual_pipeline.inputs[0].options[0].value if package.manual_pipeline.inputs[0].options else "TODO"}
+    default: {environment_default}
     values:
 {environment_values}
   - name: scenario
     displayName: Scenario
     type: string
-    default: {package.manual_pipeline.inputs[1].options[0].value if package.manual_pipeline.inputs[1].options else "TODO"}
+    default: {scenario_default}
     values:
 {scenario_values}
 
@@ -73,10 +87,11 @@ jobs:
 
 
 def _render_automated_job(job) -> str:
+    job_id = _safe_job_id(job.name)
     return f"""parameters: []
 
 jobs:
-  - job: {job.name.replace('-', '_')}
+  - job: {job_id}
     timeoutInMinutes: {job.timeout_minutes}
     pool:
       vmImage: ubuntu-latest
@@ -91,11 +106,11 @@ jobs:
           pipeline-generator run
           --config customer.yaml
           --mode automated
-          --job {job.name}
+          --job {shell_quote(job.name)}
         displayName: Run performance wrapper
       - task: PublishPipelineArtifact@1
         condition: always()
         inputs:
           targetPath: run-output
-          artifact: performance-results-{job.name}
+          artifact: {yaml_dquote(f"performance-results-{job.name}")}
 """

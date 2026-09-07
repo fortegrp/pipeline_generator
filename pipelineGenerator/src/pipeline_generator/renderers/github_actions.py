@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from pipeline_generator.generator.generic_model import GenericPipelinePackage
+from pipeline_generator.renderers.quoting import safe_filename_component, shell_quote, yaml_dquote
 
 
 def render_github_actions(config: dict, package: GenericPipelinePackage, setup_dir: Path) -> list[str]:
@@ -17,19 +19,31 @@ def render_github_actions(config: dict, package: GenericPipelinePackage, setup_d
 
     if package.automated_jobs:
         for job in package.automated_jobs:
-            automated_path = workflow_dir / f"performance-automated-{job.name}.yml"
+            automated_path = workflow_dir / f"performance-automated-{safe_filename_component(job.name)}.yml"
             automated_path.write_text(_render_automated_workflow(job), encoding="utf-8")
             outputs.append(str(automated_path))
 
     return outputs
 
 
+def _safe_job_id(value: str) -> str:
+    """Sanitize a job name into a valid GitHub Actions job id.
+
+    Job ids must start with a letter or underscore and contain only
+    alphanumerics, `-`, or `_` (https://docs.github.com/actions).
+    """
+    text = re.sub(r"[^A-Za-z0-9_-]", "_", value)
+    if not text or not re.match(r"[A-Za-z_]", text[0]):
+        text = f"job_{text}"
+    return text
+
+
 def _render_manual_workflow(package: GenericPipelinePackage) -> str:
     assert package.manual_pipeline is not None
-    environment_options = ", ".join(f'"{item.value}"' for item in package.manual_pipeline.inputs[0].options)
-    scenario_options = ", ".join(f'"{item.value}"' for item in package.manual_pipeline.inputs[1].options)
+    environment_options = ", ".join(yaml_dquote(item.value) for item in package.manual_pipeline.inputs[0].options)
+    scenario_options = ", ".join(yaml_dquote(item.value) for item in package.manual_pipeline.inputs[1].options)
     timeout = package.manual_pipeline.timeout_minutes
-    return f"""name: {package.manual_pipeline.name}
+    return f"""name: {yaml_dquote(package.manual_pipeline.name)}
 
 on:
   workflow_dispatch:
@@ -73,13 +87,14 @@ jobs:
 
 
 def _render_automated_workflow(job) -> str:
-    return f"""name: Performance Automated Job - {job.name}
+    job_id = _safe_job_id(job.name)
+    return f"""name: {yaml_dquote(f"Performance Automated Job - {job.name}")}
 
 on:
   workflow_call:
 
 jobs:
-  {job.name}:
+  {job_id}:
     runs-on: ubuntu-latest
     timeout-minutes: {job.timeout_minutes}
     steps:
@@ -94,11 +109,11 @@ jobs:
           pipeline-generator run
           --config customer.yaml
           --mode automated
-          --job "{job.name}"
+          --job {shell_quote(job.name)}
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: performance-results-{job.name}
+          name: {yaml_dquote(f"performance-results-{job.name}")}
           path: run-output/
 """

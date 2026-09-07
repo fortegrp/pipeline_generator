@@ -1,9 +1,11 @@
+import re
 from pathlib import Path
 
 import yaml
 
 from pipeline_generator.generator.context import build_generic_package
 from pipeline_generator.renderers.azure_devops import render_azure_devops
+from pipeline_generator.renderers.quoting import shell_quote
 
 
 def _config() -> dict:
@@ -50,3 +52,52 @@ def test_render_azure_devops_writes_valid_pipelines(tmp_path: Path) -> None:
     # job identifiers get hyphens sanitized to underscores; the --job argument does not.
     assert automated_doc["jobs"][0]["job"] == "post_deploy_smoke"
     assert "--job post-deploy-smoke" in automated_text
+
+
+def test_render_azure_devops_escapes_adversarial_values(tmp_path: Path) -> None:
+    nasty_env_value = 'qa" evil: true'
+    nasty_job_name = 'weird "job"; rm -rf / : ../../etc'
+    config = {
+        "setup": {"id": "azure-adversarial", "generation_mode": "both"},
+        "cicd": {"type": "azure_devops"},
+        "catalog": {
+            "environments": [{"key": nasty_env_value, "name": "QA"}],
+            "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke"}],
+        },
+        "manual_pipeline": {"enabled": True, "name": "Performance Manual Run", "timeout_minutes": 30},
+        "automated_jobs": [
+            {
+                "name": nasty_job_name,
+                "enabled": True,
+                "environment_ref": nasty_env_value,
+                "scenario_ref": "checkout_smoke",
+                "timeout_minutes": 15,
+            }
+        ],
+    }
+    package = build_generic_package(config)
+
+    outputs = render_azure_devops(config, package, tmp_path)
+
+    for output in outputs:
+        filename = Path(output).name
+        assert "/" not in filename
+        assert ".." not in filename
+        assert " " not in filename
+
+    manual_path = tmp_path / "azure" / "performance-manual.yml"
+    manual_text = manual_path.read_text(encoding="utf-8")
+    manual_doc = yaml.safe_load(manual_text)  # raises if the escaping broke YAML syntax
+    environment_param = next(p for p in manual_doc["parameters"] if p["name"] == "environment")
+    assert nasty_env_value in environment_param["values"]
+
+    azure_dir = tmp_path / "azure"
+    automated_files = [p for p in azure_dir.iterdir() if p.name.startswith("performance-automated-")]
+    assert len(automated_files) == 1
+    automated_text = automated_files[0].read_text(encoding="utf-8")
+    automated_doc = yaml.safe_load(automated_text)  # raises if the escaping broke YAML syntax
+
+    job_id = automated_doc["jobs"][0]["job"]
+    assert re.match(r"^[A-Za-z0-9_]+$", job_id)
+    assert not job_id[0].isdigit()
+    assert shell_quote(nasty_job_name) in automated_text

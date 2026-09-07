@@ -392,18 +392,40 @@ The README example used `customer_repo` for `final_pipeline_destination`,
 which isn't a valid value (the schema only accepts `stay_in_central_repo` or
 `copy_to_customer_repo`). Fixed to use `copy_to_customer_repo`.
 
-### Renderer Output Uses Handwritten YAML Strings
+### Renderer Output Uses Handwritten YAML Strings — Partially Resolved
 
-Renderers currently build YAML through f-strings.
+Renderers build output through f-strings, which used to embed user-controlled
+values (job names, pipeline names, environment/scenario values) completely
+unescaped — a stray `"`, `:`, or shell metacharacter in any of those could
+produce invalid YAML or, worse, get interpreted literally inside a shell
+`run:`/`script:` step.
 
-Risk:
+GitHub Actions and Azure DevOps renderers now route every embedded value
+through `renderers/quoting.py`: `yaml_dquote()` (JSON-string escaping, a
+valid subset of YAML double-quoted scalar syntax) for values that land inside
+YAML, `shell_quote()` (`shlex.quote`) for values that land inside a shell
+command, and `safe_filename_component()`/per-platform job-id sanitizers so a
+hostile job name can't produce a path-traversing filename or an invalid job
+identifier. Covered by adversarial-input tests
+(`test_render_github_actions_escapes_adversarial_values`,
+`test_render_azure_devops_escapes_adversarial_values`) that feed in values
+containing quotes, colons, semicolons, spaces, and `../` sequences and assert
+the output still parses as valid YAML with the values round-tripping intact.
 
-- Unescaped names, special characters, or unsupported identifiers can create
-  invalid CI/CD YAML.
+Still open:
 
-Recommended change:
-
-- Add safe quoting, identifier normalization, and generated YAML syntax tests.
+- The Jenkins renderer (added after this plan was written) has not received
+  the same treatment — its Groovy string interpolation is still raw f-string
+  substitution.
+- The GitHub Actions `${{ github.event.inputs.* }}` and Azure DevOps
+  `${{ parameters.* }}` expressions in the `run:`/`script:` steps are
+  resolved by the platform via compile-time text substitution, which is a
+  known injection vector on both platforms if the substituted value isn't
+  constrained. Today it's constrained to the declared `choice`/`values` list
+  we render (itself now safely quoted), so this is a defense-in-depth gap
+  rather than an active hole, but the fully-hardened version would swap to
+  runtime variable interpolation (`$(parameters.x)` / an `env:` indirection)
+  instead of compile-time template expressions.
 
 ### Adapter Implementations Are Stubs
 
@@ -660,8 +682,11 @@ Tasks:
 - [x] 6. Add renderer tests and YAML validation (all three renderers —
       GitHub Actions, Azure DevOps, Jenkins — now have a test that parses
       the generated YAML/asserts the generated Groovy's key values).
-- [ ] 7. Harden GitHub Actions rendering.
-- [ ] 8. Harden Azure DevOps rendering.
+- [x] 7. Harden GitHub Actions rendering (safe YAML quoting via
+      `renderers/quoting.py`, job-id sanitization, safe filenames, shell
+      quoting for CLI args — see "Renderer Output Uses Handwritten YAML
+      Strings" below for what's still open).
+- [x] 8. Harden Azure DevOps rendering (same treatment as GitHub Actions).
 - [ ] 9. Improve generated README content.
 - [ ] 10. Implement BlazeMeter adapter.
 - [ ] 11. Decide and implement LoadRunner execution strategy.
