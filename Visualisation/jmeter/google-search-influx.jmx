@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Google Search to InfluxDB" enabled="true">
+      <stringProp name="TestPlan.comments">Runs several Google search requests and writes per-sample metrics to InfluxDB v2 line protocol.</stringProp>
+      <boolProp name="TestPlan.functional_mode">false</boolProp>
+      <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+        <collectionProp name="Arguments.arguments">
+          <elementProp name="influx_url" elementType="Argument">
+            <stringProp name="Argument.name">influx_url</stringProp>
+            <stringProp name="Argument.value">${__P(influx_url,http://localhost:8086)}</stringProp>
+            <stringProp name="Argument.metadata">=</stringProp>
+          </elementProp>
+          <elementProp name="influx_org" elementType="Argument">
+            <stringProp name="Argument.name">influx_org</stringProp>
+            <stringProp name="Argument.value">${__P(influx_org,performance)}</stringProp>
+            <stringProp name="Argument.metadata">=</stringProp>
+          </elementProp>
+          <elementProp name="influx_bucket" elementType="Argument">
+            <stringProp name="Argument.name">influx_bucket</stringProp>
+            <stringProp name="Argument.value">${__P(influx_bucket,performance)}</stringProp>
+            <stringProp name="Argument.metadata">=</stringProp>
+          </elementProp>
+          <elementProp name="influx_token" elementType="Argument">
+            <stringProp name="Argument.name">influx_token</stringProp>
+            <stringProp name="Argument.value">${__P(influx_token,change-me-super-secret-token)}</stringProp>
+            <stringProp name="Argument.metadata">=</stringProp>
+          </elementProp>
+          <elementProp name="run_id" elementType="Argument">
+            <stringProp name="Argument.name">run_id</stringProp>
+            <stringProp name="Argument.value">${__P(run_id,google-search-local)}</stringProp>
+            <stringProp name="Argument.metadata">=</stringProp>
+          </elementProp>
+          <elementProp name="environment" elementType="Argument">
+            <stringProp name="Argument.name">environment</stringProp>
+            <stringProp name="Argument.value">${__P(environment,local)}</stringProp>
+            <stringProp name="Argument.metadata">=</stringProp>
+          </elementProp>
+          <elementProp name="project" elementType="Argument">
+            <stringProp name="Argument.name">project</stringProp>
+            <stringProp name="Argument.value">${__P(project,google-search-demo)}</stringProp>
+            <stringProp name="Argument.metadata">=</stringProp>
+          </elementProp>
+          <elementProp name="scenario" elementType="Argument">
+            <stringProp name="Argument.name">scenario</stringProp>
+            <stringProp name="Argument.value">${__P(scenario,google-search)}</stringProp>
+            <stringProp name="Argument.metadata">=</stringProp>
+          </elementProp>
+        </collectionProp>
+      </elementProp>
+    </TestPlan>
+    <hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Google Search Users">
+        <stringProp name="ThreadGroup.num_threads">${__P(threads,2)}</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">${__P(ramp_seconds,5)}</stringProp>
+        <longProp name="ThreadGroup.duration">300</longProp>
+        <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+        <boolProp name="ThreadGroup.scheduler">true</boolProp>
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller">
+          <intProp name="LoopController.loops">-1</intProp>
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+        </elementProp>
+      </ThreadGroup>
+      <hashTree>
+        <ConfigTestElement guiclass="HttpDefaultsGui" testclass="ConfigTestElement" testname="HTTP Request Defaults" enabled="true">
+          <stringProp name="HTTPSampler.connect_timeout">${__P(connect_timeout_ms,10000)}</stringProp>
+          <stringProp name="HTTPSampler.response_timeout">${__P(response_timeout_ms,20000)}</stringProp>
+          <stringProp name="HTTPSampler.domain">www.google.com</stringProp>
+          <stringProp name="HTTPSampler.protocol">https</stringProp>
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables">
+            <collectionProp name="Arguments.arguments"/>
+          </elementProp>
+          <stringProp name="HTTPSampler.implementation"></stringProp>
+        </ConfigTestElement>
+        <hashTree/>
+        <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="HTTP Headers" enabled="true">
+          <collectionProp name="HeaderManager.headers">
+            <elementProp name="" elementType="Header">
+              <stringProp name="Header.name">User-Agent</stringProp>
+              <stringProp name="Header.value">Mozilla/5.0 JMeter performance check</stringProp>
+            </elementProp>
+            <elementProp name="" elementType="Header">
+              <stringProp name="Header.name">Accept-Language</stringProp>
+              <stringProp name="Header.value">en-US,en;q=0.9</stringProp>
+            </elementProp>
+          </collectionProp>
+        </HeaderManager>
+        <hashTree/>
+        <CookieManager guiclass="CookiePanel" testclass="CookieManager" testname="HTTP Cookie Manager" enabled="true">
+          <collectionProp name="CookieManager.cookies"/>
+          <boolProp name="CookieManager.clearEachIteration">true</boolProp>
+          <boolProp name="CookieManager.controlledByThreadGroup">false</boolProp>
+        </CookieManager>
+        <hashTree/>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET /" enabled="true">
+          <stringProp name="HTTPSampler.path">/</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+          <stringProp name="HTTPSampler.method">GET</stringProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables">
+            <collectionProp name="Arguments.arguments"/>
+          </elementProp>
+        </HTTPSamplerProxy>
+        <hashTree/>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET /search?q=performance testing" enabled="true">
+          <stringProp name="HTTPSampler.path">/search</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+          <stringProp name="HTTPSampler.method">GET</stringProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables">
+            <collectionProp name="Arguments.arguments">
+              <elementProp name="q" elementType="HTTPArgument">
+                <boolProp name="HTTPArgument.always_encode">true</boolProp>
+                <stringProp name="Argument.name">q</stringProp>
+                <stringProp name="Argument.value">performance testing</stringProp>
+                <stringProp name="Argument.metadata">=</stringProp>
+              </elementProp>
+            </collectionProp>
+          </elementProp>
+        </HTTPSamplerProxy>
+        <hashTree/>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET /search?q=grafana influxdb" enabled="true">
+          <stringProp name="HTTPSampler.path">/search</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+          <stringProp name="HTTPSampler.method">GET</stringProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables">
+            <collectionProp name="Arguments.arguments">
+              <elementProp name="q" elementType="HTTPArgument">
+                <boolProp name="HTTPArgument.always_encode">true</boolProp>
+                <stringProp name="Argument.name">q</stringProp>
+                <stringProp name="Argument.value">grafana influxdb</stringProp>
+                <stringProp name="Argument.metadata">=</stringProp>
+              </elementProp>
+            </collectionProp>
+          </elementProp>
+        </HTTPSamplerProxy>
+        <hashTree/>
+        <JSR223Listener guiclass="TestBeanGUI" testclass="JSR223Listener" testname="Write sample metrics to InfluxDB v2" enabled="true">
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="filename"></stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="script">
+import java.net.HttpURLConnection
+import java.net.URLEncoder
+import java.util.Locale
+
+def tag = { value -&gt;
+    def text = (value == null || value.toString().trim().isEmpty()) ? &quot;unknown&quot; : value.toString()
+    text.replace(&quot;\\&quot;, &quot;\\\\&quot;).replace(&quot; &quot;, &quot;\\ &quot;).replace(&quot;,&quot;, &quot;\\,&quot;).replace(&quot;=&quot;, &quot;\\=&quot;)
+}
+
+def influxUrl = vars.get(&quot;influx_url&quot;)
+def org = vars.get(&quot;influx_org&quot;)
+def bucket = vars.get(&quot;influx_bucket&quot;)
+def token = vars.get(&quot;influx_token&quot;)
+def testRunID = vars.get(&quot;run_id&quot;)
+def environment = vars.get(&quot;environment&quot;)
+def project = vars.get(&quot;project&quot;)
+def scenario = vars.get(&quot;scenario&quot;)
+
+def elapsedMs = sampleResult.getTime()
+def failed = !sampleResult.isSuccessful()
+def statusCode
+try {
+    statusCode = Integer.parseInt(sampleResult.getResponseCode()?.trim())
+} catch (Exception ignored) {
+    statusCode = 0
+}
+def timestampNs = sampleResult.getEndTime() * 1000000L
+
+def line = String.format(Locale.US,
+    &quot;performance_http_request,project=%s,environment=%s,testRunID=%s,tool=%s,scenario=%s,transaction=%s response_time_ms=%di,status_code=%di,failed=%b %d&quot;,
+    tag(project),
+    tag(environment),
+    tag(testRunID),
+    tag(&quot;jmeter&quot;),
+    tag(scenario),
+    tag(sampleResult.getSampleLabel()),
+    elapsedMs,
+    statusCode,
+    failed,
+    timestampNs
+)
+
+def endpoint = influxUrl + &quot;/api/v2/write?org=&quot; + URLEncoder.encode(org, &quot;UTF-8&quot;) + &quot;&amp;bucket=&quot; + URLEncoder.encode(bucket, &quot;UTF-8&quot;) + &quot;&amp;precision=ns&quot;
+HttpURLConnection connection = (HttpURLConnection) new URL(endpoint).openConnection()
+connection.setRequestMethod(&quot;POST&quot;)
+connection.setDoOutput(true)
+connection.setConnectTimeout(5000)
+connection.setReadTimeout(5000)
+connection.setRequestProperty(&quot;Authorization&quot;, &quot;Token &quot; + token)
+connection.setRequestProperty(&quot;Content-Type&quot;, &quot;text/plain; charset=utf-8&quot;)
+connection.outputStream.withWriter(&quot;UTF-8&quot;) { writer -&gt; writer &lt;&lt; line }
+
+def status = connection.responseCode
+if (status &lt; 200 || status &gt;= 300) {
+    def body = connection.errorStream != null ? connection.errorStream.getText(&quot;UTF-8&quot;) : &quot;&quot;
+    log.warn(&quot;InfluxDB write failed. status=&quot; + status + &quot; body=&quot; + body + &quot; line=&quot; + line)
+}
+connection.disconnect()
+          </stringProp>
+        </JSR223Listener>
+        <hashTree/>
+      </hashTree>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>

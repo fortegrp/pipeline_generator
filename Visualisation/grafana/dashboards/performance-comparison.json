@@ -1,0 +1,706 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": [],
+          "type": "dashboard"
+        },
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-performance"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisLabel": "ms",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "lineWidth": 2,
+            "pointSize": 5,
+            "showPoints": "auto"
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-performance"
+          },
+          "query": "from(bucket: \"performance\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"performance_http_request\")\n  |> filter(fn: (r) => r._field == \"response_time_ms\")\n  |> map(fn: (r) => ({ r with transaction: if exists r.transaction then r.transaction else \"unknown\" }))\n  |> filter(fn: (r) => r.testRunID =~ /^${testRunID:regex}$/)\n  |> filter(fn: (r) => r.transaction =~ /^${transaction:regex}$/)\n  |> window(every: v.windowPeriod)\n  |> quantile(q: ${pct:raw}, method: \"estimate_tdigest\")\n  |> duplicate(column: \"_stop\", as: \"_time\")\n  |> window(every: inf)\n  |> map(fn: (r) => ({ _time: r._time, _value: r._value, _field: r.testRunID }))\n  |> group(columns: [\"_field\"])\n  |> yield(name: \"p${pct:text}\")",
+          "refId": "A"
+        }
+      ],
+      "title": "P${pct:text} response time by test run",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-performance"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisLabel": "requests per second",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "lineWidth": 2,
+            "pointSize": 5,
+            "showPoints": "auto"
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-performance"
+          },
+          "query": "from(bucket: \"performance\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"performance_http_request\")\n  |> filter(fn: (r) => r._field == \"response_time_ms\")\n  |> map(fn: (r) => ({ r with transaction: if exists r.transaction then r.transaction else \"unknown\" }))\n  |> filter(fn: (r) => r.testRunID =~ /^${testRunID:regex}$/)\n  |> filter(fn: (r) => r.transaction =~ /^${transaction:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: count, createEmpty: false)\n  |> map(fn: (r) => ({ r with _value: float(v: r._value) / (float(v: uint(v: r._stop) - uint(v: r._start)) / 1000000000.0) }))\n  |> map(fn: (r) => ({ _time: r._time, _value: r._value, _field: r.testRunID }))\n  |> group(columns: [\"_field\"])\n  |> yield(name: \"mean\")",
+          "refId": "A"
+        }
+      ],
+      "title": "Requests per second by test run",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-performance"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 8
+      },
+      "id": 3,
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "mean"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "valueMode": "color"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-performance"
+          },
+          "query": "from(bucket: \"performance\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"performance_http_request\")\n  |> filter(fn: (r) => r._field == \"response_time_ms\")\n  |> map(fn: (r) => ({ r with transaction: if exists r.transaction then r.transaction else \"unknown\" }))\n  |> filter(fn: (r) => r.testRunID =~ /^${testRunID:regex}$/)\n  |> filter(fn: (r) => r.transaction =~ /^${transaction:regex}$/)\n  |> group(columns: [\"testRunID\"])\n  |> quantile(q: ${pct:raw}, method: \"estimate_tdigest\")\n  |> keep(columns: [\"_value\", \"testRunID\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "P${pct:text} response time comparison",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-performance"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 8
+      },
+      "id": 4,
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "mean"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "valueMode": "color"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-performance"
+          },
+          "query": "from(bucket: \"performance\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"performance_http_request\")\n  |> filter(fn: (r) => r._field == \"failed\")\n  |> map(fn: (r) => ({ r with transaction: if exists r.transaction then r.transaction else \"unknown\" }))\n  |> filter(fn: (r) => r.testRunID =~ /^${testRunID:regex}$/)\n  |> filter(fn: (r) => r.transaction =~ /^${transaction:regex}$/)\n  |> map(fn: (r) => ({ r with _value: if r._value then 1.0 else 0.0 }))\n  |> group(columns: [\"testRunID\"])\n  |> mean()\n  |> keep(columns: [\"_value\", \"testRunID\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Average error rate comparison",
+      "type": "bargauge"
+    },
+    {
+      "id": 7,
+      "title": "Total samples by test run",
+      "type": "bargauge",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "mean"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "valueMode": "color"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-performance"
+          },
+          "query": "from(bucket: \"performance\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"performance_http_request\")\n  |> filter(fn: (r) => r._field == \"response_time_ms\")\n  |> map(fn: (r) => ({ r with transaction: if exists r.transaction then r.transaction else \"unknown\" }))\n  |> filter(fn: (r) => r.testRunID =~ /^${testRunID:regex}$/)\n  |> filter(fn: (r) => r.transaction =~ /^${transaction:regex}$/)\n  |> group(columns: [\"testRunID\"])\n  |> count()\n  |> keep(columns: [\"_value\", \"testRunID\"])",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-performance"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisLabel": "ms",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "lineWidth": 2,
+            "pointSize": 5,
+            "showPoints": "auto"
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "id": 5,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-performance"
+          },
+          "query": "from(bucket: \"performance\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"performance_http_request\")\n  |> filter(fn: (r) => r._field == \"response_time_ms\")\n  |> map(fn: (r) => ({ r with transaction: if exists r.transaction then r.transaction else \"unknown\" }))\n  |> filter(fn: (r) => r.testRunID =~ /^${testRunID:regex}$/)\n  |> filter(fn: (r) => r.transaction =~ /^${transaction:regex}$/)\n  |> window(every: v.windowPeriod)\n  |> quantile(q: ${pct:raw}, method: \"estimate_tdigest\")\n  |> duplicate(column: \"_stop\", as: \"_time\")\n  |> window(every: inf)\n  |> map(fn: (r) => ({ _time: r._time, _value: r._value, _field: r.testRunID + \" | \" + r.transaction }))\n  |> group(columns: [\"_field\"])\n  |> yield(name: \"p${pct:text}\")",
+          "refId": "A"
+        }
+      ],
+      "title": "P${pct:text} response time by transaction and test run",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-performance"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "transaction"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 280
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*response time ms$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*requests/sec$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "reqps"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*error rate$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*samples$"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 25
+      },
+      "id": 6,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": false,
+            "displayName": "transaction"
+          }
+        ]
+      },
+      "pluginVersion": "11.5.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-performance"
+          },
+          "query": "seconds = float(v: uint(v: v.timeRangeStop) - uint(v: v.timeRangeStart)) / 1000000000.0\n\nbase = from(bucket: \"performance\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"performance_http_request\")\n  |> filter(fn: (r) => r._field == \"response_time_ms\")\n  |> filter(fn: (r) => r.testRunID =~ /^${testRunID:regex}$/)\n  |> filter(fn: (r) => r.transaction =~ /^${transaction:regex}$/)\n\npctResponse = base\n  |> group(columns: [\"testRunID\", \"transaction\"])\n  |> quantile(q: ${pct:raw}, method: \"estimate_tdigest\")\n  |> map(fn: (r) => ({ transaction: r.transaction, _field: r.testRunID + \" p${pct:text} response time ms\", _value: r._value }))\n\nsampleCount = base\n  |> group(columns: [\"testRunID\", \"transaction\"])\n  |> count()\n  |> map(fn: (r) => ({ transaction: r.transaction, _field: r.testRunID + \" samples\", _value: float(v: r._value) }))\n\nrequestsPerSecond = base\n  |> group(columns: [\"testRunID\", \"transaction\"])\n  |> count()\n  |> map(fn: (r) => ({ transaction: r.transaction, _field: r.testRunID + \" requests/sec\", _value: float(v: r._value) / seconds }))\n\nerrorRate = from(bucket: \"performance\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"performance_http_request\")\n  |> filter(fn: (r) => r._field == \"failed\")\n  |> filter(fn: (r) => r.testRunID =~ /^${testRunID:regex}$/)\n  |> filter(fn: (r) => r.transaction =~ /^${transaction:regex}$/)\n  |> map(fn: (r) => ({ r with _value: if r._value then 1.0 else 0.0 }))\n  |> group(columns: [\"testRunID\", \"transaction\"])\n  |> mean()\n  |> map(fn: (r) => ({ transaction: r.transaction, _field: r.testRunID + \" error rate\", _value: r._value }))\n\nunion(tables: [pctResponse, sampleCount, requestsPerSecond, errorRate])\n  |> pivot(rowKey: [\"transaction\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> group()\n  |> sort(columns: [\"transaction\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Transaction comparison side by side",
+      "type": "table"
+    },
+    {
+      "id": 9,
+      "title": "Status code comparison by test run",
+      "type": "table",
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 34
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "transaction"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 280
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "status_code"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "status code"
+              },
+              {
+                "id": "custom.width",
+                "value": 140
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*samples$"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*error rate$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": false,
+            "displayName": "transaction"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-performance"
+          },
+          "query": "statusByPoint = from(bucket: \"performance\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"performance_http_request\")\n  |> filter(fn: (r) => r._field == \"status_code\")\n  |> filter(fn: (r) => r.testRunID =~ /^${testRunID:regex}$/)\n  |> filter(fn: (r) => r.transaction =~ /^${transaction:regex}$/)\n  |> map(fn: (r) => ({ _time: r._time, testRunID: r.testRunID, transaction: r.transaction, status_code: r._value }))\n\nfailedByPoint = from(bucket: \"performance\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"performance_http_request\")\n  |> filter(fn: (r) => r._field == \"failed\")\n  |> filter(fn: (r) => r.testRunID =~ /^${testRunID:regex}$/)\n  |> filter(fn: (r) => r.transaction =~ /^${transaction:regex}$/)\n  |> map(fn: (r) => ({ _time: r._time, testRunID: r.testRunID, transaction: r.transaction, failed: if r._value then 1.0 else 0.0 }))\n\nwide = join(tables: {status: statusByPoint, failed: failedByPoint}, on: [\"_time\", \"testRunID\", \"transaction\"])\n\nsamples = wide\n  |> map(fn: (r) => ({ transaction: r.transaction, status_code: r.status_code, _field: r.testRunID + \" samples\", _value: 1.0 }))\n  |> group(columns: [\"transaction\", \"status_code\", \"_field\"])\n  |> sum()\n\nerrors = wide\n  |> map(fn: (r) => ({ transaction: r.transaction, status_code: r.status_code, _field: r.testRunID + \" error samples\", _value: r.failed }))\n  |> group(columns: [\"transaction\", \"status_code\", \"_field\"])\n  |> sum()\n\nrates = wide\n  |> map(fn: (r) => ({ transaction: r.transaction, status_code: r.status_code, _field: r.testRunID + \" error rate\", _value: r.failed }))\n  |> group(columns: [\"transaction\", \"status_code\", \"_field\"])\n  |> mean()\n\nunion(tables: [samples, errors, rates])\n  |> pivot(rowKey: [\"transaction\", \"status_code\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> group()\n  |> sort(columns: [\"transaction\", \"status_code\"])",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 40,
+  "tags": [
+    "performance",
+    "influxdb"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb-performance"
+        },
+        "definition": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"performance\", tag: \"testRunID\")",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Test runs",
+        "multi": true,
+        "name": "testRunID",
+        "options": [],
+        "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"performance\", tag: \"testRunID\")",
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "allValue": ".*",
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "95",
+          "value": "0.95"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Percentile",
+        "multi": false,
+        "name": "pct",
+        "options": [
+          {
+            "selected": false,
+            "text": "50",
+            "value": "0.50"
+          },
+          {
+            "selected": false,
+            "text": "70",
+            "value": "0.70"
+          },
+          {
+            "selected": false,
+            "text": "90",
+            "value": "0.90"
+          },
+          {
+            "selected": true,
+            "text": "95",
+            "value": "0.95"
+          },
+          {
+            "selected": false,
+            "text": "99",
+            "value": "0.99"
+          }
+        ],
+        "query": "50 : 0.50,70 : 0.70,90 : 0.90,95 : 0.95,99 : 0.99",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb-performance"
+        },
+        "definition": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"performance\", tag: \"transaction\")",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Transaction",
+        "multi": true,
+        "name": "transaction",
+        "options": [],
+        "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"performance\", tag: \"transaction\")",
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query",
+        "allValue": ".*"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Performance comparison",
+  "uid": "performance-comparison",
+  "version": 1,
+  "weekStart": ""
+}
