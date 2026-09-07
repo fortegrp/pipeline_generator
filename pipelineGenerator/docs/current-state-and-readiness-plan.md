@@ -43,6 +43,8 @@ Implemented:
 - Stub adapters for BlazeMeter and LoadRunner Professional.
 - Example customer configs for the supported CI/CD and tool combinations.
 - Minimal pytest-based tests.
+- CI (GitHub Actions, `.github/workflows/pipeline-generator-ci.yml` at the
+  repo root) running `pytest` on push/PR across Python 3.9 and 3.12.
 
 Not implemented yet:
 
@@ -56,7 +58,6 @@ Not implemented yet:
 - Clean CLI error handling for `generate`/`run` (the wizard now handles this;
   `run`'s `ValueError`s and the adapters' `NotImplementedError` still surface
   as raw tracebacks).
-- CI for the generator project itself.
 
 ## Supported Platforms and Tools
 
@@ -545,15 +546,15 @@ Goals:
 
 Tasks:
 
-- Add a development dependency group for test tooling.
-- Run tests with `pytest`.
-- Add GitHub Actions or Azure DevOps CI for this repository.
-- Test supported Python versions.
-- Add validation tests for valid and invalid configs.
-- Add renderer tests for GitHub Actions and Azure DevOps.
-- Add dry-run tests for manual and automated runtime modes.
-- Add CLI tests for successful and failing paths.
-- Add tests that generate assets for every example config.
+- [x] Add a development dependency group for test tooling.
+- [x] Run tests with `pytest`.
+- [x] Add GitHub Actions or Azure DevOps CI for this repository.
+- [x] Test supported Python versions (3.9 and 3.12 in the CI matrix).
+- [ ] Add validation tests for valid and invalid configs.
+- [ ] Add renderer tests for GitHub Actions and Azure DevOps.
+- [ ] Add dry-run tests for manual and automated runtime modes.
+- [ ] Add CLI tests for successful and failing paths.
+- [ ] Add tests that generate assets for every example config.
 
 ## Milestone 2: Runtime Execution Readiness
 
@@ -642,7 +643,8 @@ Tasks:
 
 - [x] 1. Fix README/schema mismatch.
 - [x] 2. Add development dependencies and make tests easy to run.
-- [ ] 3. Add CI for the generator project.
+- [x] 3. Add CI for the generator project (GitHub Actions, path-scoped to
+      this project, matrix over Python 3.9/3.12).
 - [x] 4. Make production-ready generation stricter while preserving explicit
       draft generation (done via the `incomplete` flag, not a new CLI flag).
 - [ ] 5. Improve CLI error handling (done for `wizard`; `generate`/`run`
