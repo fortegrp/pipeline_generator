@@ -30,7 +30,6 @@ This is a scaffolded v1 foundation:
 From this folder:
 
 ```bash
-cd /Users/alinamolot/Documents/Project/pipeline_generator
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
@@ -92,10 +91,120 @@ pipeline-generator run \
 
 ## CLI Commands
 
-- `pipeline-generator wizard`
-- `pipeline-generator validate`
-- `pipeline-generator generate`
-- `pipeline-generator run`
+### `wizard`
+
+Create or resume a draft setup YAML interactively.
+
+```bash
+pipeline-generator wizard --output setups/acme.yaml [--resume]
+```
+
+- `--output` (required): path to the YAML file to create or update.
+- `--resume`: required to touch a file that already exists. Running the
+  wizard against an existing `--output` path without `--resume` refuses up
+  front and leaves the file untouched, instead of overwriting it — pass
+  `--resume` to continue editing that draft, or point `--output` at a new
+  path to start a fresh one.
+
+See [Interactive Wizard](#interactive-wizard) below for what the flow itself
+looks like.
+
+### `validate`
+
+Check a config against the schema without generating anything.
+
+```bash
+pipeline-generator validate --config setups/acme.yaml [--strict]
+```
+
+- `--strict`: treat warnings as errors (exit non-zero on any warning),
+  regardless of the config's `incomplete` flag. Useful for a CI gate that
+  wants zero tolerance even for drafts.
+
+### `generate`
+
+Generate CI/CD pipeline files and a setup README from a config.
+
+```bash
+pipeline-generator generate --config setups/acme.yaml --output-dir generated
+```
+
+- `--output-dir` (default `generated`): directory where the setup-specific
+  output folder is created.
+
+Validation errors always block generation. Validation *warnings* block
+generation only when the config says `incomplete: false` — see
+[Draft vs. Complete Setups](#draft-vs-complete-setups-the-incomplete-flag).
+
+### `run`
+
+Trigger (or preview) a performance test run using a generated setup's
+config. This is also the command the generated pipeline files themselves
+invoke.
+
+```bash
+pipeline-generator run --config setups/acme.yaml --mode manual --environment qa --scenario checkout_smoke [--dry-run]
+pipeline-generator run --config setups/acme.yaml --mode automated --job post-deploy-smoke [--dry-run]
+```
+
+- `--mode` (required): `manual` or `automated`.
+- `--environment` / `--scenario`: required for `--mode manual`.
+- `--job`: required for `--mode automated`; must match a name in
+  `automated_jobs`.
+- `--dry-run`: write `run-output/execution-plan.json` describing what would
+  run, without contacting BlazeMeter/LoadRunner or the (not yet
+  implemented) tool adapters.
+
+Same warning-blocking rule as `generate` applies here.
+
+## Interactive Wizard
+
+`pipeline-generator wizard` walks through the config in eight numbered
+sections (setup basics, CI/CD + tool selection, setup ID, tool connection
+details, manual pipeline, environments/scenarios, automated jobs, pre-run
+checks), saving progress to `--output` after each section. A few things
+about how it behaves:
+
+- **Inline hints.** Choices with non-obvious implications (`working_location`,
+  `final_pipeline_destination`, `generation_mode`, and whether the CI/CD
+  system can use the central repo directly) show a one-line explanation of
+  what each option means.
+- **Resuming never discards existing entries.** If you `--resume` a draft
+  that already has environments, scenarios, or automated jobs, the wizard
+  shows what's already there and asks whether to keep it as-is, add more on
+  top of it, or start over — it never silently wipes an existing list just
+  because you said "yes, let's edit this."
+- **Pre-run checks are a single screen.** Instead of four separate yes/no
+  prompts, you get one list and type comma-separated numbers, `all`,
+  `none`, or press Enter to keep whatever was already enabled.
+- **Cancelling is safe.** Ctrl-C or closing stdin exits cleanly with a
+  message noting whether any progress was saved, instead of a stack trace.
+- **It ends with a recap.** After the last section, the wizard prints a
+  plain-language summary of what was configured and immediately runs the
+  same validation `pipeline-generator validate` would, so you see any
+  problems before leaving the terminal.
+
+## Draft vs. Complete Setups (the `incomplete` flag)
+
+Every config has a top-level `incomplete: true|false` flag — the wizard sets
+it automatically based on whether required fields are still filled with
+`TODO`, and it can also be set by hand.
+
+- **`incomplete: true` (a draft):** `generate` and `run` only ever block on
+  hard **errors** (an unsupported `cicd.type`, `tool.type`, or
+  `auth.type`). Warnings — missing catalog entries, an automated job
+  pointing at an environment/scenario that doesn't exist yet, missing
+  connection details — are reported but never block anything. This is what
+  lets onboarding start before every detail is known.
+- **`incomplete: false` (declared ready):** the same warnings now block
+  `generate` and `run` too, with a message telling you to either fix them
+  or flip the flag back to `true`. The idea is that marking a setup
+  complete is a promise the tool actually checks, instead of a label that
+  has no effect.
+
+`validate` itself never blocks on warnings unless you pass `--strict`,
+regardless of `incomplete` — it's meant to be a cheap way to inspect a
+config's state at any point without that promise being enforced.
 
 ## Output Structure
 
@@ -107,11 +216,13 @@ generated/
     customer.yaml
     README.md
     .github/workflows/performance-manual.yml
-    .github/workflows/performance-automated.yml
+    .github/workflows/performance-automated-<job-name>.yml
 ```
 
-Azure DevOps setups will render Azure YAML files instead, and Jenkins setups
-will render Jenkinsfiles under `jenkins/` instead.
+Azure DevOps setups render Azure Pipelines YAML under `azure/` instead, and
+Jenkins setups render declarative `Jenkinsfile.*` files under `jenkins/`
+instead — one file for the manual pipeline and one per enabled automated
+job, in each case.
 
 ## Config Shape
 
@@ -164,6 +275,11 @@ artifacts:
   download_remote_results: true
   fail_on_partial_download: false
 ```
+
+`cicd.type` supports `github_actions`, `azure_devops`, and `jenkins`.
+`tool.type` supports `loadrunner_professional` and `blazemeter`.
+Ready-made examples for every CI/CD × tool combination are under
+[`examples/`](examples/).
 
 ## Recommended Next Work
 

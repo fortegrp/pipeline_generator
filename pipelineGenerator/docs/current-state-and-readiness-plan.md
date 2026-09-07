@@ -49,9 +49,13 @@ Not implemented yet:
 - Real BlazeMeter API integration.
 - Real LoadRunner Professional remote execution.
 - Real pre-run checks.
-- Robust generated YAML escaping and validation.
+- Robust generated YAML/Groovy escaping and validation.
 - Strong schema enforcement.
-- Comprehensive automated test coverage.
+- Comprehensive automated test coverage (renderer tests exist only for
+  Jenkins; there's no test that exercises every example config end to end).
+- Clean CLI error handling for `generate`/`run` (the wizard now handles this;
+  `run`'s `ValueError`s and the adapters' `NotImplementedError` still surface
+  as raw tracebacks).
 - CI for the generator project itself.
 
 ## Supported Platforms and Tools
@@ -175,6 +179,15 @@ Resume mode:
 pipeline-generator wizard --output setups/acme.yaml --resume
 ```
 
+Running the wizard against an `--output` path that already exists without
+`--resume` refuses up front instead of overwriting the file. Resuming a
+draft that already has environments, scenarios, or automated jobs offers
+keep-as-is/add-more/start-over instead of silently discarding the existing
+list. The flow is broken into eight numbered sections with inline hints on
+the less obvious choices, pre-run checks are chosen from a single
+multi-select screen, and it ends by printing a summary and running the same
+checks `validate` would.
+
 ### Validate
 
 ```bash
@@ -204,12 +217,13 @@ Generates a setup-specific output directory containing:
 - CI/CD pipeline YAML files.
 - A generated setup README.
 
-Current behavior: generation stops only on validation errors. Warning-only
-configs can still generate files.
-
-Recommended future behavior: production-ready generation should be stricter,
-but draft generation should remain supported through an explicit flag such as
-`--allow-incomplete` or `--allow-warnings`.
+Current behavior: generation always stops on validation errors. Whether it
+also stops on warnings now depends on the config's own `incomplete` flag:
+warning-only configs with `incomplete: true` (drafts) still generate, while
+`incomplete: false` configs (declared ready) are blocked by the same
+warnings, with a message pointing at the fix or at flipping the flag back.
+This reuses the config's own declared intent instead of adding a separate
+`--allow-incomplete`/`--allow-warnings` flag.
 
 ### Run
 
@@ -236,6 +250,8 @@ pipeline-generator run \
 
 Current behavior: dry-run mode writes `run-output/execution-plan.json`. Non-dry
 execution calls the selected adapter, but the adapters are not implemented yet.
+The same `incomplete`-flag-based warning check described under `generate`
+applies here too, before either path runs.
 
 ## Config Model
 
@@ -338,24 +354,18 @@ performance tools.
 
 ## Known Gaps and Risks
 
-### Validation Is Too Permissive for Generation
+### Validation Is Too Permissive for Generation — Resolved
 
-Validation distinguishes errors from warnings. The `generate` command only
-blocks on errors, so warning-only configs may still generate incomplete or
-broken pipeline files.
+Validation distinguishes errors from warnings. `generate` and `run` used to
+only block on errors, so warning-only configs could generate incomplete or
+broken pipeline files regardless of how finished the setup actually was.
 
-Risk:
-
-- Empty environment or scenario dropdowns.
-- Automated jobs that reference missing catalog entries.
-- Generated packages that look complete but fail at runtime.
-
-Recommended change:
-
-- Preserve the draft-friendly workflow, but make the user's intent explicit.
-  Production-ready generation should fail on warnings by default, while draft
-  generation should be available through a flag such as `--allow-warnings` or
-  `--allow-incomplete`.
+This is now resolved by reusing the config's own `incomplete` flag instead of
+adding a new CLI flag: `generate`/`run` still only block on errors when
+`incomplete: true` (drafts stay exactly as permissive as before), but block on
+warnings too once a config declares `incomplete: false` — treating that flag
+as an enforced promise rather than a label with no effect. `validate` itself
+is unchanged and only escalates warnings when `--strict` is passed.
 
 ### Runtime Errors Are Not User-Friendly
 
@@ -371,18 +381,11 @@ Recommended change:
 - Catch expected exceptions in the CLI, print concise errors, and return
   nonzero exit codes.
 
-### README and Schema Are Slightly Out of Sync
+### README and Schema Are Slightly Out of Sync — Resolved
 
-The README example uses `customer_repo` for `final_pipeline_destination`, but
-the schema supports `stay_in_central_repo` and `copy_to_customer_repo`.
-
-Risk:
-
-- Users copy an invalid value from documentation.
-
-Recommended change:
-
-- Update README to use `copy_to_customer_repo`.
+The README example used `customer_repo` for `final_pipeline_destination`,
+which isn't a valid value (the schema only accepts `stay_in_central_repo` or
+`copy_to_customer_repo`). Fixed to use `copy_to_customer_repo`.
 
 ### Renderer Output Uses Handwritten YAML Strings
 
@@ -459,11 +462,14 @@ Tasks:
 - Validate timeout values as positive integers.
 - Validate job names for CI/CD compatibility.
 - Validate environment and scenario keys for uniqueness.
-- Treat `incomplete: true` configs as drafts.
-- Allow draft generation only when explicitly requested, such as with
-  `--allow-incomplete` or `--allow-warnings`.
-- Add clear CLI language that distinguishes draft validation from
-  ready-for-handoff validation.
+- [x] Treat `incomplete: true` configs as drafts — `generate`/`run` only
+  block on warnings when `incomplete: false`.
+- [x] Allow draft generation to keep working without new friction — resolved
+  by reusing the existing `incomplete` flag rather than adding an
+  `--allow-incomplete`/`--allow-warnings` flag.
+- [x] Add clear CLI language that distinguishes draft validation from
+  ready-for-handoff validation — `generate`/`run` now print a message naming
+  the `incomplete: false` promise that's being broken when they block.
 
 ### 2. Formalize the Schema
 
@@ -634,21 +640,23 @@ Tasks:
 
 ## Recommended Implementation Order
 
-1. Fix README/schema mismatch.
-2. Add development dependencies and make tests easy to run.
-3. Add CI for the generator project.
-4. Make production-ready generation stricter while preserving explicit draft
-   generation.
-5. Improve CLI error handling.
-6. Add renderer tests and YAML validation.
-7. Harden GitHub Actions rendering.
-8. Harden Azure DevOps rendering.
-9. Improve generated README content.
-10. Implement BlazeMeter adapter.
-11. Decide and implement LoadRunner execution strategy.
-12. Replace precheck stubs with real checks.
-13. Add runtime integration tests with mocked remote systems.
-14. Publish an internal release candidate.
+- [x] 1. Fix README/schema mismatch.
+- [x] 2. Add development dependencies and make tests easy to run.
+- [ ] 3. Add CI for the generator project.
+- [x] 4. Make production-ready generation stricter while preserving explicit
+      draft generation (done via the `incomplete` flag, not a new CLI flag).
+- [ ] 5. Improve CLI error handling (done for `wizard`; `generate`/`run`
+      still surface raw tracebacks for expected input errors).
+- [ ] 6. Add renderer tests and YAML validation (a Jenkins renderer test
+      exists; GitHub Actions and Azure DevOps still have none).
+- [ ] 7. Harden GitHub Actions rendering.
+- [ ] 8. Harden Azure DevOps rendering.
+- [ ] 9. Improve generated README content.
+- [ ] 10. Implement BlazeMeter adapter.
+- [ ] 11. Decide and implement LoadRunner execution strategy.
+- [ ] 12. Replace precheck stubs with real checks.
+- [ ] 13. Add runtime integration tests with mocked remote systems.
+- [ ] 14. Publish an internal release candidate.
 
 ## Definition of Ready
 
@@ -679,13 +687,13 @@ building deeper runtime behavior.
 
 Recommended first changes:
 
-1. Fix the README value for `final_pipeline_destination`.
-2. Add `dev` dependencies in `pyproject.toml`.
-3. Add tests for every example config.
-4. Make `generate` fail on warnings for ready handoff unless explicitly
-   overridden for draft output.
-5. Add renderer output tests.
-6. Add clean CLI error handling.
+- [x] 1. Fix the README value for `final_pipeline_destination`.
+- [x] 2. Add `dev` dependencies in `pyproject.toml`.
+- [ ] 3. Add tests for every example config.
+- [x] 4. Make `generate` (and `run`) fail on warnings for configs marked
+      `incomplete: false`; drafts (`incomplete: true`) remain unaffected.
+- [ ] 5. Add renderer output tests (Jenkins only so far).
+- [ ] 6. Add clean CLI error handling (wizard only so far).
 
 These changes would make the project safer to use immediately while preserving
 the current architecture for future adapter work.
