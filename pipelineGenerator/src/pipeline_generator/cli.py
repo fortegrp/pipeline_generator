@@ -103,14 +103,18 @@ def main() -> int:
         result = validate_config(config)
         if _blocks_action(result, config, "run"):
             return 1
-        execution = run_execution(
-            config,
-            mode=args.mode,
-            environment=args.environment,
-            scenario=args.scenario,
-            job_name=args.job,
-            dry_run=args.dry_run,
-        )
+        try:
+            execution = run_execution(
+                config,
+                mode=args.mode,
+                environment=args.environment,
+                scenario=args.scenario,
+                job_name=args.job,
+                dry_run=args.dry_run,
+            )
+        except (ValueError, NotImplementedError) as exc:
+            print(f"Run failed: {exc}")
+            return 1
         print(json.dumps(execution, indent=2))
         return 0
 

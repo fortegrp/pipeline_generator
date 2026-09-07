@@ -42,7 +42,11 @@ Implemented:
 - Adapter interfaces for performance testing tools.
 - Stub adapters for BlazeMeter and LoadRunner Professional.
 - Example customer configs for the supported CI/CD and tool combinations.
-- Minimal pytest-based tests.
+- Renderer tests for all three CI/CD platforms (GitHub Actions and Azure
+  DevOps tests also parse the generated YAML to catch syntax breakage).
+- A test that validates and generates every example config.
+- Clean CLI error handling for `wizard` and `run` (expected exceptions are
+  caught and printed as plain messages instead of tracebacks).
 - CI (GitHub Actions, `.github/workflows/pipeline-generator-ci.yml` at the
   repo root) running `pytest` on push/PR across Python 3.9 and 3.12.
 
@@ -51,13 +55,13 @@ Not implemented yet:
 - Real BlazeMeter API integration.
 - Real LoadRunner Professional remote execution.
 - Real pre-run checks.
-- Robust generated YAML/Groovy escaping and validation.
+- Robust generated YAML/Groovy escaping and validation (the renderers still
+  build output via unescaped f-strings; the new renderer tests catch
+  accidental syntax breakage but don't guard against a customer value like a
+  stray quote producing invalid output).
 - Strong schema enforcement.
-- Comprehensive automated test coverage (renderer tests exist only for
-  Jenkins; there's no test that exercises every example config end to end).
-- Clean CLI error handling for `generate`/`run` (the wizard now handles this;
-  `run`'s `ValueError`s and the adapters' `NotImplementedError` still surface
-  as raw tracebacks).
+- Dedicated tests for configs that should fail validation, and CLI tests for
+  successful/failing command paths.
 
 ## Supported Platforms and Tools
 
@@ -550,11 +554,13 @@ Tasks:
 - [x] Run tests with `pytest`.
 - [x] Add GitHub Actions or Azure DevOps CI for this repository.
 - [x] Test supported Python versions (3.9 and 3.12 in the CI matrix).
-- [ ] Add validation tests for valid and invalid configs.
-- [ ] Add renderer tests for GitHub Actions and Azure DevOps.
+- [ ] Add validation tests for valid and invalid configs (the example-config
+      test below covers the valid side; there's no dedicated test yet for
+      configs that should fail validation).
+- [x] Add renderer tests for GitHub Actions and Azure DevOps.
 - [ ] Add dry-run tests for manual and automated runtime modes.
 - [ ] Add CLI tests for successful and failing paths.
-- [ ] Add tests that generate assets for every example config.
+- [x] Add tests that generate assets for every example config.
 
 ## Milestone 2: Runtime Execution Readiness
 
@@ -647,10 +653,13 @@ Tasks:
       this project, matrix over Python 3.9/3.12).
 - [x] 4. Make production-ready generation stricter while preserving explicit
       draft generation (done via the `incomplete` flag, not a new CLI flag).
-- [ ] 5. Improve CLI error handling (done for `wizard`; `generate`/`run`
-      still surface raw tracebacks for expected input errors).
-- [ ] 6. Add renderer tests and YAML validation (a Jenkins renderer test
-      exists; GitHub Actions and Azure DevOps still have none).
+- [x] 5. Improve CLI error handling (`wizard` and `run` now catch their
+      expected exceptions and print clean messages instead of tracebacks;
+      `generate` has no exception paths beyond what validation already
+      catches).
+- [x] 6. Add renderer tests and YAML validation (all three renderers —
+      GitHub Actions, Azure DevOps, Jenkins — now have a test that parses
+      the generated YAML/asserts the generated Groovy's key values).
 - [ ] 7. Harden GitHub Actions rendering.
 - [ ] 8. Harden Azure DevOps rendering.
 - [ ] 9. Improve generated README content.
@@ -691,11 +700,12 @@ Recommended first changes:
 
 - [x] 1. Fix the README value for `final_pipeline_destination`.
 - [x] 2. Add `dev` dependencies in `pyproject.toml`.
-- [ ] 3. Add tests for every example config.
+- [x] 3. Add tests for every example config.
 - [x] 4. Make `generate` (and `run`) fail on warnings for configs marked
       `incomplete: false`; drafts (`incomplete: true`) remain unaffected.
-- [ ] 5. Add renderer output tests (Jenkins only so far).
-- [ ] 6. Add clean CLI error handling (wizard only so far).
+- [x] 5. Add renderer output tests (all three CI/CD platforms now covered).
+- [x] 6. Add clean CLI error handling (`wizard` and `run`; `generate` has no
+      exception paths beyond what validation already catches).
 
 These changes would make the project safer to use immediately while preserving
 the current architecture for future adapter work.
