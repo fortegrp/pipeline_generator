@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -81,6 +82,40 @@ def test_jmeter_resolver_uses_exact_match_not_glob(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "env-stg"
+
+
+def test_resolver_handles_adversarial_catalog_keys(tmp_path: Path) -> None:
+    marker = tmp_path / "should-not-exist"
+    adversarial_keys = [
+        "qa's staging",
+        "east us",
+        f"$(touch {marker})",
+        f"`touch {marker}`",
+    ]
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": ""})
+    config["catalog"]["environments"] = [
+        {"key": key, "name": f"Env {i}", "identifier": f"env-{i}"} for i, key in enumerate(adversarial_keys)
+    ]
+    package = build_generic_package(config)
+
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-jmeter.sh"
+
+    syntax_check = subprocess.run(["bash", "-n", str(script_path)], capture_output=True, text=True)
+    assert syntax_check.returncode == 0, syntax_check.stderr
+
+    for i, key in enumerate(adversarial_keys):
+        # shlex.quote here only protects the *test's* shell -c string; it has
+        # nothing to do with the production shell_quote already baked into
+        # the sourced script. This exercises exactly what the generated
+        # `[ "$1" = '...' ]` comparison does with a hostile key -- it must
+        # match literally rather than executing $(...) or backticks.
+        command = f"source {shlex.quote(str(script_path))}; resolve_environment_identifier {shlex.quote(key)}"
+        result = subprocess.run(["bash", "-c", command], capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == f"env-{i}"
+
+    assert not marker.exists()
 
 
 def test_render_blazemeter_script_is_a_template(tmp_path: Path) -> None:

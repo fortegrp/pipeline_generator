@@ -26,13 +26,6 @@ def build_generic_package(config: dict) -> GenericPipelinePackage:
                 PipelineInput("scenario", "Scenario", "dropdown", scenarios),
             ],
             timeout_minutes=int(config["manual_pipeline"]["timeout_minutes"]),
-            run_command=[
-                f"./scripts/run-{tool_type}.sh",
-                "--environment",
-                "${environment}",
-                "--scenario",
-                "${scenario}",
-            ],
         )
 
     automated_jobs = []
@@ -46,18 +39,6 @@ def build_generic_package(config: dict) -> GenericPipelinePackage:
                     timeout_minutes=int(job.get("timeout_minutes", 240)),
                     environment_ref=job["environment_ref"],
                     scenario_ref=job["scenario_ref"],
-                    fixed_arguments={
-                        "job": job["name"],
-                        "environment": job["environment_ref"],
-                        "scenario": job["scenario_ref"],
-                    },
-                    run_command=[
-                        f"./scripts/run-{tool_type}.sh",
-                        "--environment",
-                        job["environment_ref"],
-                        "--scenario",
-                        job["scenario_ref"],
-                    ],
                 )
             )
 
