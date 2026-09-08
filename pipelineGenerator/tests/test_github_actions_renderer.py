@@ -12,9 +12,11 @@ def _config() -> dict:
     return {
         "setup": {"id": "gha-test-setup", "generation_mode": "both"},
         "cicd": {"type": "github_actions"},
+        "tool": {"type": "jmeter", "connection": {"test_plan_path": "plan.jmx", "jmeter_bin": ""}},
+        "pre_run_checks": [],
         "catalog": {
-            "environments": [{"key": "qa", "name": "QA"}],
-            "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke"}],
+            "environments": [{"key": "qa", "name": "QA", "identifier": "env-qa"}],
+            "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "SC-1"}],
         },
         "manual_pipeline": {"enabled": True, "name": "Performance Manual Run", "timeout_minutes": 120},
         "automated_jobs": [
@@ -49,20 +51,24 @@ def test_render_github_actions_writes_valid_workflows(tmp_path: Path) -> None:
     # The build-triggerer-controlled input must be delivered via env:, never
     # spliced directly into the run: shell text (workflow_dispatch's `choice`
     # restriction is only enforced by GitHub's UI, not its dispatch API).
-    step = manual_doc["jobs"]["run-performance-test"]["steps"][3]
+    step = manual_doc["jobs"]["run-performance-test"]["steps"][1]
     assert step["env"] == {
         "ENVIRONMENT": "${{ github.event.inputs.environment }}",
         "SCENARIO": "${{ github.event.inputs.scenario }}",
     }
+    assert "./scripts/run-jmeter.sh" in manual_text
     assert '--environment "$ENVIRONMENT"' in manual_text
     assert '--scenario "$SCENARIO"' in manual_text
     assert "github.event.inputs" not in step["run"]
+    assert "pipeline-generator" not in manual_text
 
     automated_text = automated_path.read_text(encoding="utf-8")
     automated_doc = yaml.safe_load(automated_text)
     assert automated_doc["jobs"]["post-deploy-smoke"]["timeout-minutes"] == 60
-    assert "--mode automated" in automated_text
-    assert "--job post-deploy-smoke" in automated_text
+    assert "./scripts/run-jmeter.sh" in automated_text
+    assert "--environment qa" in automated_text
+    assert "--scenario checkout_smoke" in automated_text
+    assert "pipeline-generator" not in automated_text
 
 
 def test_render_github_actions_escapes_adversarial_values(tmp_path: Path) -> None:
@@ -72,9 +78,11 @@ def test_render_github_actions_escapes_adversarial_values(tmp_path: Path) -> Non
     config = {
         "setup": {"id": "gha-adversarial", "generation_mode": "both"},
         "cicd": {"type": "github_actions"},
+        "tool": {"type": "jmeter", "connection": {"test_plan_path": "plan.jmx", "jmeter_bin": ""}},
+        "pre_run_checks": [],
         "catalog": {
-            "environments": [{"key": nasty_env_value, "name": "QA"}],
-            "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke"}],
+            "environments": [{"key": nasty_env_value, "name": "QA", "identifier": "env-nasty"}],
+            "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "SC-1"}],
         },
         "manual_pipeline": {"enabled": True, "name": nasty_pipeline_name, "timeout_minutes": 30},
         "automated_jobs": [
@@ -115,4 +123,4 @@ def test_render_github_actions_escapes_adversarial_values(tmp_path: Path) -> Non
     assert automated_doc["name"] == f"Performance Automated Job - {nasty_job_name}"
     job_id = next(iter(automated_doc["jobs"]))
     assert re.match(r"^[A-Za-z_][A-Za-z0-9_-]*$", job_id)
-    assert shell_quote(nasty_job_name) in automated_text
+    assert shell_quote(nasty_env_value) in automated_text
