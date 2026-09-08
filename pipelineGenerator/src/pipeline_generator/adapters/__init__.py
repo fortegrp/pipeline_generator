@@ -1,2 +1,0 @@
-"""Tool adapter implementations."""
-
