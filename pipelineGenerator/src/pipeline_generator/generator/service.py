@@ -8,6 +8,7 @@ from pipeline_generator.renderers.azure_devops import render_azure_devops
 from pipeline_generator.renderers.github_actions import render_github_actions
 from pipeline_generator.renderers.jenkins import render_jenkins
 from pipeline_generator.renderers.readme import render_setup_readme
+from pipeline_generator.renderers.scripts import render_tool_script
 from pipeline_generator.text_utils import slugify
 
 
@@ -23,6 +24,8 @@ def generate_assets(config: dict, output_dir: Path) -> list[str]:
     save_config(setup_dir / "customer.yaml", config)
     outputs = [str(setup_dir / "customer.yaml")]
 
+    outputs.extend(render_tool_script(config, package, setup_dir))
+
     if package.cicd_type == "github_actions":
         outputs.extend(render_github_actions(config, package, setup_dir))
     elif package.cicd_type == "azure_devops":
@@ -37,4 +40,3 @@ def generate_assets(config: dict, output_dir: Path) -> list[str]:
     outputs.append(str(readme_path))
 
     return outputs
-

@@ -21,3 +21,4 @@ def test_example_config_validates_and_generates(config_path: Path, tmp_path: Pat
     assert outputs
     for output in outputs:
         assert Path(output).exists()
+    assert any("scripts" in Path(output).parts for output in outputs)
