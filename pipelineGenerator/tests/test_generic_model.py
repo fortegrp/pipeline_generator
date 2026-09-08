@@ -36,13 +36,6 @@ def test_build_generic_package_carries_identifiers_and_tool_type() -> None:
     job = package.automated_jobs[0]
     assert job.environment_ref == "qa"
     assert job.scenario_ref == "checkout_smoke"
-    assert job.run_command == [
-        "./scripts/run-jmeter.sh",
-        "--environment",
-        "qa",
-        "--scenario",
-        "checkout_smoke",
-    ]
 
 
 def test_build_generic_package_defaults_missing_identifier_to_todo_placeholder() -> None:

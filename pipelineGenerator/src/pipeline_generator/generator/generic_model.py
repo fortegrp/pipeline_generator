@@ -23,7 +23,6 @@ class ManualPipelineSpec:
     name: str
     inputs: list[PipelineInput]
     timeout_minutes: int
-    run_command: list[str]
 
 
 @dataclass
@@ -32,8 +31,6 @@ class AutomatedJobSpec:
     timeout_minutes: int
     environment_ref: str
     scenario_ref: str
-    fixed_arguments: dict[str, str]
-    run_command: list[str]
 
 
 @dataclass
