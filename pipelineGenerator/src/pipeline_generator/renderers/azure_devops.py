@@ -20,7 +20,7 @@ def render_azure_devops(config: dict, package: GenericPipelinePackage, setup_dir
     if package.automated_jobs:
         for job in package.automated_jobs:
             automated_path = azure_dir / f"performance-automated-{safe_filename_component(job.name)}.yml"
-            automated_path.write_text(_render_automated_job(job), encoding="utf-8")
+            automated_path.write_text(_render_automated_job(job, package.tool_type), encoding="utf-8")
             outputs.append(str(automated_path))
 
     return outputs
@@ -66,15 +66,8 @@ jobs:
       vmImage: ubuntu-latest
     steps:
       - checkout: self
-      - task: UsePythonVersion@0
-        inputs:
-          versionSpec: '3.11'
-      - script: pip install -e .
-        displayName: Install project
       - script: >
-          pipeline-generator run
-          --config customer.yaml
-          --mode manual
+          ./scripts/run-{package.tool_type}.sh
           --environment "$ENVIRONMENT"
           --scenario "$SCENARIO"
         env:
@@ -89,7 +82,7 @@ jobs:
 """
 
 
-def _render_automated_job(job) -> str:
+def _render_automated_job(job, tool_type: str) -> str:
     job_id = _safe_job_id(job.name)
     return f"""parameters: []
 
@@ -100,16 +93,10 @@ jobs:
       vmImage: ubuntu-latest
     steps:
       - checkout: self
-      - task: UsePythonVersion@0
-        inputs:
-          versionSpec: '3.11'
-      - script: pip install -e .
-        displayName: Install project
       - script: >
-          pipeline-generator run
-          --config customer.yaml
-          --mode automated
-          --job {shell_quote(job.name)}
+          ./scripts/run-{tool_type}.sh
+          --environment {shell_quote(job.environment_ref)}
+          --scenario {shell_quote(job.scenario_ref)}
         displayName: Run performance wrapper
       - task: PublishPipelineArtifact@1
         condition: always()
