@@ -433,8 +433,10 @@ def test_render_jmeter_script_with_precheck(tmp_path: Path) -> None:
     assert "resolve_environment_identifier() {" in content
     assert "resolve_scenario_identifier() {" in content
     assert 'if [ ! -f "$test_plan_path" ]; then' in content
-    assert "local test_plan_path='performance/checkout.jmx'" in content
-    assert "local jmeter_bin='jmeter'" in content
+    # shlex.quote leaves values with no shell-special characters unquoted --
+    # "performance/checkout.jmx" and "jmeter" both qualify, so no quotes appear.
+    assert "local test_plan_path=performance/checkout.jmx" in content
+    assert "local jmeter_bin=jmeter" in content
     assert '"$jmeter_bin" -n -t "$test_plan_path"' in content
     assert 'if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then' in content
 
@@ -701,9 +703,11 @@ def test_render_blazemeter_script_is_a_template(tmp_path: Path) -> None:
     assert script_path.stat().st_mode & 0o111 == 0o111
 
     content = script_path.read_text(encoding="utf-8")
-    assert "local base_url='https://a.blazemeter.com'" in content
-    assert "local workspace_id='12345'" in content
-    assert "local project_id='67890'" in content
+    # shlex.quote leaves values with no shell-special characters unquoted --
+    # none of these three values contain any, so no quotes appear.
+    assert "local base_url=https://a.blazemeter.com" in content
+    assert "local workspace_id=12345" in content
+    assert "local project_id=67890" in content
     assert "# TODO precheck: verify_scenario_exists" in content
     assert "# TODO precheck: collect_results" in content
     assert 'echo "ERROR: BlazeMeter execution is not implemented in this generated script yet." >&2' in content
@@ -730,10 +734,13 @@ def test_render_loadrunner_professional_script_is_a_template(tmp_path: Path) -> 
     assert outputs == [str(script_path)]
 
     content = script_path.read_text(encoding="utf-8")
-    assert "local controller_host='lr.acme.local'" in content
+    # shlex.quote only adds quotes when a value contains a shell-special
+    # character. "lr.acme.local", "DEFAULT", and "ACME" don't, so they come
+    # out bare; "C:\Results" contains a backslash, so it comes out quoted.
+    assert "local controller_host=lr.acme.local" in content
     assert "local controller_results_path='C:\\Results'" in content
-    assert "local domain='DEFAULT'" in content
-    assert "local project='ACME'" in content
+    assert "local domain=DEFAULT" in content
+    assert "local project=ACME" in content
     assert (
         'echo "ERROR: LoadRunner Professional execution is not implemented in this generated script yet." >&2'
         in content
