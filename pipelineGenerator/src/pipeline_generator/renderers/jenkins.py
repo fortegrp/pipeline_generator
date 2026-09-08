@@ -19,7 +19,7 @@ def render_jenkins(config: dict, package: GenericPipelinePackage, setup_dir: Pat
     if package.automated_jobs:
         for job in package.automated_jobs:
             automated_path = jenkins_dir / f"Jenkinsfile.performance-automated-{safe_filename_component(job.name)}"
-            automated_path.write_text(_render_automated_job(job), encoding="utf-8")
+            automated_path.write_text(_render_automated_job(job, package.tool_type), encoding="utf-8")
             outputs.append(str(automated_path))
 
     return outputs
@@ -56,18 +56,13 @@ def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
         timeout(time: {timeout}, unit: 'MINUTES')
     }}
     stages {{
-        stage('Install project') {{
-            steps {{
-                sh 'pip install -e .'
-            }}
-        }}
         stage('Run performance wrapper') {{
             steps {{
                 // Build parameters are exposed as shell environment variables by
                 // Jenkins; referencing them here (rather than Groovy-interpolating
                 // ${{params.X}} into the command text) avoids splicing a
                 // build-triggerer-controlled value directly into the shell script.
-                sh 'pipeline-generator run --config customer.yaml --mode manual --environment "$ENVIRONMENT" --scenario "$SCENARIO"'
+                sh './scripts/run-{package.tool_type}.sh --environment "$ENVIRONMENT" --scenario "$SCENARIO"'
             }}
         }}
     }}
@@ -80,24 +75,20 @@ def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
 """
 
 
-def _render_automated_job(job) -> str:
+def _render_automated_job(job, tool_type: str) -> str:
     return f"""pipeline {{
     agent any
     environment {{
-        AUTOMATED_JOB_NAME = {groovy_squote(job.name)}
+        ENVIRONMENT = {groovy_squote(job.environment_ref)}
+        SCENARIO = {groovy_squote(job.scenario_ref)}
     }}
     options {{
         timeout(time: {job.timeout_minutes}, unit: 'MINUTES')
     }}
     stages {{
-        stage('Install project') {{
-            steps {{
-                sh 'pip install -e .'
-            }}
-        }}
         stage('Run performance wrapper') {{
             steps {{
-                sh 'pipeline-generator run --config customer.yaml --mode automated --job "$AUTOMATED_JOB_NAME"'
+                sh './scripts/run-{tool_type}.sh --environment "$ENVIRONMENT" --scenario "$SCENARIO"'
             }}
         }}
     }}
