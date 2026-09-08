@@ -336,11 +336,19 @@ The generic model currently includes:
 
 - Setup ID.
 - CI/CD type.
+- Tool type.
 - Optional manual pipeline spec.
-- Automated job specs.
-- Pipeline inputs for environments and scenarios.
-- The run command each CI/CD step invokes (`./scripts/run-<tool_type>.sh
-  --environment ... --scenario ...`).
+- Automated job specs (each carrying its `environment_ref`/`scenario_ref`).
+- Pipeline inputs for environments and scenarios, each carrying its catalog
+  `identifier`.
+
+Each renderer builds its own `./scripts/run-<tool_type>.sh --environment ...
+--scenario ...` invocation from `package.tool_type` and the relevant
+`environment_ref`/`scenario_ref`, rather than reading a shared run-command
+field off the generic model — the three platforms need different delivery
+mechanisms for runtime-supplied values (see "Renderer Output Uses
+Handwritten YAML Strings" below), which a single generic command list
+couldn't represent safely.
 
 This design is useful because it keeps CI/CD-specific rendering separate from
 the customer config shape.
