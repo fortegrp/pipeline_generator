@@ -13,9 +13,11 @@ manual pipeline behavior, automated jobs, pre-run checks, and artifact handling
 rules.
 
 At the current stage, the project is strongest as a generator for CI/CD setup
-packages. Runtime execution is present as an architectural skeleton, but real
-remote execution against BlazeMeter and LoadRunner Professional has not yet been
-implemented.
+packages. `pipeline-generator` never executes a performance test itself — its
+job ends at `generate`, which now writes a `scripts/run-<tool_type>.sh`
+alongside the CI/CD files. That script is real, working execution for JMeter;
+for BlazeMeter and LoadRunner Professional it's a template with connection
+details filled in but the actual remote API/controller call still a `# TODO`.
 
 The readiness plan in this document is intended to strengthen the original
 idea, not replace it. In particular, the project should continue to support
@@ -38,23 +40,30 @@ Implemented:
 - Azure DevOps renderer.
 - Jenkins renderer.
 - Generated setup README.
-- Runtime dry-run path.
-- Adapter interfaces for performance testing tools.
-- Stub adapters for BlazeMeter, LoadRunner Professional, and JMeter.
+- A generated `scripts/run-<tool_type>.sh` per setup, written alongside the
+  CI/CD files — real, working JMeter execution; a filled-in-but-TODO
+  template for BlazeMeter and LoadRunner Professional.
 - Example customer configs for the supported CI/CD and tool combinations.
 - Renderer tests for all three CI/CD platforms (GitHub Actions and Azure
   DevOps tests also parse the generated YAML to catch syntax breakage).
 - A test that validates and generates every example config.
-- Clean CLI error handling for `wizard` and `run` (expected exceptions are
-  caught and printed as plain messages instead of tracebacks).
+- Clean CLI error handling for `wizard` (expected exceptions are caught and
+  printed as plain messages instead of tracebacks; `generate` has no
+  exception paths beyond what validation already catches).
 - CI (GitHub Actions, `.github/workflows/pipeline-generator-ci.yml` at the
   repo root) running `pytest` on push/PR across Python 3.9 and 3.12.
 
 Not implemented yet:
 
-- Real BlazeMeter API integration.
-- Real LoadRunner Professional remote execution.
-- Real pre-run checks.
+- The real BlazeMeter API call in the generated `run-blazemeter.sh`
+  template's `# TODO` block.
+- The real LoadRunner Professional controller call in the generated
+  `run-loadrunner_professional.sh` template's `# TODO` block.
+- Real pre-run checks beyond JMeter's `verify_scenario_exists` (the
+  generated script actually checks the test plan file exists for JMeter;
+  every other configured check, for every tool, is currently only a
+  `# TODO precheck: ...` comment in the BlazeMeter/LoadRunner templates —
+  JMeter has no other checks defined).
 - Robust generated YAML/Groovy escaping and validation (the renderers still
   build output via unescaped f-strings; the new renderer tests catch
   accidental syntax breakage but don't guard against a customer value like a
@@ -88,12 +97,17 @@ The config model currently supports:
 - `jmeter` — local/self-hosted rather than a remote SaaS tool; typically
   paired with `tool.auth.type: none` and a `test_plan_path` connection field.
 
-Tool adapters exist, but all three are stubs. They define the expected
-execution interface and raise `NotImplementedError`. For BlazeMeter and
-LoadRunner Professional this means real *remote* execution; for JMeter it
-means a real *local* `jmeter` subprocess invocation, which — unlike the other
-two — needs no remote API or credentials to implement, making it the
-lowest-effort adapter to finish for real.
+`generate` writes a `scripts/run-<tool_type>.sh` for every setup, but the
+three tools aren't equally finished. JMeter's generated script is real,
+working execution: it resolves the environment/scenario to their catalog
+identifiers and runs a real `jmeter -n -t ...` subprocess — no remote API or
+credentials needed. BlazeMeter's and LoadRunner Professional's generated
+scripts are templates, not stubs: real, syntactically valid bash with
+connection details already filled in as variables and configured pre-run
+checks listed as `# TODO precheck: ...` comments, but the actual remote
+API/controller call is left undone — the script prints a clear
+`"... execution is not implemented in this generated script yet."` and exits
+non-zero until someone fills that part in.
 
 ### Authentication Types
 
@@ -123,11 +137,9 @@ pipeline_generator/
   src/
     pipeline_generator/
       cli.py
-      adapters/
       config/
       generator/
       renderers/
-      runtime/
       wizard/
   tests/
 ```
@@ -136,12 +148,15 @@ pipeline_generator/
 
 `src/pipeline_generator/cli.py`
 
-Defines the command-line interface. The CLI exposes four commands:
+Defines the command-line interface. The CLI exposes three commands:
 
 - `wizard`
 - `validate`
 - `generate`
-- `run`
+
+There is no `run` command — `pipeline-generator` never executes a
+performance test itself. `generate` writes a `scripts/run-<tool_type>.sh`
+that the generated pipeline calls directly instead.
 
 `src/pipeline_generator/config/`
 
@@ -162,17 +177,17 @@ intended to keep renderer logic separate from raw config parsing.
 `src/pipeline_generator/renderers/`
 
 Converts the generic pipeline model into CI/CD-specific files for GitHub
-Actions, Azure DevOps, and Jenkins.
-
-`src/pipeline_generator/runtime/`
-
-Builds run requests and coordinates execution through a tool adapter. In
-dry-run mode, it writes an execution plan without contacting remote systems.
-
-`src/pipeline_generator/adapters/`
-
-Defines the adapter protocol and current tool adapter stubs. This is where real
-BlazeMeter and LoadRunner execution logic should be implemented.
+Actions, Azure DevOps, and Jenkins, plus the setup README. `scripts.py`
+additionally writes `scripts/run-<tool_type>.sh` — a real, working script for
+JMeter, and a connection-details-filled-in template (ending in a `# TODO`
+and a clear "not implemented yet" error) for BlazeMeter and LoadRunner
+Professional. Every catalog key it resolves inside the generated script goes
+through an exact-match shell comparison (`if [ "$1" = <key> ]; ...`), not a
+`case` statement — `case` patterns are shell globs, so a catalog key
+containing `*`/`?`/`[`/`]` could otherwise glob-match an environment/scenario
+key it wasn't meant to. This is where real BlazeMeter and LoadRunner
+Professional execution logic should be implemented, by filling in each
+template's `# TODO` block.
 
 ## CLI Behavior
 
@@ -227,6 +242,7 @@ Generates a setup-specific output directory containing:
 
 - A copy of `customer.yaml`.
 - CI/CD pipeline YAML files.
+- A generated `scripts/run-<tool_type>.sh`.
 - A generated setup README.
 
 Current behavior: generation always stops on validation errors. Whether it
@@ -237,33 +253,36 @@ warnings, with a message pointing at the fix or at flipping the flag back.
 This reuses the config's own declared intent instead of adding a separate
 `--allow-incomplete`/`--allow-warnings` flag.
 
-### Run
+There is no `run` (or `--dry-run`) CLI command any more — this used to be
+a fourth subcommand that built a run request from the config and either
+wrote a dry-run execution plan or drove a Python tool adapter. That whole
+subsystem (`runtime/`, `adapters/`, the `run` subcommand) has been deleted.
+`generate` is the tool's last step now; see "Generated Run Script" below for
+what replaced `run`.
 
-Manual dry run:
+### Generated Run Script (not a CLI command)
 
-```bash
-pipeline-generator run \
-  --config setups/acme.yaml \
-  --mode manual \
-  --environment qa \
-  --scenario checkout_smoke \
-  --dry-run
-```
+`generate` writes `scripts/run-<tool_type>.sh` alongside the CI/CD files.
+This is what the generated pipeline's step actually calls
+(`./scripts/run-<tool_type>.sh --environment "$ENVIRONMENT" --scenario
+"$SCENARIO"`) — it is a plain, standalone bash script with no dependency on
+`pipeline-generator` or Python at execution time. It can also be run by hand
+from a checkout of the generated setup.
 
-Automated dry run:
+- For **JMeter**, it's real and complete: it resolves `--environment`/
+  `--scenario` to their catalog identifiers, optionally checks the test plan
+  file exists first (if `verify_scenario_exists` is in `pre_run_checks`),
+  then runs `jmeter -n -t <test_plan_path> -l run-output/results.jtl -e -o
+  run-output/report -Jenvironment=... -Jscenario=...` for real.
+- For **BlazeMeter** and **LoadRunner Professional**, it's a template: real,
+  syntactically valid bash with connection details already filled in as
+  variables and remaining `pre_run_checks` listed as `# TODO precheck: ...`
+  comments, ending with `echo "ERROR: <Tool> execution is not implemented in
+  this generated script yet." >&2` and `exit 1`.
 
-```bash
-pipeline-generator run \
-  --config setups/acme.yaml \
-  --mode automated \
-  --job post-deploy-smoke \
-  --dry-run
-```
-
-Current behavior: dry-run mode writes `run-output/execution-plan.json`. Non-dry
-execution calls the selected adapter, but the adapters are not implemented yet.
-The same `incomplete`-flag-based warning check described under `generate`
-applies here too, before either path runs.
+There is no more `incomplete`-flag warning check at this stage — that check
+only ever ran at `generate` time, before the script was written; the script
+itself has no knowledge of the config's `incomplete` flag.
 
 ## Config Model
 
@@ -309,8 +328,9 @@ The generation flow is:
 4. Build a generic pipeline package.
 5. Select a renderer based on `cicd.type`.
 6. Write generated pipeline files.
-7. Write a generated README.
-8. Copy the final `customer.yaml` into the generated setup package.
+7. Write `scripts/run-<tool_type>.sh`.
+8. Write a generated README.
+9. Copy the final `customer.yaml` into the generated setup package.
 
 The generic model currently includes:
 
@@ -319,36 +339,42 @@ The generic model currently includes:
 - Optional manual pipeline spec.
 - Automated job specs.
 - Pipeline inputs for environments and scenarios.
-- Runtime command arguments.
+- The run command each CI/CD step invokes (`./scripts/run-<tool_type>.sh
+  --environment ... --scenario ...`).
 
 This design is useful because it keeps CI/CD-specific rendering separate from
 the customer config shape.
 
-## Runtime Flow
+## Generated Script Execution Flow
 
-The runtime flow is:
+There is no more Python-side runtime flow — `pipeline-generator` never
+executes anything itself. What used to be the runtime flow (load config,
+select an adapter, build a run request, dry-run or drive the adapter through
+`run_prechecks`/`start_run`/`wait_for_completion`/`collect_artifacts`) has
+been replaced by the flow baked into the generated
+`scripts/run-<tool_type>.sh` itself, which runs standalone, later, on
+whatever machine the CI/CD job executes on:
 
-1. Load and validate config.
-2. Select a tool adapter based on `tool.type`.
-3. Build a run request.
-4. Create `run-output/`.
-5. If `--dry-run` is set, write an execution plan and stop.
-6. If real execution is requested:
-   - run adapter prechecks,
-   - start the remote run,
-   - wait for completion,
-   - collect artifacts,
-   - write a summary.
+1. Parse `--environment` and `--scenario` (both required).
+2. Resolve each to its catalog `identifier` via generated shell functions
+   (`resolve_environment_identifier`/`resolve_scenario_identifier`) — an
+   unrecognized key prints `Unknown environment key: ...` /
+   `Unknown scenario key: ...` and exits non-zero.
+3. Create `run-output/`.
+4. Run the tool:
+   - **JMeter**: optionally verify the test plan file exists (if
+     `verify_scenario_exists` is configured), then run `jmeter -n -t ...`
+     for real.
+   - **BlazeMeter** / **LoadRunner Professional**: print each remaining
+     configured pre-run check as a `# TODO precheck: ...` comment (they are
+     not executed), then print a clear "not implemented in this generated
+     script yet" error and exit 1 — the API/controller call itself is not
+     yet written.
 
-The intended adapter interface is:
-
-- `run_prechecks(config, request)`
-- `start_run(config, request)`
-- `wait_for_completion(config, handle, timeout_minutes)`
-- `collect_artifacts(config, result, output_dir)`
-
-Current limitation: both real adapters raise `NotImplementedError` for start,
-wait, and artifact collection.
+Current limitation: the BlazeMeter and LoadRunner Professional scripts stop
+before calling any remote API/controller — see "BlazeMeter and LoadRunner
+Professional Scripts Are Templates, Not Adapters" below for what's needed to
+finish either one.
 
 ## Current Examples
 
@@ -376,25 +402,25 @@ only block on errors, so warning-only configs could generate incomplete or
 broken pipeline files regardless of how finished the setup actually was.
 
 This is now resolved by reusing the config's own `incomplete` flag instead of
-adding a new CLI flag: `generate`/`run` still only block on errors when
-`incomplete: true` (drafts stay exactly as permissive as before), but block on
+adding a new CLI flag: `generate` still only blocks on errors when
+`incomplete: true` (drafts stay exactly as permissive as before), but blocks on
 warnings too once a config declares `incomplete: false` — treating that flag
-as an enforced promise rather than a label with no effect. `validate` itself
-is unchanged and only escalates warnings when `--strict` is passed.
+as an enforced promise rather than a label with no effect. (`run` no longer
+exists as a command; this rule applied to it too, back when it did.)
+`validate` itself is unchanged and only escalates warnings when `--strict` is
+passed.
 
-### Runtime Errors Are Not User-Friendly
+### Runtime Errors Are Not User-Friendly — Resolved (moot)
 
-Some runtime request errors are raised as `ValueError`. The CLI does not catch
-them and convert them into clean command-line output.
-
-Risk:
-
-- Users see Python tracebacks for normal input mistakes.
-
-Recommended change:
-
-- Catch expected exceptions in the CLI, print concise errors, and return
-  nonzero exit codes.
+This used to describe the `run` CLI command's request-building `ValueError`s
+(bad `--job`, missing `--environment`/`--scenario`) surfacing as raw Python
+tracebacks instead of clean CLI output. The `run` command, and the Python
+runtime layer that raised those errors, have both been deleted — bad input
+is now handled entirely inside the generated `scripts/run-<tool_type>.sh`
+itself (missing `--environment`/`--scenario` prints a one-line `Usage: ...`
+message and exits 1; an unrecognized environment/scenario key prints
+`Unknown environment key: ...` / `Unknown scenario key: ...` and exits 1),
+so there's no longer a Python exception path here to catch.
 
 ### README and Schema Are Slightly Out of Sync — Resolved
 
@@ -458,25 +484,39 @@ block or Jenkins' auto-exported build parameters for Jenkins) and reference
 them as `"$VAR"` in the shell script instead, so the value is delivered as
 data rather than re-parsed as command text.
 
-### Adapter Implementations Are Stubs
+### BlazeMeter and LoadRunner Professional Scripts Are Templates, Not Adapters — Partially Resolved
 
-BlazeMeter, LoadRunner Professional, and JMeter adapters define the right
-shape but do not execute real tests.
+This gap used to be about Python `ToolAdapter` stubs (`adapters/`) that
+defined the right shape but raised `NotImplementedError` for every tool. That
+whole adapter/runtime subsystem has been deleted; there is no more Python
+execution layer at all. In its place, `generate` writes a
+`scripts/run-<tool_type>.sh` per setup:
+
+- **JMeter is now real, working execution** — resolved. The generated
+  script resolves the environment/scenario and runs a real `jmeter -n -t
+  <plan> -l <results> -e -o <report>` subprocess. Nothing left to do here.
+- **BlazeMeter and LoadRunner Professional remain unimplemented**, but as
+  templates rather than stubs: the generated script is real, syntactically
+  valid bash with connection details already filled in as variables and
+  configured pre-run checks listed as `# TODO precheck: ...` comments — it
+  just stops short of the actual API/controller call, printing a clear
+  `"... execution is not implemented in this generated script yet."` and
+  exiting 1.
 
 Risk:
 
-- The generated pipelines can call `pipeline-generator run`, but real execution
-  will fail unless `--dry-run` is used.
+- The generated pipelines call `./scripts/run-<tool_type>.sh` directly, and
+  for BlazeMeter/LoadRunner Professional that call will always fail with the
+  "not implemented yet" error until someone fills in the template.
 
 Recommended change:
 
-- Implement adapters incrementally. JMeter is the lowest-effort of the three
-  to make real, since it only needs a local subprocess call
-  (`jmeter -n -t <plan> -l <results> -e -o <report>`) rather than a remote
-  API or controller — no credentials, polling, or network reliability
-  concerns. BlazeMeter is next, since it's API-driven. LoadRunner
-  Professional remains the most involved, since it also requires deciding
-  the remote-execution mechanism (see Milestone 2 below).
+- Fill in the two remaining templates incrementally, directly in
+  `renderers/scripts.py`'s `_render_template_script` (or by hand-editing the
+  generated script for a one-off setup). BlazeMeter is the lower-effort of
+  the two, since it's API-driven. LoadRunner Professional remains the more
+  involved of the two, since it also requires deciding the remote-execution
+  mechanism (see Milestone 2 below).
 
 ### Test Coverage Is Minimal
 
@@ -491,8 +531,8 @@ Risk:
 
 Recommended change:
 
-- Add tests around validation, generation output, runtime dry-runs, and CLI exit
-  behavior.
+- Add tests around validation, generation output, generated script content
+  (per tool), and CLI exit behavior.
 
 ## Readiness Plan
 
@@ -592,9 +632,8 @@ Goals:
 Tasks:
 
 - Catch expected exceptions and print clean error messages.
-- Return stable nonzero exit codes for validation and runtime input failures.
+- Return stable nonzero exit codes for validation failures.
 - Add `--version`.
-- Add `--output-dir` for runtime output.
 - Add clear help text for every command.
 - Consider adding a non-interactive config creation mode.
 
@@ -614,28 +653,44 @@ Tasks:
       test below covers the valid side; there's no dedicated test yet for
       configs that should fail validation).
 - [x] Add renderer tests for GitHub Actions and Azure DevOps.
-- [ ] Add dry-run tests for manual and automated runtime modes.
+- [x] Add tests for the generated `scripts/run-<tool_type>.sh` content, for
+      manual and automated modes across all three tools (superseded what
+      would have been "dry-run tests for manual and automated runtime
+      modes" back when a `run --dry-run` command existed).
 - [ ] Add CLI tests for successful and failing paths.
 - [x] Add tests that generate assets for every example config.
 
 ## Milestone 2: Runtime Execution Readiness
 
-### 1. Implement BlazeMeter Adapter
+Milestone 2 used to be framed around implementing Python `ToolAdapter`
+subclasses. There is no more Python adapter layer — the implementation
+surface for everything below is now `renderers/scripts.py`'s
+`_render_template_script` (which produces the generated
+`scripts/run-<tool_type>.sh`), not a runtime module. JMeter's generated
+script is already real and complete (`[x]`, see the Recommended
+Implementation Order list below) — the remaining work here is entirely
+BlazeMeter and LoadRunner Professional.
+
+### 1. Fill In the BlazeMeter Script Template
 
 Goals:
 
-- Run BlazeMeter tests from generated pipelines.
+- Make the generated `scripts/run-blazemeter.sh` actually run BlazeMeter
+  tests, in place of its current `# TODO`/`exit 1`.
 
 Tasks:
 
-- Implement API authentication.
-- Resolve workspace, project, and test identifiers.
+- Implement API authentication in the generated script (or in a small
+  helper it sources).
+- Resolve workspace, project, and test identifiers (the script already has
+  `base_url`/`workspace_id`/`project_id` filled in as variables).
 - Start a test run.
 - Poll run status.
 - Handle timeouts.
-- Download reports and artifacts.
-- Produce a normalized result payload.
-- Add integration-test seams with mocked API responses.
+- Download reports and artifacts into `run-output/`.
+- Produce a normalized result output (see task 4 below).
+- Add tests that exercise the generated script against a mocked/fake
+  BlazeMeter API.
 - Document required secrets and network access.
 
 ### 2. Define LoadRunner Execution Strategy
@@ -643,11 +698,11 @@ Tasks:
 Goals:
 
 - Establish the correct enterprise-safe path for controlling LoadRunner
-  Professional.
+  Professional from the generated `scripts/run-loadrunner_professional.sh`.
 
 Open decision:
 
-- How should the generator trigger LoadRunner Professional?
+- How should the generated script trigger LoadRunner Professional?
 
 Options:
 
@@ -661,10 +716,12 @@ Tasks:
 
 - Choose the supported execution mechanism.
 - Define required credentials and network prerequisites.
-- Implement controller connectivity checks.
+- Implement controller connectivity checks in the generated script (the
+  script already has `controller_host`/`controller_results_path`/`domain`/
+  `project` filled in as variables).
 - Start scenarios remotely.
 - Poll scenario completion.
-- Collect results from the controller results path.
+- Collect results from the controller results path into `run-output/`.
 - Normalize success, failure, timeout, and partial artifact states.
 
 ### 3. Implement Real Pre-Run Checks
@@ -677,29 +734,38 @@ Goals:
 
 Tasks:
 
-- Implement `verify_controller_access`.
-- Implement `verify_scenario_exists`.
-- Implement `verify_load_generators_connected`.
+- [x] `verify_scenario_exists` is implemented for JMeter (the generated
+  script checks the test plan file exists before running).
+- Implement `verify_controller_access` in the generated LoadRunner
+  Professional script (currently a `# TODO precheck: ...` comment only).
+- Implement `verify_scenario_exists` for BlazeMeter/LoadRunner Professional
+  (currently a `# TODO precheck: ...` comment only).
+- Implement `verify_load_generators_connected` in the generated LoadRunner
+  Professional script (currently a `# TODO precheck: ...` comment only).
 - Preserve compatibility for the existing `collect_results` value, but clarify
   whether it represents a pre-run artifact readiness check or migrate it into a
   future `post_run_steps` section.
-- Return structured check statuses: `passed`, `failed`, `warning`, `skipped`.
-- Let config decide whether failed checks block execution.
+- Have each check produce a clear pass/fail message and exit code from the
+  script, rather than only a `# TODO` comment.
 
 ### 4. Normalize Runtime Output
 
 Goals:
 
-- Give CI/CD systems stable artifacts and summaries.
+- Give CI/CD systems stable artifacts and summaries from every generated
+  script, once BlazeMeter/LoadRunner Professional execution is real.
 
 Tasks:
 
-- Define `execution-plan.json`.
-- Define `summary.json`.
-- Define adapter result schema.
+- Define a summary file each generated script writes to `run-output/` after
+  running (e.g. `run-output/summary.json`) — JMeter's script does not write
+  one yet either, since it just calls `jmeter` and lets it fill
+  `run-output/` directly.
 - Include timestamps, duration, run ID, report link, status, environment,
-  scenario, and artifact status.
-- Ensure all runtime outputs are written under a configurable output directory.
+  scenario, and artifact status in that summary.
+- Keep the format the same across all three tools' generated scripts.
+- Ensure every generated script writes to `run-output/` (already true
+  today) rather than anywhere configurable per-invocation.
 
 ## Recommended Implementation Order
 
@@ -709,10 +775,11 @@ Tasks:
       this project, matrix over Python 3.9/3.12).
 - [x] 4. Make production-ready generation stricter while preserving explicit
       draft generation (done via the `incomplete` flag, not a new CLI flag).
-- [x] 5. Improve CLI error handling (`wizard` and `run` now catch their
-      expected exceptions and print clean messages instead of tracebacks;
-      `generate` has no exception paths beyond what validation already
-      catches).
+- [x] 5. Improve CLI error handling (`wizard` catches its expected
+      exceptions and prints clean messages instead of tracebacks; `generate`
+      has no exception paths beyond what validation already catches. `run`
+      no longer exists as a CLI command — bad input to the generated script
+      is now handled by the script itself with plain one-line messages).
 - [x] 6. Add renderer tests and YAML validation (all three renderers —
       GitHub Actions, Azure DevOps, Jenkins — now have a test that parses
       the generated YAML/asserts the generated Groovy's key values).
@@ -725,12 +792,21 @@ Tasks:
       Jenkins received the same treatment separately (not one of the
       original 14 items, since Jenkins support was added afterward).
 - [ ] 9. Improve generated README content.
-- [ ] 10. Implement JMeter adapter (local subprocess call — lowest effort of
-      the three since it needs no remote API or credentials).
-- [ ] 11. Implement BlazeMeter adapter.
-- [ ] 12. Decide and implement LoadRunner execution strategy.
-- [ ] 13. Replace precheck stubs with real checks.
-- [ ] 14. Add runtime integration tests with mocked remote systems.
+- [x] 10. Replace the Python runtime/adapter subsystem with a generated
+      `scripts/run-<tool_type>.sh` per setup, real for JMeter (local
+      subprocess call — needed no remote API or credentials, as predicted)
+      and a filled-in-but-TODO template for BlazeMeter/LoadRunner
+      Professional (see `docs/superpowers/plans/
+      2026-09-08-generator-only-tool-scripts.md` for how this was done).
+- [ ] 11. Fill in the real API call in the generated
+      `run-blazemeter.sh` template.
+- [ ] 12. Decide the LoadRunner Professional remote-execution strategy and
+      fill in the real controller call in the generated
+      `run-loadrunner_professional.sh` template.
+- [ ] 13. Replace the remaining `# TODO precheck: ...` comments in the
+      BlazeMeter/LoadRunner Professional templates with real checks.
+- [ ] 14. Add tests that exercise the generated scripts against
+      mocked/fake remote systems.
 - [ ] 15. Publish an internal release candidate.
 
 ## Definition of Ready
@@ -743,17 +819,20 @@ when:
 - Generated GitHub Actions YAML is syntactically valid.
 - Generated Azure DevOps YAML is syntactically valid.
 - Generated README files include enough instructions for handoff.
-- Tests cover validation, generation, and dry-run behavior.
+- Tests cover validation, generation, and the generated
+  `scripts/run-<tool_type>.sh` content for every tool.
 - CI passes on every change.
 
-The runtime can be considered ready for executing tests when:
+The BlazeMeter and LoadRunner Professional generated scripts can be
+considered ready for executing tests when:
 
-- At least one real adapter can start, monitor, and collect artifacts from a
-  remote test run.
+- At least one of the two can start, monitor, and collect artifacts from a
+  remote test run for real (JMeter's generated script already does this).
 - Failed runs produce clear summary output.
 - Timeout and partial artifact cases are handled.
 - Secrets and credentials are documented.
-- Runtime behavior is covered by automated tests using mocks or test doubles.
+- The generated script's real-execution behavior is covered by automated
+  tests using mocks or test doubles.
 
 ## Immediate Next Steps
 
@@ -772,4 +851,10 @@ Recommended first changes:
       exception paths beyond what validation already catches).
 
 These changes would make the project safer to use immediately while preserving
-the current architecture for future adapter work.
+the current architecture for future work filling in the BlazeMeter/LoadRunner
+Professional script templates.
+
+(Items 4 and 6 above predate the removal of the `run` CLI command and the
+Python `runtime`/`adapters` layers entirely — see "Generated Run Script" and
+"BlazeMeter and LoadRunner Professional Scripts Are Templates, Not Adapters"
+above for the current model.)
