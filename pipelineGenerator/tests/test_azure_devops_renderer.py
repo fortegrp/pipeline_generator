@@ -45,6 +45,16 @@ def test_render_azure_devops_writes_valid_pipelines(tmp_path: Path) -> None:
     assert manual_doc["jobs"][0]["timeoutInMinutes"] == 120
     assert manual_doc["parameters"][0]["name"] == "environment"
     assert "qa" in manual_text
+    # The parameter value must be delivered via env:, never spliced directly
+    # into the script: text.
+    run_step = manual_doc["jobs"][0]["steps"][3]
+    assert run_step["env"] == {
+        "ENVIRONMENT": "${{ parameters.environment }}",
+        "SCENARIO": "${{ parameters.scenario }}",
+    }
+    assert '--environment "$ENVIRONMENT"' in manual_text
+    assert '--scenario "$SCENARIO"' in manual_text
+    assert "parameters.environment" not in run_step["script"]
 
     automated_text = automated_path.read_text(encoding="utf-8")
     automated_doc = yaml.safe_load(automated_text)

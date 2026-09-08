@@ -71,12 +71,15 @@ jobs:
       - name: Install project
         run: pip install -e .
       - name: Run performance wrapper
+        env:
+          ENVIRONMENT: ${{{{ github.event.inputs.environment }}}}
+          SCENARIO: ${{{{ github.event.inputs.scenario }}}}
         run: >
           pipeline-generator run
           --config customer.yaml
           --mode manual
-          --environment "${{{{ github.event.inputs.environment }}}}"
-          --scenario "${{{{ github.event.inputs.scenario }}}}"
+          --environment "$ENVIRONMENT"
+          --scenario "$SCENARIO"
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4

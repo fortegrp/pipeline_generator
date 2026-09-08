@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from pipeline_generator.generator.generic_model import GenericPipelinePackage
+from pipeline_generator.renderers.quoting import groovy_squote, safe_filename_component
 
 
 def render_jenkins(config: dict, package: GenericPipelinePackage, setup_dir: Path) -> list[str]:
@@ -17,7 +18,7 @@ def render_jenkins(config: dict, package: GenericPipelinePackage, setup_dir: Pat
 
     if package.automated_jobs:
         for job in package.automated_jobs:
-            automated_path = jenkins_dir / f"Jenkinsfile.performance-automated-{job.name}"
+            automated_path = jenkins_dir / f"Jenkinsfile.performance-automated-{safe_filename_component(job.name)}"
             automated_path.write_text(_render_automated_job(job), encoding="utf-8")
             outputs.append(str(automated_path))
 
@@ -27,10 +28,10 @@ def render_jenkins(config: dict, package: GenericPipelinePackage, setup_dir: Pat
 def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
     assert package.manual_pipeline is not None
     environment_choices = "\n".join(
-        f"                '{item.value}'," for item in package.manual_pipeline.inputs[0].options
+        f"                {groovy_squote(item.value)}," for item in package.manual_pipeline.inputs[0].options
     )
     scenario_choices = "\n".join(
-        f"                '{item.value}'," for item in package.manual_pipeline.inputs[1].options
+        f"                {groovy_squote(item.value)}," for item in package.manual_pipeline.inputs[1].options
     )
     timeout = package.manual_pipeline.timeout_minutes
     return f"""pipeline {{
@@ -62,7 +63,11 @@ def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
         }}
         stage('Run performance wrapper') {{
             steps {{
-                sh "pipeline-generator run --config customer.yaml --mode manual --environment ${{params.ENVIRONMENT}} --scenario ${{params.SCENARIO}}"
+                // Build parameters are exposed as shell environment variables by
+                // Jenkins; referencing them here (rather than Groovy-interpolating
+                // ${{params.X}} into the command text) avoids splicing a
+                // build-triggerer-controlled value directly into the shell script.
+                sh 'pipeline-generator run --config customer.yaml --mode manual --environment "$ENVIRONMENT" --scenario "$SCENARIO"'
             }}
         }}
     }}
@@ -78,6 +83,9 @@ def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
 def _render_automated_job(job) -> str:
     return f"""pipeline {{
     agent any
+    environment {{
+        AUTOMATED_JOB_NAME = {groovy_squote(job.name)}
+    }}
     options {{
         timeout(time: {job.timeout_minutes}, unit: 'MINUTES')
     }}
@@ -89,7 +97,7 @@ def _render_automated_job(job) -> str:
         }}
         stage('Run performance wrapper') {{
             steps {{
-                sh 'pipeline-generator run --config customer.yaml --mode automated --job {job.name}'
+                sh 'pipeline-generator run --config customer.yaml --mode automated --job "$AUTOMATED_JOB_NAME"'
             }}
         }}
     }}

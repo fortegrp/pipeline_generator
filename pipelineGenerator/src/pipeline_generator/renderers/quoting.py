@@ -21,6 +21,17 @@ def shell_quote(value: str) -> str:
     return shlex.quote(value)
 
 
+def groovy_squote(value: str) -> str:
+    """Render value as a single-quoted Groovy string literal, backslash/quote-escaped.
+
+    Groovy single-quoted strings do not interpolate (`$var`/`${...}` are
+    left literal), so escaping just backslashes and single quotes is
+    sufficient to make this safe to embed in a Jenkinsfile.
+    """
+    escaped = value.replace("\\", "\\\\").replace("'", "\\'")
+    return f"'{escaped}'"
+
+
 def safe_filename_component(value: str) -> str:
     """Sanitize a value for use as a single filesystem path segment.
 
