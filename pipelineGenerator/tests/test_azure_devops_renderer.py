@@ -12,9 +12,11 @@ def _config() -> dict:
     return {
         "setup": {"id": "azure-test-setup", "generation_mode": "both"},
         "cicd": {"type": "azure_devops"},
+        "tool": {"type": "jmeter", "connection": {"test_plan_path": "plan.jmx", "jmeter_bin": ""}},
+        "pre_run_checks": [],
         "catalog": {
-            "environments": [{"key": "qa", "name": "QA"}],
-            "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke"}],
+            "environments": [{"key": "qa", "name": "QA", "identifier": "env-qa"}],
+            "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "SC-1"}],
         },
         "manual_pipeline": {"enabled": True, "name": "Performance Manual Run", "timeout_minutes": 120},
         "automated_jobs": [
@@ -47,21 +49,26 @@ def test_render_azure_devops_writes_valid_pipelines(tmp_path: Path) -> None:
     assert "qa" in manual_text
     # The parameter value must be delivered via env:, never spliced directly
     # into the script: text.
-    run_step = manual_doc["jobs"][0]["steps"][3]
+    run_step = manual_doc["jobs"][0]["steps"][1]
     assert run_step["env"] == {
         "ENVIRONMENT": "${{ parameters.environment }}",
         "SCENARIO": "${{ parameters.scenario }}",
     }
+    assert "./scripts/run-jmeter.sh" in manual_text
     assert '--environment "$ENVIRONMENT"' in manual_text
     assert '--scenario "$SCENARIO"' in manual_text
     assert "parameters.environment" not in run_step["script"]
+    assert "pipeline-generator" not in manual_text
 
     automated_text = automated_path.read_text(encoding="utf-8")
     automated_doc = yaml.safe_load(automated_text)
     assert automated_doc["jobs"][0]["timeoutInMinutes"] == 60
-    # job identifiers get hyphens sanitized to underscores; the --job argument does not.
+    # job identifiers get hyphens sanitized to underscores.
     assert automated_doc["jobs"][0]["job"] == "post_deploy_smoke"
-    assert "--job post-deploy-smoke" in automated_text
+    assert "./scripts/run-jmeter.sh" in automated_text
+    assert "--environment qa" in automated_text
+    assert "--scenario checkout_smoke" in automated_text
+    assert "pipeline-generator" not in automated_text
 
 
 def test_render_azure_devops_escapes_adversarial_values(tmp_path: Path) -> None:
@@ -70,9 +77,11 @@ def test_render_azure_devops_escapes_adversarial_values(tmp_path: Path) -> None:
     config = {
         "setup": {"id": "azure-adversarial", "generation_mode": "both"},
         "cicd": {"type": "azure_devops"},
+        "tool": {"type": "jmeter", "connection": {"test_plan_path": "plan.jmx", "jmeter_bin": ""}},
+        "pre_run_checks": [],
         "catalog": {
-            "environments": [{"key": nasty_env_value, "name": "QA"}],
-            "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke"}],
+            "environments": [{"key": nasty_env_value, "name": "QA", "identifier": "env-nasty"}],
+            "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "SC-1"}],
         },
         "manual_pipeline": {"enabled": True, "name": "Performance Manual Run", "timeout_minutes": 30},
         "automated_jobs": [
@@ -110,4 +119,4 @@ def test_render_azure_devops_escapes_adversarial_values(tmp_path: Path) -> None:
     job_id = automated_doc["jobs"][0]["job"]
     assert re.match(r"^[A-Za-z0-9_]+$", job_id)
     assert not job_id[0].isdigit()
-    assert shell_quote(nasty_job_name) in automated_text
+    assert shell_quote(nasty_env_value) in automated_text
