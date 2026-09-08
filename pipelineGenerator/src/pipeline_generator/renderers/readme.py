@@ -4,6 +4,18 @@ from pipeline_generator.generator.generic_model import GenericPipelinePackage
 
 
 def render_setup_readme(config: dict, package: GenericPipelinePackage) -> str:
+    tool_type = config["tool"]["type"]
+    script_name = f"scripts/run-{tool_type}.sh"
+
+    todo_lines = [
+        "- Fill secret variable names in the generated pipeline files.",
+        "- Replace TODO placeholders in `customer.yaml`.",
+    ]
+    if tool_type in {"blazemeter", "loadrunner_professional"}:
+        todo_lines.append(f"- Fill in the actual API/controller call in `{script_name}` (marked with `# TODO`).")
+    else:
+        todo_lines.append("- Implement remote tool connectivity details required by the target customer.")
+
     lines = [
         f"# {package.setup_id}",
         "",
@@ -19,9 +31,7 @@ def render_setup_readme(config: dict, package: GenericPipelinePackage) -> str:
         "",
         "## Remaining TODOs",
         "",
-        "- Fill secret variable names in the generated pipeline files.",
-        "- Replace TODO placeholders in `customer.yaml`.",
-        "- Implement remote tool connectivity details required by the target customer.",
+        *todo_lines,
         "",
     ]
 
@@ -55,6 +65,7 @@ def render_setup_readme(config: dict, package: GenericPipelinePackage) -> str:
             "",
             "- `customer.yaml`: setup source of truth",
             "- generated pipeline files: CI/CD-specific assets",
+            f"- `{script_name}`: the script the generated pipeline calls to run the performance test",
             "- this README: setup guidance",
             "",
         ]

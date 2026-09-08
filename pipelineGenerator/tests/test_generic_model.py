@@ -1,3 +1,4 @@
+from pipeline_generator.config.placeholders import TODO_VALUE
 from pipeline_generator.generator.context import build_generic_package
 
 
@@ -42,3 +43,12 @@ def test_build_generic_package_carries_identifiers_and_tool_type() -> None:
         "--scenario",
         "checkout_smoke",
     ]
+
+
+def test_build_generic_package_defaults_missing_identifier_to_todo_placeholder() -> None:
+    config = _config()
+    del config["catalog"]["environments"][0]["identifier"]
+
+    package = build_generic_package(config)
+
+    assert package.environments[0].identifier == TODO_VALUE
