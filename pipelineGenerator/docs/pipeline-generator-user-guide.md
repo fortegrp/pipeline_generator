@@ -194,7 +194,7 @@ Only asked if Step 1's generation mode included the manual pipeline
 
 For a brand-new config, you're asked "Add environments now?" / "Add
 scenarios now?" (yes/no); saying no leaves the catalog empty for now (fine
-for a draft — see section 8).
+for a draft — see section 6).
 
 **If you're resuming a draft that already has entries**, the wizard shows
 what's there and asks what to do:
@@ -254,7 +254,7 @@ setup):
 
 ```yaml
 version: 1
-incomplete: false                 # false = "this is done"; see section 8
+incomplete: false                 # false = "this is done"; see section 6
 
 setup:
   id: acme-github-actions-loadrunner-professional-storefront
@@ -426,6 +426,12 @@ Step 4 is where the three tools currently differ:
   jmeter -n -t <test_plan_path> -l run-output/results.jtl -e -o run-output/report \
     -Jenvironment=<resolved environment identifier> -Jscenario=<resolved scenario identifier>
   ```
+
+  Note that JMeter parameterizes a single `.jmx` test plan via `-J`
+  properties rather than selecting between multiple plan files, so a
+  scenario's `identifier` should be a property value your test plan reads
+  with `${__P(scenario)}` (e.g. `checkout-smoke`) — not a filename. The
+  `.jmx` file itself is named once, in `tool.connection.test_plan_path`.
 
 - **BlazeMeter** and **LoadRunner Professional** — a template. The
   connection details from `tool.connection` (e.g. `base_url`/

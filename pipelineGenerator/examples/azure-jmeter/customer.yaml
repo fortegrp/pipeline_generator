@@ -34,7 +34,7 @@ catalog:
   scenarios:
     - key: qa_smoke
       name: QA Smoke
-      identifier: checkout.jmx
+      identifier: checkout-smoke
 pre_run_checks:
   - verify_scenario_exists
   - collect_results
