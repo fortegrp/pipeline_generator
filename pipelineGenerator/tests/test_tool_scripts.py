@@ -109,6 +109,26 @@ def test_render_blazemeter_script_is_a_template(tmp_path: Path) -> None:
     assert syntax_check.returncode == 0, syntax_check.stderr
 
 
+def test_render_template_script_rejects_pre_run_check_shell_injection(tmp_path: Path) -> None:
+    malicious_check = "verify_scenario_exists\n  touch /tmp/should-not-exist\n  #"
+    config = _base_config(
+        "blazemeter",
+        {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"},
+        checks=[malicious_check],
+    )
+    package = build_generic_package(config)
+
+    render_tool_script(config, package, tmp_path)
+
+    script_path = tmp_path / "scripts" / "run-blazemeter.sh"
+    content = script_path.read_text(encoding="utf-8")
+
+    assert "touch /tmp/should-not-exist" not in content
+
+    syntax_check = subprocess.run(["bash", "-n", str(script_path)], capture_output=True, text=True)
+    assert syntax_check.returncode == 0, syntax_check.stderr
+
+
 def test_render_loadrunner_professional_script_is_a_template(tmp_path: Path) -> None:
     config = _base_config(
         "loadrunner_professional",

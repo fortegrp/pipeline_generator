@@ -74,6 +74,18 @@ def validate_config(config: dict) -> ValidationResult:
     env_keys = {item.get("key") for item in environments}
     scenario_keys = {item.get("key") for item in scenarios}
 
+    for item in environments:
+        key = item.get("key")
+        display_key = "unknown" if is_placeholder(key) else key
+        if is_placeholder(item.get("identifier")):
+            result.warnings.append(f"catalog.environments.{display_key}.identifier is missing.")
+
+    for item in scenarios:
+        key = item.get("key")
+        display_key = "unknown" if is_placeholder(key) else key
+        if is_placeholder(item.get("identifier")):
+            result.warnings.append(f"catalog.scenarios.{display_key}.identifier is missing.")
+
     if manual_pipeline.get("enabled"):
         if not scenarios or not environments:
             result.warnings.append("Manual pipeline is enabled but environments or scenarios are missing.")

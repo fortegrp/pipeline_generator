@@ -3,8 +3,20 @@ from __future__ import annotations
 from pathlib import Path
 
 from pipeline_generator.config.placeholders import TODO_VALUE
+from pipeline_generator.config.schema import PRE_RUN_CHECKS
 from pipeline_generator.generator.generic_model import GenericPipelinePackage, InputOption
 from pipeline_generator.renderers.quoting import shell_quote
+
+
+def _allowed_pre_run_checks(config: dict) -> list[str]:
+    """Return only the pre_run_checks values that match the canonical enum.
+
+    config/validator.py does not validate pre_run_checks, so any string could
+    be present here. Values are rendered into generated scripts (in comments
+    or condition checks), so anything outside the known enum is dropped to
+    prevent shell injection via crafted strings (e.g. embedded newlines).
+    """
+    return [check for check in config.get("pre_run_checks", []) if check in PRE_RUN_CHECKS]
 
 
 def render_tool_script(config: dict, package: GenericPipelinePackage, setup_dir: Path) -> list[str]:
@@ -74,7 +86,7 @@ def _render_jmeter_script(config: dict, package: GenericPipelinePackage) -> str:
     connection = config.get("tool", {}).get("connection", {})
     test_plan_path = connection.get("test_plan_path") or TODO_VALUE
     jmeter_bin = connection.get("jmeter_bin") or "jmeter"
-    checks = config.get("pre_run_checks", [])
+    checks = _allowed_pre_run_checks(config)
 
     precheck = ""
     if "verify_scenario_exists" in checks:
@@ -110,7 +122,7 @@ fi
 def _render_template_script(
     config: dict, package: GenericPipelinePackage, tool_label: str, connection_vars: dict[str, str]
 ) -> str:
-    checks = config.get("pre_run_checks", [])
+    checks = _allowed_pre_run_checks(config)
     var_lines = "\n".join(f"  local {name.lower()}={shell_quote(value)}" for name, value in connection_vars.items())
     var_names = ", ".join(name.lower() for name in connection_vars)
     precheck_comments = "\n".join(
