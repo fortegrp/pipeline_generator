@@ -9,9 +9,11 @@ def _config() -> dict:
     return {
         "setup": {"id": "jenkins-test-setup", "generation_mode": "both"},
         "cicd": {"type": "jenkins"},
+        "tool": {"type": "jmeter", "connection": {"test_plan_path": "plan.jmx", "jmeter_bin": ""}},
+        "pre_run_checks": [],
         "catalog": {
-            "environments": [{"key": "qa", "name": "QA"}],
-            "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke"}],
+            "environments": [{"key": "qa", "name": "QA", "identifier": "env-qa"}],
+            "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "SC-1"}],
         },
         "manual_pipeline": {"enabled": True, "name": "Performance Manual Run", "timeout_minutes": 120},
         "automated_jobs": [
@@ -38,16 +40,19 @@ def test_render_jenkins_writes_manual_and_automated_jenkinsfiles(tmp_path: Path)
     assert str(automated_path) in outputs
 
     manual_content = manual_path.read_text(encoding="utf-8")
-    assert "pipeline-generator run --config customer.yaml --mode manual" in manual_content
+    assert "./scripts/run-jmeter.sh" in manual_content
     assert '--environment "$ENVIRONMENT" --scenario "$SCENARIO"' in manual_content
     assert "'qa'," in manual_content
     assert "'checkout_smoke'," in manual_content
     assert "timeout(time: 120, unit: 'MINUTES')" in manual_content
+    assert "pipeline-generator" not in manual_content
 
     automated_content = automated_path.read_text(encoding="utf-8")
-    assert "AUTOMATED_JOB_NAME = 'post-deploy-smoke'" in automated_content
-    assert '--mode automated --job "$AUTOMATED_JOB_NAME"' in automated_content
+    assert "ENVIRONMENT = 'qa'" in automated_content
+    assert "SCENARIO = 'checkout_smoke'" in automated_content
+    assert './scripts/run-jmeter.sh --environment "$ENVIRONMENT" --scenario "$SCENARIO"' in automated_content
     assert "timeout(time: 60, unit: 'MINUTES')" in automated_content
+    assert "pipeline-generator" not in automated_content
 
 
 def test_render_jenkins_escapes_adversarial_values(tmp_path: Path) -> None:
@@ -56,9 +61,11 @@ def test_render_jenkins_escapes_adversarial_values(tmp_path: Path) -> None:
     config = {
         "setup": {"id": "jenkins-adversarial", "generation_mode": "both"},
         "cicd": {"type": "jenkins"},
+        "tool": {"type": "jmeter", "connection": {"test_plan_path": "plan.jmx", "jmeter_bin": ""}},
+        "pre_run_checks": [],
         "catalog": {
-            "environments": [{"key": nasty_env_value, "name": "QA"}],
-            "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke"}],
+            "environments": [{"key": nasty_env_value, "name": "QA", "identifier": "env-nasty"}],
+            "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "SC-1"}],
         },
         "manual_pipeline": {"enabled": True, "name": "Performance Manual Run", "timeout_minutes": 30},
         "automated_jobs": [
@@ -88,13 +95,14 @@ def test_render_jenkins_escapes_adversarial_values(tmp_path: Path) -> None:
     # escaped single-quoted Groovy string, never able to close the `choice`
     # literal's quote early.
     assert groovy_squote(nasty_env_value) in manual_content
-    # The manual step must reference the shell-native env var, never splice
-    # a Jenkins parameter value directly into the command text.
     assert '--environment "$ENVIRONMENT" --scenario "$SCENARIO"' in manual_content
 
     jenkins_dir = tmp_path / "jenkins"
     automated_files = [p for p in jenkins_dir.iterdir() if p.name.startswith("Jenkinsfile.performance-automated-")]
     assert len(automated_files) == 1
     automated_content = automated_files[0].read_text(encoding="utf-8")
-    assert f"AUTOMATED_JOB_NAME = {groovy_squote(nasty_job_name)}" in automated_content
-    assert '--mode automated --job "$AUTOMATED_JOB_NAME"' in automated_content
+    # environment_ref (the adversarial value here) must be delivered via the
+    # environment{} block, Groovy-escaped, never spliced directly into the
+    # sh command text.
+    assert f"ENVIRONMENT = {groovy_squote(nasty_env_value)}" in automated_content
+    assert './scripts/run-jmeter.sh --environment "$ENVIRONMENT" --scenario "$SCENARIO"' in automated_content
