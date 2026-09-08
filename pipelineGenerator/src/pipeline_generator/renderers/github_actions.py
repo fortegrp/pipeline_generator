@@ -20,7 +20,7 @@ def render_github_actions(config: dict, package: GenericPipelinePackage, setup_d
     if package.automated_jobs:
         for job in package.automated_jobs:
             automated_path = workflow_dir / f"performance-automated-{safe_filename_component(job.name)}.yml"
-            automated_path.write_text(_render_automated_workflow(job), encoding="utf-8")
+            automated_path.write_text(_render_automated_workflow(job, package.tool_type), encoding="utf-8")
             outputs.append(str(automated_path))
 
     return outputs
@@ -65,19 +65,12 @@ jobs:
     timeout-minutes: {timeout}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install project
-        run: pip install -e .
       - name: Run performance wrapper
         env:
           ENVIRONMENT: ${{{{ github.event.inputs.environment }}}}
           SCENARIO: ${{{{ github.event.inputs.scenario }}}}
         run: >
-          pipeline-generator run
-          --config customer.yaml
-          --mode manual
+          ./scripts/run-{package.tool_type}.sh
           --environment "$ENVIRONMENT"
           --scenario "$SCENARIO"
       - name: Upload results
@@ -89,7 +82,7 @@ jobs:
 """
 
 
-def _render_automated_workflow(job) -> str:
+def _render_automated_workflow(job, tool_type: str) -> str:
     job_id = _safe_job_id(job.name)
     return f"""name: {yaml_dquote(f"Performance Automated Job - {job.name}")}
 
@@ -102,17 +95,11 @@ jobs:
     timeout-minutes: {job.timeout_minutes}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install project
-        run: pip install -e .
       - name: Run performance wrapper
         run: >
-          pipeline-generator run
-          --config customer.yaml
-          --mode automated
-          --job {shell_quote(job.name)}
+          ./scripts/run-{tool_type}.sh
+          --environment {shell_quote(job.environment_ref)}
+          --scenario {shell_quote(job.scenario_ref)}
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
