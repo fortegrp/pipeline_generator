@@ -79,3 +79,65 @@ def test_jmeter_resolver_uses_exact_match_not_glob(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "env-stg"
+
+
+def test_render_blazemeter_script_is_a_template(tmp_path: Path) -> None:
+    config = _base_config(
+        "blazemeter",
+        {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"},
+        checks=["verify_scenario_exists", "collect_results"],
+    )
+    package = build_generic_package(config)
+
+    outputs = render_tool_script(config, package, tmp_path)
+
+    script_path = tmp_path / "scripts" / "run-blazemeter.sh"
+    assert outputs == [str(script_path)]
+    assert script_path.stat().st_mode & 0o111 == 0o111
+
+    content = script_path.read_text(encoding="utf-8")
+    # shlex.quote leaves values with no shell-special characters unquoted --
+    # none of these three values contain any, so no quotes appear.
+    assert "local base_url=https://a.blazemeter.com" in content
+    assert "local workspace_id=12345" in content
+    assert "local project_id=67890" in content
+    assert "# TODO precheck: verify_scenario_exists" in content
+    assert "# TODO precheck: collect_results" in content
+    assert 'echo "ERROR: BlazeMeter execution is not implemented in this generated script yet." >&2' in content
+
+    syntax_check = subprocess.run(["bash", "-n", str(script_path)], capture_output=True, text=True)
+    assert syntax_check.returncode == 0, syntax_check.stderr
+
+
+def test_render_loadrunner_professional_script_is_a_template(tmp_path: Path) -> None:
+    config = _base_config(
+        "loadrunner_professional",
+        {
+            "controller_host": "lr.acme.local",
+            "controller_results_path": "C:\\Results",
+            "domain": "DEFAULT",
+            "project": "ACME",
+        },
+    )
+    package = build_generic_package(config)
+
+    outputs = render_tool_script(config, package, tmp_path)
+
+    script_path = tmp_path / "scripts" / "run-loadrunner_professional.sh"
+    assert outputs == [str(script_path)]
+
+    content = script_path.read_text(encoding="utf-8")
+    # shlex.quote only adds quotes when a value contains a shell-special
+    # character. "lr.acme.local", "DEFAULT", and "ACME" don't, so they come
+    # out bare; "C:\Results" contains a backslash, so it comes out quoted.
+    assert "local controller_host=lr.acme.local" in content
+    assert "local controller_results_path='C:\\Results'" in content
+    assert "local domain=DEFAULT" in content
+    assert "local project=ACME" in content
+    assert (
+        'echo "ERROR: LoadRunner Professional execution is not implemented in this generated script yet." >&2'
+        in content
+    )
+
+    syntax_check = subprocess.run(["bash", "-n", str(script_path)], capture_output=True, text=True)
+    assert syntax_check.returncode == 0, syntax_check.stderr
