@@ -41,14 +41,12 @@ pytest tests/test_validation.py::test_validation_warns_for_incomplete_base_confi
 
 There is no lint/format tooling configured in this project.
 
-Exercise the CLI directly (the four subcommands are `wizard`, `validate`, `generate`, `run`):
+Exercise the CLI directly (the three subcommands are `wizard`, `validate`, `generate`):
 
 ```bash
 pipeline-generator wizard --output setups/acme.yaml
 pipeline-generator validate --config setups/acme.yaml [--strict]
 pipeline-generator generate --config setups/acme.yaml --output-dir generated
-pipeline-generator run --config setups/acme.yaml --mode manual --environment qa --scenario checkout_smoke --dry-run
-pipeline-generator run --config setups/acme.yaml --mode automated --job post-deploy-smoke --dry-run
 ```
 
 `examples/{github,azure,jenkins}-{blazemeter,loadrunner,jmeter}/customer.yaml` are
@@ -59,8 +57,11 @@ manual testing instead of writing new configs from scratch.
 
 The tool's job: take one customer YAML config and turn it into a generated,
 setup-specific folder containing CI/CD pipeline files a customer can drop into
-their repo, plus a wrapper CLI (`pipeline-generator run`) those pipelines
-invoke to actually trigger a performance test.
+their repo, plus a `scripts/run-<tool_type>.sh` those pipelines invoke
+directly to actually trigger a performance test. `pipeline-generator` itself
+never executes anything — its job ends at `generate`; the generated script
+runs standalone, with no Python or `pipeline-generator` involved at
+execution time.
 
 Pipeline: **customer YAML → validate → generic pipeline model → CI/CD renderer → generated setup package**.
 
@@ -75,7 +76,9 @@ Pipeline: **customer YAML → validate → generic pipeline model → CI/CD rend
   that lets a config be a legitimate in-progress draft (`incomplete: true`)
   while still being loadable and partially useful, while a config that
   declares itself `incomplete: false` has that claim actually enforced by
-  `generate`/`run`.
+  `generate` (the only action left that calls it — `_blocks_action` still
+  takes an `action` label for its message, but `generate` is the only
+  caller now).
 - `wizard/` — interactive flow (`flow.py`) that builds/resumes a draft YAML
   using `merged_base_config`, so re-running the wizard against an existing
   file only fills in what's missing. `cli.py` refuses to touch an existing
@@ -116,32 +119,39 @@ Pipeline: **customer YAML → validate → generic pipeline model → CI/CD rend
   restriction is enforced only by its web UI, not its dispatch API, so
   splicing that value directly used to be a real, triggerable injection, not
   just a defense-in-depth concern.
-- `runtime/` — what the *generated* pipelines actually call
-  (`pipeline-generator run`). `orchestrator.py:run_execution` builds a run
-  request from the config (manual needs `--environment`/`--scenario`,
-  automated needs `--job` and looks up `environment_ref`/`scenario_ref` from
-  `automated_jobs`), then either writes a dry-run `execution-plan.json` or
-  drives a tool adapter through `run_prechecks → start_run →
-  wait_for_completion → collect_artifacts` and writes `summary.json`.
-- `adapters/` — `base.py` defines the `ToolAdapter` protocol and
-  `get_adapter(tool_type)` factory. `blazemeter.py`, `loadrunner_professional.py`,
-  and `jmeter.py` are all stubs: prechecks are stubbed as "planned", and
-  `start_run`/`wait_for_completion`/`collect_artifacts` all raise
-  `NotImplementedError`. Real execution for any of the three is not yet
-  implemented — only `--dry-run` currently produces real output for `run`.
-  Unlike the other two, JMeter runs locally (no remote API/credentials), so
-  its `tool.auth.type` is `none` and it needs no `SUPPORTED_TOOLS`-adjacent
-  remote-connection story — see `AUTH_TYPES` in `config/schema.py`.
+  `scripts.py:render_tool_script` writes the `scripts/run-<tool_type>.sh`
+  that the generated pipeline actually calls to trigger a test. It renders
+  two shell functions, `resolve_environment_identifier`/
+  `resolve_scenario_identifier`, one per catalog key, each an
+  `if [ "$1" = <key> ]; then echo <identifier>; return; fi` line —
+  deliberately exact-match string comparisons rather than a `case`
+  statement, since `case` patterns are shell globs and a catalog key
+  containing `*`/`?`/`[`/`]` (config-controlled, not validated as
+  glob-safe) would otherwise be able to match an environment/scenario key
+  it wasn't meant to. For `jmeter`, the rendered script is real: it resolves
+  the passed `--environment`/`--scenario` to their identifiers, optionally
+  checks the test plan file exists first (only if `verify_scenario_exists`
+  is in `pre_run_checks`), then runs
+  `jmeter -n -t <test_plan_path> -l run-output/results.jtl -e -o
+  run-output/report -Jenvironment=... -Jscenario=...` for real. For
+  `blazemeter` and `loadrunner_professional`, the script is a template, not
+  a stub: it's real, syntactically valid bash with the connection details
+  (`base_url`/`workspace_id`/`project_id`, or `controller_host`/
+  `controller_results_path`/`domain`/`project`) already filled in as
+  variables, remaining `pre_run_checks` listed as `# TODO precheck: ...`
+  comments, and it ends with
+  `echo "ERROR: <Tool> execution is not implemented in this generated
+  script yet." >&2` and `exit 1` — same honest not-done-yet stance the old
+  Python adapters had, just expressed as shell instead of
+  `NotImplementedError`. JMeter runs locally (no remote API/credentials), so
+  its `tool.auth.type` is `none` — see `AUTH_TYPES` in `config/schema.py`.
 
-`generate` and `run` both re-validate the config before doing anything
-(`cli.py` calls `validate_config` in every branch, then `_blocks_action()` —
-see the `config/` bullet above for the errors-vs-warnings rule). `run`'s own
-`ValueError`s (bad `--job`, missing `--environment`) and the adapters'
-`NotImplementedError` are not caught anywhere — they still surface as raw
-tracebacks; only the `wizard` command has clean error handling
-(`EOFError`/`KeyboardInterrupt`) so far.
+`generate` re-validates the config before doing anything (`cli.py` calls
+`validate_config`, then `_blocks_action()` — see the `config/` bullet above
+for the errors-vs-warnings rule). Only the `wizard` command has clean error
+handling (`EOFError`/`KeyboardInterrupt`) so far.
 
 See `docs/current-state-and-readiness-plan.md` for the full known-gaps list
 and multi-milestone readiness plan (stricter validation profiles, YAML-safe
-renderer output, real adapter implementations) if working on hardening this
-project further.
+renderer output, filling in the BlazeMeter/LoadRunner Professional script
+templates) if working on hardening this project further.

@@ -13,19 +13,31 @@ A Python scaffold for onboarding customer-specific performance testing setups an
   - GitHub Actions
   - Azure DevOps
   - Jenkins
-- Provides a runtime wrapper skeleton for:
-  - BlazeMeter
-  - LoadRunner Professional
-  - JMeter (local/self-hosted, not a SaaS tool — no remote auth needed)
+- Writes a `scripts/run-<tool>.sh` alongside each generated setup, which is
+  what the generated pipeline's "Run performance wrapper" step calls
+  directly:
+  - JMeter — a real, working script that runs `jmeter -n -t ...` against the
+    configured test plan.
+  - BlazeMeter and LoadRunner Professional — a real shell script with
+    connection details already filled in, but the actual API/controller call
+    is left as a `# TODO` for now (it exits 1 with a clear error until
+    someone fills that in).
+
+`pipeline-generator` itself never executes a performance test or contacts
+any of these tools — its job ends at generating files. The generated script
+is what actually runs, and it runs entirely independently of this tool
+(no Python, no `pipeline-generator` on `PATH`, at execution time).
 
 ## Status
 
 This is a scaffolded v1 foundation:
 
 - Wizard, validation, and generation are working
-- Runtime command flow and adapter interfaces are implemented
-- Actual execution for BlazeMeter, LoadRunner Professional, and JMeter is
-  still a TODO — all three adapters are scaffolded stubs
+- `generate` writes a real, working `scripts/run-jmeter.sh` for JMeter setups
+- BlazeMeter and LoadRunner Professional get a template script with
+  connection details filled in and the actual API/controller call left as a
+  `# TODO` — running it prints a clear "not implemented yet" error and exits
+  non-zero
 
 ## Install
 
@@ -70,26 +82,9 @@ Generate pipeline files and setup docs:
 pipeline-generator generate --config setups/acme-gha-loadrunner.yaml --output-dir generated
 ```
 
-Preview a runtime invocation without contacting tools:
-
-```bash
-pipeline-generator run \
-  --config setups/acme-gha-loadrunner.yaml \
-  --mode manual \
-  --environment qa \
-  --scenario checkout_smoke \
-  --dry-run
-```
-
-Preview an automated job invocation:
-
-```bash
-pipeline-generator run \
-  --config setups/acme-gha-loadrunner.yaml \
-  --mode automated \
-  --job post-deploy-smoke \
-  --dry-run
-```
+This is the last step — the generated `scripts/run-<tool>.sh` alongside the
+CI/CD files is what actually runs a performance test, and it's the generated
+pipeline (not `pipeline-generator`) that calls it.
 
 ## CLI Commands
 
@@ -138,26 +133,20 @@ Validation errors always block generation. Validation *warnings* block
 generation only when the config says `incomplete: false` — see
 [Draft vs. Complete Setups](#draft-vs-complete-setups-the-incomplete-flag).
 
-### `run`
-
-Trigger (or preview) a performance test run using a generated setup's
-config. This is also the command the generated pipeline files themselves
-invoke.
-
-```bash
-pipeline-generator run --config setups/acme.yaml --mode manual --environment qa --scenario checkout_smoke [--dry-run]
-pipeline-generator run --config setups/acme.yaml --mode automated --job post-deploy-smoke [--dry-run]
-```
-
-- `--mode` (required): `manual` or `automated`.
-- `--environment` / `--scenario`: required for `--mode manual`.
-- `--job`: required for `--mode automated`; must match a name in
-  `automated_jobs`.
-- `--dry-run`: write `run-output/execution-plan.json` describing what would
-  run, without contacting BlazeMeter/LoadRunner or the (not yet
-  implemented) tool adapters.
-
-Same warning-blocking rule as `generate` applies here.
+Generation is the tool's last step: it never triggers or contacts a
+performance test itself. Alongside the CI/CD files and `customer.yaml`,
+`generate` writes `scripts/run-<tool_type>.sh` — a real, executable script
+that the generated pipeline's "Run performance wrapper" step calls directly
+(e.g. `./scripts/run-jmeter.sh --environment "$ENVIRONMENT" --scenario
+"$SCENARIO"`). For JMeter this script actually resolves the environment/
+scenario to their catalog identifiers and runs `jmeter -n -t ...` for real.
+For BlazeMeter and LoadRunner Professional it's a template: connection
+details (base URL/workspace/project, or controller host/results path/
+domain/project) are filled in, configured pre-run checks are listed as
+`# TODO precheck: ...` comments, and it ends with a clear
+`echo "ERROR: <Tool> execution is not implemented in this generated script
+yet." >&2` and `exit 1` until someone fills in the actual API/controller
+call.
 
 ## Interactive Wizard
 
@@ -192,17 +181,16 @@ Every config has a top-level `incomplete: true|false` flag — the wizard sets
 it automatically based on whether required fields are still filled with
 `TODO`, and it can also be set by hand.
 
-- **`incomplete: true` (a draft):** `generate` and `run` only ever block on
-  hard **errors** (an unsupported `cicd.type`, `tool.type`, or
-  `auth.type`). Warnings — missing catalog entries, an automated job
-  pointing at an environment/scenario that doesn't exist yet, missing
-  connection details — are reported but never block anything. This is what
-  lets onboarding start before every detail is known.
+- **`incomplete: true` (a draft):** `generate` only ever blocks on hard
+  **errors** (an unsupported `cicd.type`, `tool.type`, or `auth.type`).
+  Warnings — missing catalog entries, an automated job pointing at an
+  environment/scenario that doesn't exist yet, missing connection details —
+  are reported but never block anything. This is what lets onboarding start
+  before every detail is known.
 - **`incomplete: false` (declared ready):** the same warnings now block
-  `generate` and `run` too, with a message telling you to either fix them
-  or flip the flag back to `true`. The idea is that marking a setup
-  complete is a promise the tool actually checks, instead of a label that
-  has no effect.
+  `generate` too, with a message telling you to either fix them or flip the
+  flag back to `true`. The idea is that marking a setup complete is a
+  promise the tool actually checks, instead of a label that has no effect.
 
 `validate` itself never blocks on warnings unless you pass `--strict`,
 regardless of `incomplete` — it's meant to be a cheap way to inspect a
@@ -217,6 +205,7 @@ generated/
   acme-gha-loadrunner-storefront/
     customer.yaml
     README.md
+    scripts/run-loadrunner_professional.sh
     .github/workflows/performance-manual.yml
     .github/workflows/performance-automated-<job-name>.yml
 ```
@@ -225,6 +214,11 @@ Azure DevOps setups render Azure Pipelines YAML under `azure/` instead, and
 Jenkins setups render declarative `Jenkinsfile.*` files under `jenkins/`
 instead — one file for the manual pipeline and one per enabled automated
 job, in each case.
+
+The `scripts/run-<tool_type>.sh` file is always present alongside those
+CI/CD files, regardless of platform, since every generated pipeline calls it
+the same way (`./scripts/run-<tool_type>.sh --environment "$ENVIRONMENT"
+--scenario "$SCENARIO"`).
 
 ## Config Shape
 
@@ -288,9 +282,9 @@ JMeter is local/self-hosted rather than a remote SaaS tool, so its
 
 ## Recommended Next Work
 
-- Implement real BlazeMeter API adapter methods
-- Implement remote Windows execution for LoadRunner Professional
-- Implement local JMeter subprocess execution (start_run/wait_for_completion/
-  collect_artifacts in `adapters/jmeter.py`)
+- Fill in the real BlazeMeter API call in the generated `run-blazemeter.sh`
+  template (`renderers/scripts.py`)
+- Fill in the real LoadRunner Professional controller call in the generated
+  `run-loadrunner_professional.sh` template
 - Add a GitLab CI renderer
 - Add non-interactive `generate` workflows around completed YAML inputs
