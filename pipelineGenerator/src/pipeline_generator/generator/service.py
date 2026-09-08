@@ -8,11 +8,16 @@ from pipeline_generator.renderers.azure_devops import render_azure_devops
 from pipeline_generator.renderers.github_actions import render_github_actions
 from pipeline_generator.renderers.jenkins import render_jenkins
 from pipeline_generator.renderers.readme import render_setup_readme
+from pipeline_generator.text_utils import slugify
 
 
 def generate_assets(config: dict, output_dir: Path) -> list[str]:
     package = build_generic_package(config)
-    setup_dir = output_dir / package.setup_id
+    # setup.id comes straight from the config file, which this tool's own
+    # customer_repo/central_repo model expects to be editable by less-trusted
+    # collaborators -- slugify it so a value like "../../etc" or an absolute
+    # path can't write outside output_dir.
+    setup_dir = output_dir / slugify(package.setup_id)
     setup_dir.mkdir(parents=True, exist_ok=True)
 
     save_config(setup_dir / "customer.yaml", config)

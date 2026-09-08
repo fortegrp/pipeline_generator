@@ -46,6 +46,17 @@ def test_render_github_actions_writes_valid_workflows(tmp_path: Path) -> None:
     assert manual_doc["jobs"]["run-performance-test"]["timeout-minutes"] == 120
     assert '"qa"' in manual_text
     assert '"checkout_smoke"' in manual_text
+    # The build-triggerer-controlled input must be delivered via env:, never
+    # spliced directly into the run: shell text (workflow_dispatch's `choice`
+    # restriction is only enforced by GitHub's UI, not its dispatch API).
+    step = manual_doc["jobs"]["run-performance-test"]["steps"][3]
+    assert step["env"] == {
+        "ENVIRONMENT": "${{ github.event.inputs.environment }}",
+        "SCENARIO": "${{ github.event.inputs.scenario }}",
+    }
+    assert '--environment "$ENVIRONMENT"' in manual_text
+    assert '--scenario "$SCENARIO"' in manual_text
+    assert "github.event.inputs" not in step["run"]
 
     automated_text = automated_path.read_text(encoding="utf-8")
     automated_doc = yaml.safe_load(automated_text)

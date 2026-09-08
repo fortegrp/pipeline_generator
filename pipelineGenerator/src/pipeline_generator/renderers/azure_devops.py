@@ -75,8 +75,11 @@ jobs:
           pipeline-generator run
           --config customer.yaml
           --mode manual
-          --environment ${{{{ parameters.environment }}}}
-          --scenario ${{{{ parameters.scenario }}}}
+          --environment "$ENVIRONMENT"
+          --scenario "$SCENARIO"
+        env:
+          ENVIRONMENT: ${{{{ parameters.environment }}}}
+          SCENARIO: ${{{{ parameters.scenario }}}}
         displayName: Run performance wrapper
       - task: PublishPipelineArtifact@1
         condition: always()

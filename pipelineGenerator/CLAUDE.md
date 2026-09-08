@@ -89,6 +89,12 @@ Pipeline: **customer YAML → validate → generic pipeline model → CI/CD rend
   representation of the manual pipeline (inputs, timeout, run command) and
   automated jobs. This indirection is what lets `renderers/` stay ignorant of
   the customer YAML shape — renderers only ever see the generic model.
+  `service.py:generate_assets` slugifies `setup.id` before using it as the
+  output directory name — `setup.id` comes from the config file, which this
+  tool's own `customer_repo` model expects a less-trusted collaborator to be
+  able to edit, so an unsanitized `../../etc` or absolute-path value would
+  otherwise write outside `--output-dir` entirely (pathlib's `/` discards
+  everything before an absolute right-hand operand).
 - `renderers/` — turn the generic model into platform-specific files:
   `github_actions.py` (writes `.github/workflows/`), `azure_devops.py` (writes
   `azure/`), `jenkins.py` (writes declarative `Jenkinsfile.*` files under
@@ -97,6 +103,19 @@ Pipeline: **customer YAML → validate → generic pipeline model → CI/CD rend
   adding a renderer here, and adding a branch in
   `generator/service.py:generate_assets` — the generic model itself doesn't
   need to change since renderers only consume `GenericPipelinePackage`.
+  `quoting.py` holds the escaping helpers all three renderers must route
+  every config-derived string through: `yaml_dquote`/`groovy_squote` for
+  values landing inside YAML/Groovy, `shell_quote` for values baked directly
+  into a shell command at generation time, and `safe_filename_component` for
+  anything used in an output filename. Values a platform resolves at
+  *runtime* from a build trigger (GitHub's `workflow_dispatch` inputs,
+  Azure's pipeline `parameters`, Jenkins' build `parameters`) get delivered
+  via an environment variable (`env:` step mapping, or an `environment {}`
+  block) and referenced as `"$VAR"` in the shell script, rather than spliced
+  into the command text via `${{ }}`/`${...}` — GitHub's `type: choice`
+  restriction is enforced only by its web UI, not its dispatch API, so
+  splicing that value directly used to be a real, triggerable injection, not
+  just a defense-in-depth concern.
 - `runtime/` — what the *generated* pipelines actually call
   (`pipeline-generator run`). `orchestrator.py:run_execution` builds a run
   request from the config (manual needs `--environment`/`--scenario`,

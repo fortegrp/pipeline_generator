@@ -402,40 +402,61 @@ The README example used `customer_repo` for `final_pipeline_destination`,
 which isn't a valid value (the schema only accepts `stay_in_central_repo` or
 `copy_to_customer_repo`). Fixed to use `copy_to_customer_repo`.
 
-### Renderer Output Uses Handwritten YAML Strings — Partially Resolved
+### `setup.id` Could Write Outside the Output Directory — Resolved
+
+`generate_assets()` built the generated setup's directory as
+`output_dir / config["setup"]["id"]` with no sanitization. `setup.id` comes
+straight from the config file being generated, and this tool's own
+`working_location: customer_repo` model explicitly expects that file to be
+authored/edited outside the central repo by a less-trusted collaborator — so
+a `setup.id` of `../../etc` (relative traversal) or an absolute path (which
+`pathlib`'s `/` operator resolves by discarding everything before it) let
+`generate` write files anywhere on disk the invoking process had permission
+to reach, entirely outside `--output-dir`. Fixed by slugifying `setup.id`
+(the same `slugify()` already used for wizard-generated setup ids) before
+using it as a path segment, confirmed by
+`test_generate_assets_confines_relative_traversal_to_output_dir` and
+`test_generate_assets_ignores_absolute_setup_id` in
+`tests/test_generate_assets_path_safety.py` (both reproduce the escape
+against the pre-fix code before asserting the fix holds).
+
+### Renderer Output Uses Handwritten YAML Strings — Resolved
 
 Renderers build output through f-strings, which used to embed user-controlled
 values (job names, pipeline names, environment/scenario values) completely
-unescaped — a stray `"`, `:`, or shell metacharacter in any of those could
-produce invalid YAML or, worse, get interpreted literally inside a shell
-`run:`/`script:` step.
+unescaped — a stray `"`, `:`, `'`, or shell metacharacter in any of those
+could produce invalid YAML/Groovy or, worse, get interpreted literally inside
+a shell `run:`/`script:`/`sh` step.
 
-GitHub Actions and Azure DevOps renderers now route every embedded value
-through `renderers/quoting.py`: `yaml_dquote()` (JSON-string escaping, a
-valid subset of YAML double-quoted scalar syntax) for values that land inside
-YAML, `shell_quote()` (`shlex.quote`) for values that land inside a shell
-command, and `safe_filename_component()`/per-platform job-id sanitizers so a
+All three renderers now route every embedded value through
+`renderers/quoting.py`: `yaml_dquote()` (JSON-string escaping, a valid subset
+of YAML double-quoted scalar syntax) for values inside YAML, `groovy_squote()`
+for values inside a Jenkinsfile's Groovy strings, `shell_quote()`
+(`shlex.quote`) for values baked directly into a shell command at generation
+time, and `safe_filename_component()`/per-platform job-id sanitizers so a
 hostile job name can't produce a path-traversing filename or an invalid job
-identifier. Covered by adversarial-input tests
+identifier. Covered by adversarial-input tests per renderer
 (`test_render_github_actions_escapes_adversarial_values`,
-`test_render_azure_devops_escapes_adversarial_values`) that feed in values
+`test_render_azure_devops_escapes_adversarial_values`,
+`test_render_jenkins_escapes_adversarial_values`) that feed in values
 containing quotes, colons, semicolons, spaces, and `../` sequences and assert
-the output still parses as valid YAML with the values round-tripping intact.
+the output still parses/round-trips correctly.
 
-Still open:
-
-- The Jenkins renderer (added after this plan was written) has not received
-  the same treatment — its Groovy string interpolation is still raw f-string
-  substitution.
-- The GitHub Actions `${{ github.event.inputs.* }}` and Azure DevOps
-  `${{ parameters.* }}` expressions in the `run:`/`script:` steps are
-  resolved by the platform via compile-time text substitution, which is a
-  known injection vector on both platforms if the substituted value isn't
-  constrained. Today it's constrained to the declared `choice`/`values` list
-  we render (itself now safely quoted), so this is a defense-in-depth gap
-  rather than an active hole, but the fully-hardened version would swap to
-  runtime variable interpolation (`$(parameters.x)` / an `env:` indirection)
-  instead of compile-time template expressions.
+A second, distinct class of risk was also closed: the GitHub Actions manual
+workflow's `${{ github.event.inputs.* }}` and the Azure DevOps manual
+pipeline's `${{ parameters.* }}` (and Jenkins' `${params.X}`) used to be
+spliced directly into the `run:`/`script:`/`sh` text as compile-time template
+expressions. This was a confirmed, exploitable gap on GitHub Actions
+specifically: `workflow_dispatch`'s `type: choice` restriction is enforced
+only by GitHub's web UI, not by the dispatch REST/CLI API — so anyone able to
+trigger the workflow via API could pass an arbitrary string for
+`--environment`/`--scenario`, bypassing the "it's constrained to our declared
+choices" assumption entirely and getting it spliced straight into the shell
+command. All three renderers now deliver these values via an environment
+variable (`env:` on GitHub Actions/Azure DevOps steps, an `environment {}`
+block or Jenkins' auto-exported build parameters for Jenkins) and reference
+them as `"$VAR"` in the shell script instead, so the value is delivered as
+data rather than re-parsed as command text.
 
 ### Adapter Implementations Are Stubs
 
@@ -697,9 +718,12 @@ Tasks:
       the generated YAML/asserts the generated Groovy's key values).
 - [x] 7. Harden GitHub Actions rendering (safe YAML quoting via
       `renderers/quoting.py`, job-id sanitization, safe filenames, shell
-      quoting for CLI args — see "Renderer Output Uses Handwritten YAML
-      Strings" below for what's still open).
+      quoting for CLI args, and `env:`-indirection for the runtime
+      `workflow_dispatch` input values — see "Renderer Output Uses
+      Handwritten YAML Strings" below).
 - [x] 8. Harden Azure DevOps rendering (same treatment as GitHub Actions).
+      Jenkins received the same treatment separately (not one of the
+      original 14 items, since Jenkins support was added afterward).
 - [ ] 9. Improve generated README content.
 - [ ] 10. Implement JMeter adapter (local subprocess call — lowest effort of
       the three since it needs no remote API or credentials).
