@@ -7,7 +7,6 @@ from pathlib import Path
 from pipeline_generator.config.loader import load_config
 from pipeline_generator.config.validator import ValidationResult, validate_config
 from pipeline_generator.generator.service import generate_assets
-from pipeline_generator.runtime.orchestrator import run_execution
 from pipeline_generator.wizard.flow import run_wizard
 
 
@@ -31,14 +30,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path("generated"),
         help="Directory where generated setup packages are created.",
     )
-
-    run_parser = subparsers.add_parser("run", help="Run or preview a configured performance test.")
-    run_parser.add_argument("--config", type=Path, required=True)
-    run_parser.add_argument("--mode", choices=["manual", "automated"], required=True)
-    run_parser.add_argument("--environment", help="Environment key for manual runs.")
-    run_parser.add_argument("--scenario", help="Scenario key for manual runs.")
-    run_parser.add_argument("--job", help="Automated job name.")
-    run_parser.add_argument("--dry-run", action="store_true", help="Print the execution plan without contacting remote tools.")
 
     return parser
 
@@ -98,30 +89,9 @@ def main() -> int:
             print(output)
         return 0
 
-    if args.command == "run":
-        config = load_config(args.config)
-        result = validate_config(config)
-        if _blocks_action(result, config, "run"):
-            return 1
-        try:
-            execution = run_execution(
-                config,
-                mode=args.mode,
-                environment=args.environment,
-                scenario=args.scenario,
-                job_name=args.job,
-                dry_run=args.dry_run,
-            )
-        except (ValueError, NotImplementedError) as exc:
-            print(f"Run failed: {exc}")
-            return 1
-        print(json.dumps(execution, indent=2))
-        return 0
-
     parser.error("Unknown command")
     return 2
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
