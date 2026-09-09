@@ -41,12 +41,14 @@ no assumption about where the CI job runs.
 
 ### `tool.connection` for `blazemeter`
 
-Unchanged: `base_url`, `workspace_id`, `project_id` remain exactly as they
-are today. `workspace_id` is *not* consumed by any API call this design
-makes (BlazeMeter's v4 API addresses projects and tests directly by their
-own IDs, not through a workspace-scoped path) — it stays in the config as
-existing, pre-this-task data, documented as informational/reserved rather
-than silently dropped or silently used-but-unexplained.
+Unchanged shape: `base_url`, `workspace_id`, `project_id` remain exactly
+the fields they are today — but `workspace_id` moves from unused to
+actually consumed: `verify_project_exists` becomes a workspace-scoped
+lookup (`GET /api/v4/projects/$project_id?workspaceId=$workspace_id`),
+catching a misconfigured `project_id` that exists but belongs to a
+*different* workspace than the one configured, not just "does this
+project ID exist at all." See "Known Verification Gaps" for the caveat on
+this specific query-parameter shape.
 
 ### Secrets
 
@@ -187,6 +189,7 @@ rename — it is not optional cleanup.
 def _render_blazemeter_script(config: dict, package: GenericPipelinePackage) -> str:
     connection = config.get("tool", {}).get("connection", {})
     base_url = connection.get("base_url") or TODO_VALUE
+    workspace_id = connection.get("workspace_id") or TODO_VALUE
     project_id = connection.get("project_id") or TODO_VALUE
     checks = _allowed_pre_run_checks(config)
 
@@ -203,9 +206,9 @@ def _render_blazemeter_script(config: dict, package: GenericPipelinePackage) -> 
     if "verify_project_exists" in checks:
         project_check = """
   project_status=$(curl -s -o /dev/null -w "%{http_code}" -u "$BLAZEMETER_API_KEY_ID:$BLAZEMETER_API_KEY_SECRET" \\
-    "$base_url/api/v4/projects/$project_id")
+    "$base_url/api/v4/projects/$project_id?workspaceId=$workspace_id")
   if [ "$project_status" != "200" ]; then
-    echo "ERROR: BlazeMeter project not found or inaccessible: $project_id (HTTP $project_status)" >&2
+    echo "ERROR: BlazeMeter project not found in workspace, or inaccessible: project $project_id, workspace $workspace_id (HTTP $project_status)" >&2
     exit 1
   fi
 """
@@ -248,6 +251,7 @@ main() {{
   : "${{BLAZEMETER_API_KEY_SECRET:?BLAZEMETER_API_KEY_SECRET must be set}}"
 
   local base_url={shell_quote(base_url)}
+  local workspace_id={shell_quote(workspace_id)}
   local project_id={shell_quote(project_id)}
 {host_check}{project_check}{scenario_check}{precheck_comments}
   local environment_slug
@@ -305,12 +309,16 @@ fi
 
 Notes:
 
-- `base_url`/`project_id` are rendered via `shell_quote` exactly like every
-  other config-derived value in this file.
+- `base_url`/`workspace_id`/`project_id` are rendered via `shell_quote`
+  exactly like every other config-derived value in this file.
 - Each of the three prechecks (`verify_host_reachable`,
   `verify_project_exists`, `verify_scenario_exists`) only runs when
   configured in `pre_run_checks` — same "gated, not unconditional" rule
   the LoadRunner work established and the final review verified.
+  `verify_project_exists` is workspace-scoped (`?workspaceId=$workspace_id`
+  on the projects lookup), so it validates that `project_id` exists *and*
+  belongs to the configured `workspace_id`, not just that the ID exists
+  under any workspace the API key can see.
 - Any other configured-but-unhandled check (currently only
   `verify_controller_access`/`verify_load_generators_connected`, which
   don't apply to BlazeMeter, plus `collect_results`) renders a
@@ -516,7 +524,9 @@ LoadRunner:
 
 - Content assertions on the rendered script (correct `curl`/`jq` command
   shapes, correct env var guard lines, correct gating of each of the three
-  prechecks) plus `bash -n` syntax checks.
+  prechecks) plus `bash -n` syntax checks. Specifically confirms
+  `verify_project_exists`'s query includes `?workspaceId=$workspace_id`,
+  not just `project_id` alone.
 - A test proving `--timeout-minutes` is required and parsed correctly at
   the script-rendering level, and that JMeter's and LoadRunner's existing
   arg-parsing-related test assertions are completely unaffected (the
@@ -586,10 +596,19 @@ README, rather than silently assumed correct:
   behind a login-gated API explorer this design couldn't access).
 - The `reports/main/summary` endpoint used for the final artifact is
   likewise best-understanding, not independently verified.
-- Both should be confirmed against a real BlazeMeter account (or updated
-  API documentation) before this script is relied on for a production
-  test run, the same "honest not-done-yet" stance already applied to
-  `wlrun`'s documented exit-code unreliability.
+- The workspace-scoped project lookup's exact query-parameter shape
+  (`?workspaceId=$workspace_id` on `GET /api/v4/projects/$project_id`) is
+  also best-understanding rather than confirmed against current API
+  documentation — if the real parameter name or semantics differ,
+  `verify_project_exists` would need adjusting, but the failure mode is
+  contained (a wrong parameter name most likely means BlazeMeter ignores
+  it and the check silently stops being workspace-scoped, still correctly
+  validating "project exists," rather than the script misbehaving or
+  reaching the wrong project).
+- All three should be confirmed against a real BlazeMeter account (or
+  updated API documentation) before this script is relied on for a
+  production test run, the same "honest not-done-yet" stance already
+  applied to `wlrun`'s documented exit-code unreliability.
 
 ## Rejected Alternatives
 
