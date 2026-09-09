@@ -12,7 +12,12 @@ def render_setup_readme(config: dict, package: GenericPipelinePackage) -> str:
         "- Replace TODO placeholders in `customer.yaml`.",
     ]
     if tool_type == "blazemeter":
-        todo_lines.append(f"- Fill in the actual API/controller call in `{script_name}` (marked with `# TODO`).")
+        todo_lines.append(
+            "- Set `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET` as secrets for the generated "
+            f"pipeline. The status-string vocabulary and report endpoint in `{script_name}` are our "
+            "best understanding of the BlazeMeter API v4 -- verify against a live account before "
+            "relying on this in production."
+        )
     elif tool_type == "loadrunner_professional":
         todo_lines.append(
             "- This pipeline's CI/CD job must run on an agent co-located with the LoadRunner "
