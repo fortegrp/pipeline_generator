@@ -138,24 +138,32 @@ Pipeline: **customer YAML → validate → generic pipeline model → CI/CD rend
   dedicated agent co-located with the LoadRunner Controller (so
   `wlrun.exe` is already on the box) and runs `wlrun -Run -TestPath
   <scenario_identifier> -ResultName
-  run-output/<environment_key>_<scenario_key>` — since `wlrun` has no
+  run-output/<environment_slug>_<scenario_slug>` — since `wlrun` has no
   native "environment" parameter, a scenario's catalog `identifier` is a
   full `.lrs` file path (customers author one catalog scenario entry per
   environment/scenario combination they have a file for), and the
   environment only names the results folder. `wlrun`'s exit code is known
   to be unreliable on some LoadRunner versions (can return 0 on a failed
   scenario); nonzero is still treated as failure as the best local signal
-  available. For `blazemeter`, the script remains a template, not a stub:
-  it's real, syntactically valid bash with the connection details
-  (`base_url`/`workspace_id`/`project_id`) already filled in as variables,
-  remaining `pre_run_checks` listed as `# TODO precheck: ...` comments, and
-  it ends with
-  `echo "ERROR: BlazeMeter execution is not implemented in this generated
-  script yet." >&2` and `exit 1` — same honest not-done-yet stance the old
-  Python adapters had, just expressed as shell instead of
-  `NotImplementedError`. JMeter and LoadRunner Professional both run
-  locally/on-agent (no remote API credentials managed by this script), so
-  their `tool.auth.type` is `none` — see `AUTH_TYPES` in `config/schema.py`.
+  available (this results-folder path uses `resolve_environment_slug`/
+  `resolve_scenario_slug`, sanitized via `safe_filename_component`, not the
+  raw catalog keys — a hostile key otherwise escapes `run-output/`).
+  `blazemeter` is also real: it authenticates via `BLAZEMETER_API_KEY_ID`/
+  `BLAZEMETER_API_KEY_SECRET` (Basic Auth), optionally checks the host is
+  reachable / the project exists / the test exists
+  (`verify_host_reachable`/`verify_project_exists`/`verify_scenario_exists`
+  — BlazeMeter has its own precheck vocabulary in `PRE_RUN_CHECKS`, distinct
+  from LoadRunner's controller-flavored one), starts the test via
+  `POST /api/v4/tests/$scenario_identifier/start`, polls
+  `GET /api/v4/masters/$master_id/status` bounded by a `--timeout-minutes`
+  flag (BlazeMeter-only; the other two tools' generated invocations are
+  unaffected), and downloads a summary report on success. The exact
+  status-string vocabulary and report endpoint are flagged in the script's
+  own comments as best-understanding, pending verification against a live
+  account. JMeter and LoadRunner Professional both run locally/on-agent (no
+  remote API credentials managed by this script), so their `tool.auth.type`
+  is `none`; BlazeMeter's stays `api_token` — see `AUTH_TYPES` in
+  `config/schema.py`.
 
 `generate` re-validates the config before doing anything (`cli.py` calls
 `validate_config`, then `_blocks_action()` — see the `config/` bullet above
@@ -164,5 +172,5 @@ handling (`EOFError`/`KeyboardInterrupt`) so far.
 
 See `docs/current-state-and-readiness-plan.md` for the full known-gaps list
 and multi-milestone readiness plan (stricter validation profiles, YAML-safe
-renderer output, filling in the BlazeMeter script template) if working on
-hardening this project further.
+renderer output) if working on hardening this project further — all three
+tools' generated scripts are now real, working execution.

@@ -45,14 +45,14 @@ that isn't a `pipeline-generator` command at all:
   --scenario "$SCENARIO"`). It's a plain bash script with no dependency on
   `pipeline-generator` or Python at all, so it runs the same way whether the
   CI/CD platform's job that calls it happens to have this tool installed or
-  not. For JMeter and LoadRunner Professional it's real and complete — it
-  resolves the environment/scenario to their catalog identifiers and
-  actually runs `jmeter`/`wlrun`. For BlazeMeter it's a template —
-  connection details are filled in, but the actual API call is left as a
-  `# TODO`, so running it today prints a clear error and exits non-zero
-  (section 10 has the details). You can also run it by hand from a checkout
-  of the generated setup, without going through the CI/CD platform, to test
-  it before committing anything.
+  not. All three tools are real and complete: JMeter and LoadRunner
+  Professional resolve the environment/scenario to their catalog
+  identifiers and run `jmeter`/`wlrun` directly; BlazeMeter authenticates
+  and drives BlazeMeter's own REST API (section 10 has the details for all
+  three, including two known limitations neither LoadRunner nor BlazeMeter
+  has fully closed yet). You can also run any of them by hand from a
+  checkout of the generated setup, without going through the CI/CD
+  platform, to test before committing anything.
 
 ## 2. Prerequisites and Installation
 
@@ -234,11 +234,16 @@ resuming. For each new job you enter:
 
 ### Step 8 — Pre-run checks
 
-One screen listing four checks (`verify_controller_access`,
+One screen listing the checks applicable to whichever tool you picked in
+Step 2 — JMeter sees 2 (`verify_scenario_exists`, `collect_results`);
+LoadRunner Professional sees 4 (`verify_controller_access`,
 `verify_scenario_exists`, `verify_load_generators_connected`,
-`collect_results`). Type comma-separated numbers to select specific ones,
-`all`, `none`, or just press Enter to keep whatever was already
-enabled (useful when resuming).
+`collect_results`); BlazeMeter sees 4 different ones
+(`verify_host_reachable`, `verify_project_exists`, `verify_scenario_exists`,
+`collect_results`) — BlazeMeter's real failure modes don't match
+LoadRunner's controller-flavored vocabulary, so it gets its own. Type
+comma-separated numbers to select specific ones, `all`, `none`, or just
+press Enter to keep whatever was already enabled (useful when resuming).
 
 ### After Step 8
 
@@ -453,17 +458,19 @@ Step 4 is where the three tools currently differ:
   versions (it can return 0 even on a failed scenario); nonzero is still
   treated as failure since it's the best signal available locally.
 
-- **BlazeMeter** — a template. The connection details from
-  `tool.connection` (`base_url`/`workspace_id`/`project_id`) are already
-  filled in as shell variables, any configured `pre_run_checks` are listed
-  as `# TODO precheck: ...` comments, and the script ends with:
-
-  ```
-  ERROR: BlazeMeter execution is not implemented in this generated script yet.
-  Fill in the API call using the variables above.
-  ```
-
-  then exits 1. See section 10 for what's needed to finish it for real.
+- **BlazeMeter** — real, working execution. If configured,
+  `verify_host_reachable` checks `base_url` responds at all;
+  `verify_project_exists` checks the configured `project_id` exists inside
+  `workspace_id`; `verify_scenario_exists` checks the configured test ID
+  exists — each an authenticated BlazeMeter API call except the first. Then
+  it requires `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET` to be set,
+  starts the test via `POST /api/v4/tests/<id>/start`, polls
+  `GET /api/v4/masters/<id>/status` every 15 seconds until it finishes
+  (bounded by a required `--timeout-minutes` flag the generated pipeline
+  always passes), and downloads a summary report into
+  `run-output/<environment>_<scenario>/summary.json`. See section 10 for
+  the two API-surface details flagged as needing verification against a
+  live account.
 
 Bad input (missing `--environment`/`--scenario`, an unrecognized key) is
 reported as a plain one-line message on stderr with a non-zero exit code,
@@ -518,19 +525,19 @@ and archive `run-output/**` as build artifacts.
 ## 10. Performance Testing Tools
 
 The config schema, wizard prompts, and validation all work end-to-end for
-all three tools, and `generate` writes a `scripts/run-<tool_type>.sh` for
-each — but they aren't all equally finished:
+all three tools, and `generate` writes a real, working
+`scripts/run-<tool_type>.sh` for each:
 
-- **JMeter and LoadRunner Professional are real, working execution.** The
-  generated script resolves the environment/scenario and runs `jmeter -n -t
-  <test_plan_path> ...` or `wlrun -Run -TestPath <scenario_identifier> ...`
-  for real, with no further work needed. LoadRunner Professional assumes
-  the CI job runs on an agent co-located with the LoadRunner Controller —
-  see `docs/superpowers/specs/
+- **JMeter and LoadRunner Professional.** The generated script resolves
+  the environment/scenario and runs `jmeter -n -t <test_plan_path> ...` or
+  `wlrun -Run -TestPath <scenario_identifier> ...` for real, with no
+  further work needed. LoadRunner Professional assumes the CI job runs on
+  an agent co-located with the LoadRunner Controller — see
+  `docs/superpowers/specs/
   2026-09-09-loadrunner-local-agent-execution-design.md` for the full
   design and why other execution strategies (SSH/WinRM remoting, LoadRunner
-  Enterprise's REST API) were rejected. **Important:** the generated CI/CD
-  pipeline files themselves currently target a hosted runner/pool by
+  Enterprise's REST API) were rejected. **Known limitation:** the generated
+  CI/CD pipeline files themselves currently target a hosted runner/pool by
   default (`ubuntu-latest` for GitHub Actions, a Microsoft-hosted pool for
   Azure DevOps) — none of these can run `wlrun`. Before a LoadRunner
   Professional setup will actually work, you must hand-edit the generated
@@ -538,22 +545,25 @@ each — but they aren't all equally finished:
   Controller (Jenkins' `agent any` is closest to workable already, but
   still needs a Windows-capable shell step). This retargeting isn't
   automated yet — see the generated setup README's "Remaining TODOs".
-- **BlazeMeter is a template, not a stub.** The generated script is real,
-  syntactically valid bash — connection details are filled in,
-  `pre_run_checks` are listed as `# TODO precheck: ...` comments — but the
-  actual API call is left undone: it prints
-  `ERROR: BlazeMeter execution is not implemented in this generated script
-  yet.` and exits 1. Finishing it means editing that `# TODO` block in the
-  generated script (or, upstream, `renderers/scripts.py`'s
-  `_render_template_script`) to make the real call. This is tracked at the
-  top of the project's readiness roadmap (see
-  `docs/current-state-and-readiness-plan.md`).
+- **BlazeMeter.** The generated script authenticates via
+  `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET`, optionally verifies
+  host reachability / project existence / test existence, starts a test
+  through BlazeMeter's REST API v4, polls until it finishes (bounded by a
+  required `--timeout-minutes` flag), and downloads a summary report — see
+  `docs/superpowers/specs/
+  2026-09-09-blazemeter-real-api-execution-design.md` for the full design.
+  **Known limitation:** the exact status-string vocabulary
+  (`ENDED`/`ERROR`/`ABORTED`) and the `reports/main/summary` endpoint are
+  this design's best understanding of the BlazeMeter API v4, not
+  independently verified against current live documentation (which sits
+  behind a login-gated API explorer) — verify against a real account
+  before production use.
 
-| Tool | Auth model | Connection fields | Generated script |
-|---|---|---|---|
-| **LoadRunner Professional** | `none` (runs on a controller-adjacent agent) | optional `wlrun_path` | Real and complete — runs `wlrun` locally; no remote credentials managed by this script. |
-| **BlazeMeter** | Remote (`api_token`, etc.) | `base_url`, `workspace_id`, `project_id` | Template — API-driven; no execution-strategy decision blocks it. |
-| **JMeter** | `none` (runs locally) | `test_plan_path`, optional `jmeter_bin` | Real and complete — no remote API or credentials needed, just a local `jmeter` subprocess call. |
+| Tool | Auth model | Connection fields | Precheck vocabulary | Generated script |
+|---|---|---|---|---|
+| **LoadRunner Professional** | `none` (runs on a controller-adjacent agent) | optional `wlrun_path` | `verify_controller_access`, `verify_scenario_exists`, `verify_load_generators_connected` (TODO comment only), `collect_results` | Real and complete — runs `wlrun` locally; no remote credentials managed by this script; needs a self-hosted runner (see above). |
+| **BlazeMeter** | Remote (`api_token`) | `base_url`, `workspace_id`, `project_id` | `verify_host_reachable`, `verify_project_exists`, `verify_scenario_exists`, `collect_results` (TODO comment only) | Real and complete — drives BlazeMeter's REST API; needs `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET` set; two API-surface details need live-account verification (see above). |
+| **JMeter** | `none` (runs locally) | `test_plan_path`, optional `jmeter_bin` | `verify_scenario_exists`, `collect_results` (TODO comment only) | Real and complete — no remote API or credentials needed, just a local `jmeter` subprocess call. |
 
 ## 11. Validating Configs
 
@@ -583,10 +593,12 @@ pipeline-generator wizard --output setups/acme-bm.yaml
 #    Step 4: base_url=https://a.blazemeter.com, workspace_id=12345,
 #            project_id=67890
 #    Step 5: enabled=yes, name="Acme BlazeMeter Manual Run", timeout=180
-#    Step 6: add environments (qa), add scenarios (checkout_smoke)
+#    Step 6: add environments (qa), add scenarios (checkout_smoke_qa,
+#            identifier = the real BlazeMeter Test ID, e.g. 1234567)
 #    Step 7: add one automated job: post-deploy-smoke, env=qa,
-#            scenario=checkout_smoke, timeout=60
-#    Step 8: enable verify_scenario_exists, collect_results
+#            scenario=checkout_smoke_qa, timeout=60
+#    Step 8: enable verify_host_reachable, verify_project_exists,
+#            verify_scenario_exists, collect_results
 #    -> wizard prints a summary and validation result, then exits
 
 # 2. Check it's actually ready to hand off
@@ -599,15 +611,19 @@ pipeline-generator validate --config setups/acme-bm.yaml
 pipeline-generator generate --config setups/acme-bm.yaml --output-dir generated
 # -> generated/github-actions-blazemeter-storefront/ now contains
 #    customer.yaml, README.md, scripts/run-blazemeter.sh, and
-#    .github/workflows/*.yml
+#    .github/workflows/*.yml (the workflow already passes --timeout-minutes
+#    60 automatically for the automated job, 180 for the manual pipeline)
 
 # 4. Sanity-check the generated script locally before handing off
 cd generated/github-actions-blazemeter-storefront
-./scripts/run-blazemeter.sh --environment qa --scenario checkout_smoke
-# -> resolves qa/checkout_smoke to their catalog identifiers, then exits
-#    with "ERROR: BlazeMeter execution is not implemented in this
-#    generated script yet." — this is the template case (section 10);
-#    the API/controller call itself still needs to be filled in.
+export BLAZEMETER_API_KEY_ID=... BLAZEMETER_API_KEY_SECRET=...
+./scripts/run-blazemeter.sh --environment qa --scenario checkout_smoke_qa --timeout-minutes 60
+# -> resolves qa/checkout_smoke_qa to their catalog identifiers, checks jq
+#    is available, requires the two env vars above, runs the configured
+#    prechecks, then starts the real BlazeMeter test and polls it to
+#    completion -- or fails with a specific error (missing secret, host
+#    unreachable, project/test not found, or timeout) rather than the old
+#    "not implemented yet" message.
 
 # 5. Hand off generated/github-actions-blazemeter-storefront/ to Acme,
 #    or commit it into their repo directly, per whatever
@@ -631,12 +647,22 @@ The job's `environment_ref`/`scenario_ref` doesn't match any `key` under
 wizard's Step 7, this shouldn't happen (refs are chosen from the catalog);
 it's more likely if you hand-edited the YAML.
 
-**"ERROR: BlazeMeter execution is not implemented in this generated script
-yet."**
-You ran the generated `scripts/run-blazemeter.sh`. It's a template
-(section 10) — the connection details are filled in, but the actual API
-call is left as a `# TODO` in the script for someone to implement.
-JMeter's and LoadRunner Professional's generated scripts have no such gap.
+**"ERROR: BLAZEMETER_API_KEY_ID must be set" / "... BLAZEMETER_API_KEY_SECRET must be set"**
+The generated `scripts/run-blazemeter.sh` needs both env vars set before
+it will make any API call — set them as CI/CD secrets (see the generated
+setup README).
+
+**"ERROR: cannot reach BlazeMeter host: ..." / "... project not found ..." / "... test not found ..."**
+One of BlazeMeter's configured prechecks
+(`verify_host_reachable`/`verify_project_exists`/`verify_scenario_exists`)
+failed — check `base_url`/`workspace_id`/`project_id` in `customer.yaml`
+and the catalog scenario's `identifier` (must be a real BlazeMeter Test
+ID), or that the API key has access to that workspace/project.
+
+**"ERROR: Timed out after N minutes waiting for BlazeMeter test to finish"**
+The test didn't reach `ENDED` status within `--timeout-minutes` (set from
+`timeout_minutes` in `customer.yaml`) — check the run in the BlazeMeter
+web UI, or increase the timeout.
 
 **"ERROR: wlrun not found: ..."**
 The generated `scripts/run-loadrunner_professional.sh` couldn't find the
@@ -665,9 +691,13 @@ before the cancellation.
 
 Worth knowing going in:
 
-- **No real execution yet for BlazeMeter.** JMeter's and LoadRunner
-  Professional's generated scripts are real and complete; BlazeMeter's is
-  a template whose API call is still a `# TODO` (section 10).
+- **BlazeMeter's exact API surface is unverified against live
+  documentation.** The status-string vocabulary and report endpoint are
+  this design's best understanding of the BlazeMeter API v4 (section 10)
+  — verify against a real account before relying on this in production.
+- **LoadRunner Professional's generated pipelines need manual
+  runner-retargeting.** They default to hosted runners that can't reach a
+  LoadRunner Controller (section 10) — this isn't automated yet.
 - **Renderer output is escaped/safe, but not schema-validated beyond
   YAML/Groovy syntax.** A generated workflow will parse correctly and won't
   let a hostile config value break out of its intended context, but the

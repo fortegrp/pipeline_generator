@@ -15,11 +15,10 @@ rules.
 At the current stage, the project is strongest as a generator for CI/CD setup
 packages. `pipeline-generator` never executes a performance test itself — its
 job ends at `generate`, which now writes a `scripts/run-<tool_type>.sh`
-alongside the CI/CD files. That script is real, working execution for JMeter
-and LoadRunner Professional (the latter assumes the CI job runs on an agent
-co-located with the LoadRunner Controller); for BlazeMeter it's a template
-with connection details filled in but the actual remote API call still a
-`# TODO`.
+alongside the CI/CD files. That script is real, working execution for all
+three supported tools: JMeter, LoadRunner Professional (which assumes the CI
+job runs on an agent co-located with the LoadRunner Controller), and
+BlazeMeter (which calls BlazeMeter's REST API directly).
 
 The readiness plan in this document is intended to strengthen the original
 idea, not replace it. In particular, the project should continue to support
@@ -43,8 +42,8 @@ Implemented:
 - Jenkins renderer.
 - Generated setup README.
 - A generated `scripts/run-<tool_type>.sh` per setup, written alongside the
-  CI/CD files — real, working execution for JMeter and LoadRunner
-  Professional; a filled-in-but-TODO template for BlazeMeter.
+  CI/CD files — real, working execution for all three supported tools
+  (JMeter, LoadRunner Professional, BlazeMeter).
 - Example customer configs for the supported CI/CD and tool combinations.
 - Renderer tests for all three CI/CD platforms (GitHub Actions and Azure
   DevOps tests also parse the generated YAML to catch syntax breakage).
@@ -57,16 +56,15 @@ Implemented:
 
 Not implemented yet:
 
-- The real BlazeMeter API call in the generated `run-blazemeter.sh`
-  template's `# TODO` block.
-- Real pre-run checks beyond JMeter's/LoadRunner Professional's
-  `verify_scenario_exists` and LoadRunner Professional's
-  `verify_controller_access` (every other configured check, for every
-  tool, is currently only a `# TODO precheck: ...` comment in the
-  BlazeMeter template, or — for LoadRunner's
-  `verify_load_generators_connected` — in its own real script, since it
-  needs Controller-side load-generator host-status querying with no local
-  CLI equivalent).
+- Real pre-run checks beyond what's already implemented per tool (JMeter's
+  `verify_scenario_exists`; LoadRunner Professional's
+  `verify_controller_access`/`verify_scenario_exists`; BlazeMeter's
+  `verify_host_reachable`/`verify_project_exists`/`verify_scenario_exists`)
+  — every other configured check, for every tool, is currently only a
+  `# TODO precheck: ...` comment (LoadRunner's
+  `verify_load_generators_connected` needs Controller-side load-generator
+  host-status querying with no local CLI equivalent; `collect_results`'
+  meaning is still an open question — see below).
 - Robust generated YAML/Groovy escaping and validation (the renderers still
   build output via unescaped f-strings; the new renderer tests catch
   accidental syntax breakage but don't guard against a customer value like a
@@ -100,21 +98,21 @@ The config model currently supports:
 - `jmeter` — local/self-hosted rather than a remote SaaS tool; typically
   paired with `tool.auth.type: none` and a `test_plan_path` connection field.
 
-`generate` writes a `scripts/run-<tool_type>.sh` for every setup, but the
-three tools aren't equally finished. JMeter's and LoadRunner Professional's
-generated scripts are both real, working execution: JMeter resolves the
+`generate` writes a `scripts/run-<tool_type>.sh` for every setup, and all
+three tools are now equally real, working execution. JMeter resolves the
 environment/scenario to their catalog identifiers and runs a real
-`jmeter -n -t ...` subprocess (no remote API or credentials needed);
+`jmeter -n -t ...` subprocess (no remote API or credentials needed).
 LoadRunner Professional does the same resolution and runs a real
 `wlrun -Run -TestPath ...` subprocess, assuming the CI job runs on an agent
 co-located with the LoadRunner Controller (see
 `docs/superpowers/specs/2026-09-09-loadrunner-local-agent-execution-design.md`).
-BlazeMeter's generated script is a template, not a stub: real,
-syntactically valid bash with connection details already filled in as
-variables and configured pre-run checks listed as `# TODO precheck: ...`
-comments, but the actual remote API call is left undone — the script
-prints a clear `"... execution is not implemented in this generated script
-yet."` and exits non-zero until someone fills that part in.
+BlazeMeter authenticates via `BLAZEMETER_API_KEY_ID`/
+`BLAZEMETER_API_KEY_SECRET`, starts a test through BlazeMeter's REST API v4,
+polls until it finishes (bounded by a BlazeMeter-only `--timeout-minutes`
+flag), and downloads a summary report (see
+`docs/superpowers/specs/2026-09-09-blazemeter-real-api-execution-design.md`
+for the design, including which parts of the API surface are flagged as
+best-understanding pending verification against a live account).
 
 ### Authentication Types
 
@@ -285,13 +283,14 @@ from a checkout of the generated setup.
   full `.lrs` file path), optionally checks `wlrun_path` resolves to a
   runnable command and/or the `.lrs` file exists (`verify_controller_access`
   / `verify_scenario_exists`), then runs `wlrun -Run -TestPath
-  <scenario_identifier> -ResultName run-output/<environment_key>_
-  <scenario_key>` for real.
-- For **BlazeMeter**, it's a template: real, syntactically valid bash with
-  connection details already filled in as variables and remaining
-  `pre_run_checks` listed as `# TODO precheck: ...` comments, ending with
-  `echo "ERROR: BlazeMeter execution is not implemented in this generated
-  script yet." >&2` and `exit 1`.
+  <scenario_identifier> -ResultName run-output/<environment_slug>_
+  <scenario_slug>` for real.
+- For **BlazeMeter**, it's also real and complete: it optionally checks the
+  host is reachable / the project exists / the test exists
+  (`verify_host_reachable`/`verify_project_exists`/`verify_scenario_exists`),
+  then starts a test via `POST /api/v4/tests/<id>/start`, polls
+  `GET /api/v4/masters/<id>/status` until it finishes (bounded by
+  `--timeout-minutes`), and downloads a summary report.
 
 There is no more `incomplete`-flag warning check at this stage — that check
 only ever ran at `generate` time, before the script was written; the script
@@ -390,14 +389,15 @@ whatever machine the CI/CD job executes on:
      runnable and/or the resolved `.lrs` scenario file exists (if
      `verify_controller_access`/`verify_scenario_exists` are configured),
      then run `wlrun -Run -TestPath ...` for real.
-   - **BlazeMeter**: print each remaining configured pre-run check as a
-     `# TODO precheck: ...` comment (they are not executed), then print a
-     clear "not implemented in this generated script yet" error and exit 1
-     — the API call itself is not yet written.
+   - **BlazeMeter**: optionally verify the host is reachable / the project
+     exists / the test exists (`verify_host_reachable`/
+     `verify_project_exists`/`verify_scenario_exists`), then start, poll,
+     and download a summary report for real.
 
-Current limitation: the BlazeMeter script stops before calling any remote
-API — see "BlazeMeter Script Is a Template, Not an Adapter" below for what's
-needed to finish it.
+All three tools now call a real remote/local execution path — see
+"BlazeMeter and LoadRunner Real Execution" below for the two remaining
+known limitations neither script has closed yet (a CI/CD runner-targeting
+gap for LoadRunner, and unverified API-surface assumptions for BlazeMeter).
 
 ## Current Examples
 
@@ -507,13 +507,13 @@ block or Jenkins' auto-exported build parameters for Jenkins) and reference
 them as `"$VAR"` in the shell script instead, so the value is delivered as
 data rather than re-parsed as command text.
 
-### BlazeMeter Script Is a Template, Not an Adapter — Partially Resolved
+### BlazeMeter and LoadRunner Real Execution — Resolved
 
 This gap used to be about Python `ToolAdapter` stubs (`adapters/`) that
 defined the right shape but raised `NotImplementedError` for every tool. That
 whole adapter/runtime subsystem has been deleted; there is no more Python
 execution layer at all. In its place, `generate` writes a
-`scripts/run-<tool_type>.sh` per setup:
+`scripts/run-<tool_type>.sh` per setup, and all three are now real:
 
 - **JMeter is real, working execution** — resolved. The generated script
   resolves the environment/scenario and runs a real `jmeter -n -t <plan> -l
@@ -524,33 +524,35 @@ execution layer at all. In its place, `generate` writes a
   It assumes the CI job runs on a dedicated agent co-located with the
   LoadRunner Controller, resolves the environment/scenario the same way
   JMeter does, and runs `wlrun -Run -TestPath <scenario_identifier>
-  -ResultName run-output/<environment_key>_<scenario_key>` for real. A
+  -ResultName run-output/<environment_slug>_<scenario_slug>` for real. A
   scenario's catalog `identifier` is a full `.lrs` file path rather than a
   remote name, since `wlrun` has no native "environment" parameter —
   customers author one catalog scenario entry per environment/scenario
   combination they have a file for. `wlrun`'s exit code is known to be
   unreliable on some LoadRunner versions/configurations (can return 0 on a
   failed scenario); nonzero is still treated as failure as the best local
-  signal available.
-- **BlazeMeter remains unimplemented**, but as a template rather than a
-  stub: the generated script is real, syntactically valid bash with
-  connection details already filled in as variables and configured
-  pre-run checks listed as `# TODO precheck: ...` comments — it just stops
-  short of the actual API call, printing a clear `"... execution is not
-  implemented in this generated script yet."` and exiting 1.
-
-Risk:
-
-- The generated pipeline calls `./scripts/run-blazemeter.sh` directly, and
-  that call will always fail with the "not implemented yet" error until
-  someone fills in the template.
-
-Recommended change:
-
-- Fill in the BlazeMeter template, directly in `renderers/scripts.py`'s
-  `_render_template_script` (or by hand-editing the generated script for a
-  one-off setup). It's API-driven, so no open execution-strategy decision
-  blocks it the way LoadRunner's did.
+  signal available. **Known limitation**: the generated CI/CD pipeline
+  files default to hosted runners (`ubuntu-latest`, a Microsoft-hosted
+  Azure pool) that can't run `wlrun` — a customer must hand-retarget the
+  generated pipeline to a self-hosted, controller-adjacent agent before
+  this actually works (see the user guide's section 10 caveat and
+  "Recommended Next Work" above for the follow-up).
+- **BlazeMeter is also real, working execution** — resolved (see
+  `docs/superpowers/specs/
+  2026-09-09-blazemeter-real-api-execution-design.md` for the design). It
+  authenticates via `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET`,
+  optionally checks host reachability / project existence / test existence
+  (`verify_host_reachable`/`verify_project_exists`/`verify_scenario_exists`
+  — its own precheck vocabulary, distinct from LoadRunner's
+  controller-flavored one), starts a test via
+  `POST /api/v4/tests/<id>/start`, polls
+  `GET /api/v4/masters/<id>/status` bounded by a `--timeout-minutes` flag,
+  and downloads a summary report on success. **Known limitation**: the
+  exact status-string vocabulary and report endpoint are this design's
+  best understanding of the BlazeMeter API v4, not independently verified
+  against current live documentation (which sits behind a login-gated API
+  explorer) — flagged in the script's own comments and the generated
+  setup README; confirm against a real account before production use.
 
 ### Test Coverage Is Minimal
 
@@ -698,34 +700,22 @@ Tasks:
 
 Milestone 2 used to be framed around implementing Python `ToolAdapter`
 subclasses. There is no more Python adapter layer — the implementation
-surface for everything below is now `renderers/scripts.py` (JMeter and
-LoadRunner Professional have their own real renderer functions;
-BlazeMeter still uses the generic `_render_template_script` template-stub
-helper). JMeter's and LoadRunner Professional's generated scripts are
-already real and complete (`[x]`, see the Recommended Implementation
-Order list below) — the remaining work here is entirely BlazeMeter.
+surface for everything below is now `renderers/scripts.py`, and all three
+tools have their own real renderer function (`_render_jmeter_script`,
+`_render_loadrunner_script`, `_render_blazemeter_script`). All three
+tools' generated scripts are now real and complete (`[x]`, see the
+Recommended Implementation Order list below).
 
-### 1. Fill In the BlazeMeter Script Template
+### 1. Fill In the BlazeMeter Script Template — Resolved
 
-Goals:
-
-- Make the generated `scripts/run-blazemeter.sh` actually run BlazeMeter
-  tests, in place of its current `# TODO`/`exit 1`.
-
-Tasks:
-
-- Implement API authentication in the generated script (or in a small
-  helper it sources).
-- Resolve workspace, project, and test identifiers (the script already has
-  `base_url`/`workspace_id`/`project_id` filled in as variables).
-- Start a test run.
-- Poll run status.
-- Handle timeouts.
-- Download reports and artifacts into `run-output/`.
-- Produce a normalized result output (see task 4 below).
-- Add tests that exercise the generated script against a mocked/fake
-  BlazeMeter API.
-- Document required secrets and network access.
+Resolved: the generated script authenticates via `BLAZEMETER_API_KEY_ID`/
+`BLAZEMETER_API_KEY_SECRET`, resolves the workspace/project/test
+identifiers already filled in as variables, starts a test run, polls
+status bounded by a `--timeout-minutes` flag, and downloads a summary
+report into `run-output/`. See `docs/superpowers/specs/
+2026-09-09-blazemeter-real-api-execution-design.md` for the full design.
+Automated tests against a mocked/fake BlazeMeter API remain open — see
+"Recommended Implementation Order" item 14.
 
 ### 2. Define LoadRunner Execution Strategy — Resolved
 
@@ -752,8 +742,12 @@ Tasks:
   (checks `wlrun_path` resolves to a runnable command).
 - [x] `verify_scenario_exists` is implemented for LoadRunner Professional
   (checks the resolved `.lrs` scenario file exists before running).
-- Implement `verify_controller_access`/`verify_scenario_exists` for
-  BlazeMeter (currently `# TODO precheck: ...` comments only).
+- [x] `verify_host_reachable` is implemented for BlazeMeter (a plain
+  network-level `curl` reachability check against `base_url`).
+- [x] `verify_project_exists` is implemented for BlazeMeter (an
+  authenticated, workspace-scoped `GET /api/v4/projects/<id>` call).
+- [x] `verify_scenario_exists` is implemented for BlazeMeter (an
+  authenticated `GET /api/v4/tests/<id>` call).
 - Implement `verify_load_generators_connected` in the generated LoadRunner
   Professional script (currently a `# TODO precheck: ...` comment only —
   needs Controller-side load-generator host-status querying with no local
@@ -809,25 +803,33 @@ Tasks:
       original 14 items, since Jenkins support was added afterward).
 - [ ] 9. Improve generated README content.
 - [x] 10. Replace the Python runtime/adapter subsystem with a generated
-      `scripts/run-<tool_type>.sh` per setup, real for JMeter (local
-      subprocess call — needed no remote API or credentials, as predicted)
-      and a filled-in-but-TODO template for BlazeMeter/LoadRunner
-      Professional (see `docs/superpowers/plans/
-      2026-09-08-generator-only-tool-scripts.md` for how this was done).
-- [ ] 11. Fill in the real API call in the generated
-      `run-blazemeter.sh` template.
+      `scripts/run-<tool_type>.sh` per setup — real for JMeter immediately
+      (local subprocess call — needed no remote API or credentials, as
+      predicted); BlazeMeter and LoadRunner Professional initially got a
+      stub with connection details filled in and a `# TODO` left for the
+      actual execution call, made real by items 11-13 below (see
+      `docs/superpowers/plans/
+      2026-09-08-generator-only-tool-scripts.md` for how the initial split
+      was done).
+- [x] 11. Fill in the real API call in the generated
+      `run-blazemeter.sh` script (see `docs/superpowers/specs/
+      2026-09-09-blazemeter-real-api-execution-design.md`).
 - [x] 12. Decide the LoadRunner Professional execution strategy (a
       dedicated agent co-located with the controller, calling `wlrun`
       directly) and fill in the real call in the generated
       `run-loadrunner_professional.sh` script (see
       `docs/superpowers/specs/
       2026-09-09-loadrunner-local-agent-execution-design.md`).
-- [ ] 13. Replace the remaining `# TODO precheck: ...` comments in the
-      BlazeMeter template with real checks (LoadRunner Professional's
-      `verify_controller_access`/`verify_scenario_exists` are now real;
-      `verify_load_generators_connected` remains a `# TODO precheck: ...`
-      comment for LoadRunner too, since it needs Controller-side
-      load-generator host-status querying with no local CLI equivalent).
+- [x] 13. Replace the `# TODO precheck: ...` comments with real checks for
+      every tool that has an applicable vocabulary (JMeter's
+      `verify_scenario_exists`; LoadRunner Professional's
+      `verify_controller_access`/`verify_scenario_exists`; BlazeMeter's
+      `verify_host_reachable`/`verify_project_exists`/
+      `verify_scenario_exists`). `verify_load_generators_connected` remains
+      a `# TODO precheck: ...` comment for LoadRunner, since it needs
+      Controller-side load-generator host-status querying with no local
+      CLI equivalent — there is no BlazeMeter analog for this check at all
+      (it isn't in BlazeMeter's precheck vocabulary).
 - [ ] 14. Add tests that exercise the generated scripts against
       mocked/fake remote systems.
 - [ ] 15. Publish an internal release candidate.
@@ -849,20 +851,28 @@ when:
 The BlazeMeter and LoadRunner Professional generated scripts can be
 considered ready for executing tests when:
 
-- [x] At least one of the two can start and run a test for real — resolved:
-  LoadRunner Professional's generated script now runs `wlrun` directly
-  against a controller-adjacent agent. BlazeMeter's remains a template.
-- Failed runs produce clear summary output (neither JMeter's nor
-  LoadRunner's generated script writes one yet — see Milestone 2 item 4,
-  "Normalize Runtime Output").
-- Timeout and partial artifact cases are handled (LoadRunner relies
-  entirely on the CI job's own timeout and `wlrun`'s own exit code, same as
-  JMeter; no script-level timeout/retry logic exists for either).
-- Secrets and credentials are documented — N/A for LoadRunner (it manages
-  no remote credentials at all, same as JMeter); still open for BlazeMeter.
+- [x] All three generated scripts can start and run a test for real —
+  resolved: JMeter and LoadRunner Professional run their tool directly;
+  BlazeMeter drives its REST API. LoadRunner's real-world usability still
+  depends on a CI/CD runner-targeting hand-edit (see "Recommended Next
+  Work" above); BlazeMeter's API-surface assumptions still need
+  verification against a live account (see "BlazeMeter and LoadRunner
+  Real Execution" above).
+- Failed runs produce clear summary output (JMeter and LoadRunner don't
+  write one yet; BlazeMeter now writes `summary.json`/`report_link.json`
+  into its per-invocation results folder — see Milestone 2 item 4,
+  "Normalize Runtime Output", for making this consistent across all three).
+- Timeout and partial artifact cases are handled (LoadRunner and JMeter
+  rely entirely on the CI job's own timeout and the tool's own exit code;
+  BlazeMeter has its own script-level `--timeout-minutes` poll bound, the
+  first of the three tools to have one).
+- Secrets and credentials are documented — N/A for JMeter/LoadRunner (they
+  manage no remote credentials at all); BlazeMeter's
+  `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET` are documented in the
+  generated setup README.
 - The generated script's real-execution behavior is covered by automated
-  tests using mocks or test doubles (still open for both — "Recommended
-  Implementation Order" item 14).
+  tests using mocks or test doubles (still open for all three — see
+  "Recommended Implementation Order" item 14).
 
 ## Immediate Next Steps
 
