@@ -59,7 +59,7 @@ def _render_resolvers(package: GenericPipelinePackage) -> str:
     return f"{environment_resolver}\n\n{scenario_resolver}"
 
 
-def _render_loadrunner_slug_resolvers(package: GenericPipelinePackage) -> str:
+def _render_slug_resolvers(package: GenericPipelinePackage) -> str:
     environment_slugs = [
         InputOption(value=item.value, display_name=item.display_name, identifier=safe_filename_component(item.value))
         for item in package.environments
@@ -75,19 +75,29 @@ def _render_loadrunner_slug_resolvers(package: GenericPipelinePackage) -> str:
     return f"{environment_slug_resolver}\n\n{scenario_slug_resolver}"
 
 
-def _render_arg_parsing() -> str:
-    return """  local environment_key=""
+def _render_arg_parsing(include_timeout: bool = False) -> str:
+    timeout_local = ""
+    timeout_case = ""
+    timeout_required_check = ""
+    timeout_usage = ""
+    if include_timeout:
+        timeout_local = '  local timeout_minutes=""\n'
+        timeout_case = '      --timeout-minutes) timeout_minutes="$2"; shift 2 ;;\n'
+        timeout_required_check = ' || [ -z "$timeout_minutes" ]'
+        timeout_usage = ' --timeout-minutes <minutes>'
+
+    return f"""  local environment_key=""
   local scenario_key=""
-  while [ $# -gt 0 ]; do
+{timeout_local}  while [ $# -gt 0 ]; do
     case "$1" in
       --environment) environment_key="$2"; shift 2 ;;
       --scenario) scenario_key="$2"; shift 2 ;;
-      *) echo "Unknown argument: $1" >&2; exit 1 ;;
+{timeout_case}      *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
   done
 
-  if [ -z "$environment_key" ] || [ -z "$scenario_key" ]; then
-    echo "Usage: $0 --environment <key> --scenario <key>" >&2
+  if [ -z "$environment_key" ] || [ -z "$scenario_key" ]{timeout_required_check}; then
+    echo "Usage: $0 --environment <key> --scenario <key>{timeout_usage}" >&2
     exit 1
   fi
 
@@ -113,6 +123,11 @@ def _render_jmeter_script(config: dict, package: GenericPipelinePackage) -> str:
   fi
 """
 
+    remaining_checks = [check for check in checks if check != "verify_scenario_exists"]
+    precheck_comments = "\n".join(f"  # TODO precheck: {check}" for check in remaining_checks)
+    if precheck_comments:
+        precheck_comments = f"\n{precheck_comments}\n"
+
     return f"""#!/usr/bin/env bash
 set -euo pipefail
 
@@ -124,7 +139,7 @@ main() {{
 
   local test_plan_path={shell_quote(test_plan_path)}
   local jmeter_bin={shell_quote(jmeter_bin)}
-{precheck}
+{precheck}{precheck_comments}
   "$jmeter_bin" -n -t "$test_plan_path" -l run-output/results.jtl -e -o run-output/report \\
     -Jenvironment="$environment_identifier" -Jscenario="$scenario_identifier"
 }}
@@ -220,7 +235,7 @@ set -euo pipefail
 
 {_render_resolvers(package)}
 
-{_render_loadrunner_slug_resolvers(package)}
+{_render_slug_resolvers(package)}
 
 main() {{
 {_render_arg_parsing()}
