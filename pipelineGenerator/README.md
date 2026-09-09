@@ -18,10 +18,12 @@ A Python scaffold for onboarding customer-specific performance testing setups an
   directly:
   - JMeter — a real, working script that runs `jmeter -n -t ...` against the
     configured test plan.
-  - BlazeMeter and LoadRunner Professional — a real shell script with
-    connection details already filled in, but the actual API/controller call
-    is left as a `# TODO` for now (it exits 1 with a clear error until
-    someone fills that in).
+  - LoadRunner Professional — a real, working script that runs `wlrun -Run
+    -TestPath ...` locally, assuming the CI job runs on an agent co-located
+    with the LoadRunner Controller.
+  - BlazeMeter — a real shell script with connection details already filled
+    in, but the actual API call is left as a `# TODO` for now (it exits 1
+    with a clear error until someone fills that in).
 
 `pipeline-generator` itself never executes a performance test or contacts
 any of these tools — its job ends at generating files. The generated script
@@ -33,11 +35,13 @@ is what actually runs, and it runs entirely independently of this tool
 This is a scaffolded v1 foundation:
 
 - Wizard, validation, and generation are working
-- `generate` writes a real, working `scripts/run-jmeter.sh` for JMeter setups
-- BlazeMeter and LoadRunner Professional get a template script with
-  connection details filled in and the actual API/controller call left as a
-  `# TODO` — running it prints a clear "not implemented yet" error and exits
-  non-zero
+- `generate` writes a real, working `scripts/run-jmeter.sh` for JMeter
+  setups and `scripts/run-loadrunner_professional.sh` for LoadRunner
+  Professional setups (assumes the CI job runs on an agent co-located with
+  the LoadRunner Controller)
+- BlazeMeter gets a template script with connection details filled in and
+  the actual API call left as a `# TODO` — running it prints a clear "not
+  implemented yet" error and exits non-zero
 
 ## Install
 
@@ -140,13 +144,18 @@ that the generated pipeline's "Run performance wrapper" step calls directly
 (e.g. `./scripts/run-jmeter.sh --environment "$ENVIRONMENT" --scenario
 "$SCENARIO"`). For JMeter this script actually resolves the environment/
 scenario to their catalog identifiers and runs `jmeter -n -t ...` for real.
-For BlazeMeter and LoadRunner Professional it's a template: connection
-details (base URL/workspace/project, or controller host/results path/
-domain/project) are filled in, configured pre-run checks are listed as
-`# TODO precheck: ...` comments, and it ends with a clear
-`echo "ERROR: <Tool> execution is not implemented in this generated script
-yet." >&2` and `exit 1` until someone fills in the actual API/controller
-call.
+LoadRunner Professional is also real: it assumes the CI job runs on a
+dedicated agent co-located with the LoadRunner Controller, resolves
+`--environment`/`--scenario` the same way, and runs `wlrun -Run -TestPath
+<scenario_identifier> -ResultName run-output/<environment_key>_
+<scenario_key>` — a scenario's catalog identifier is a full `.lrs` file
+path rather than a remote name, since `wlrun` has no native "environment"
+switch (see the user guide for the full catalog convention). For BlazeMeter
+it's a template: connection details (base URL/workspace/project) are
+filled in, configured pre-run checks are listed as `# TODO precheck: ...`
+comments, and it ends with a clear
+`echo "ERROR: BlazeMeter execution is not implemented in this generated
+script yet." >&2` and `exit 1` until someone fills in the actual API call.
 
 ## Interactive Wizard
 
@@ -284,7 +293,5 @@ JMeter is local/self-hosted rather than a remote SaaS tool, so its
 
 - Fill in the real BlazeMeter API call in the generated `run-blazemeter.sh`
   template (`renderers/scripts.py`)
-- Fill in the real LoadRunner Professional controller call in the generated
-  `run-loadrunner_professional.sh` template
 - Add a GitLab CI renderer
 - Add non-interactive `generate` workflows around completed YAML inputs
