@@ -25,18 +25,20 @@ automated_jobs:
   - name: pre-prod-baseline
     enabled: true
     environment_ref: staging
-    scenario_ref: checkout_baseline
+    scenario_ref: checkout_baseline_staging
     timeout_minutes: 120
 catalog:
   environments:
     - key: staging
       name: Staging
-      identifier: env-stg
+      identifier: Staging
   scenarios:
-    - key: checkout_baseline
-      name: Checkout Baseline
-      identifier: bm-checkout-baseline
+    - key: checkout_baseline_staging
+      name: Checkout Baseline (Staging)
+      identifier: "2233445"
 pre_run_checks:
+  - verify_host_reachable
+  - verify_project_exists
   - verify_scenario_exists
   - collect_results
 artifacts:
@@ -45,4 +47,3 @@ artifacts:
 readme:
   include_manual_usage: true
   include_automated_usage: true
-
