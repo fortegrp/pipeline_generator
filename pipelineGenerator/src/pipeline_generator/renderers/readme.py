@@ -13,6 +13,12 @@ def render_setup_readme(config: dict, package: GenericPipelinePackage) -> str:
     ]
     if tool_type == "blazemeter":
         todo_lines.append(f"- Fill in the actual API/controller call in `{script_name}` (marked with `# TODO`).")
+    elif tool_type == "loadrunner_professional":
+        todo_lines.append(
+            "- This pipeline's CI/CD job must run on an agent co-located with the LoadRunner "
+            "Controller (`wlrun` must be on `PATH` there) -- retarget the generated pipeline's "
+            "runner/agent/pool before use."
+        )
     else:
         todo_lines.append("- Implement remote tool connectivity details required by the target customer.")
 

@@ -529,7 +529,15 @@ each — but they aren't all equally finished:
   see `docs/superpowers/specs/
   2026-09-09-loadrunner-local-agent-execution-design.md` for the full
   design and why other execution strategies (SSH/WinRM remoting, LoadRunner
-  Enterprise's REST API) were rejected.
+  Enterprise's REST API) were rejected. **Important:** the generated CI/CD
+  pipeline files themselves currently target a hosted runner/pool by
+  default (`ubuntu-latest` for GitHub Actions, a Microsoft-hosted pool for
+  Azure DevOps) — none of these can run `wlrun`. Before a LoadRunner
+  Professional setup will actually work, you must hand-edit the generated
+  pipeline to target a self-hosted agent that's co-located with the
+  Controller (Jenkins' `agent any` is closest to workable already, but
+  still needs a Windows-capable shell step). This retargeting isn't
+  automated yet — see the generated setup README's "Remaining TODOs".
 - **BlazeMeter is a template, not a stub.** The generated script is real,
   syntactically valid bash — connection details are filled in,
   `pre_run_checks` are listed as `# TODO precheck: ...` comments — but the

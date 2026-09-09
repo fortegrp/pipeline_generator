@@ -54,3 +54,13 @@ def test_readme_mentions_loadrunner_script_without_todo_api_call() -> None:
 
     assert "scripts/run-loadrunner_professional.sh" in readme
     assert "Fill in the actual API/controller call" not in readme
+
+
+def test_readme_mentions_loadrunner_agent_caveat() -> None:
+    config = _base_config("loadrunner_professional", {"wlrun_path": "wlrun"})
+    package = build_generic_package(config)
+
+    readme = render_setup_readme(config, package)
+
+    assert "co-located with the LoadRunner" in readme
+    assert "retarget the generated pipeline's runner/agent/pool" in readme
