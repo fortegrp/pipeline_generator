@@ -9,6 +9,7 @@ from pipeline_generator.config.schema import (
     GENERATION_MODES,
     PIPELINE_DESTINATIONS,
     PRE_RUN_CHECKS,
+    PRE_RUN_CHECKS_BY_TOOL,
     SUPPORTED_CICD,
     SUPPORTED_TOOLS,
     WORKING_LOCATIONS,
@@ -154,7 +155,7 @@ def run_wizard(output_path: Path, resume: bool = False) -> dict:
     save_config(output_path, config)
 
     _section(8, "Pre-run checks")
-    config["pre_run_checks"] = _prompt_checks(config.get("pre_run_checks", []))
+    config["pre_run_checks"] = _prompt_checks(config.get("pre_run_checks", []), config["tool"]["type"])
     config["readme"]["include_manual_usage"] = config["manual_pipeline"]["enabled"]
     config["readme"]["include_automated_usage"] = bool(config["automated_jobs"])
     config["incomplete"] = _is_incomplete(config)
@@ -278,8 +279,9 @@ def _prompt_automated_jobs_section(config: dict) -> list[dict]:
     return existing
 
 
-def _prompt_checks(existing: list[str]) -> list[str]:
-    return prompt_multi_choice("Select pre-run checks", PRE_RUN_CHECKS, default=existing)
+def _prompt_checks(existing: list[str], tool_type: str) -> list[str]:
+    options = PRE_RUN_CHECKS_BY_TOOL.get(tool_type, PRE_RUN_CHECKS)
+    return prompt_multi_choice("Select pre-run checks", options, default=existing)
 
 
 def _print_summary(config: dict) -> None:

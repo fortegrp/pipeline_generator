@@ -44,8 +44,26 @@ PRE_RUN_CHECKS = [
     "verify_controller_access",
     "verify_scenario_exists",
     "verify_load_generators_connected",
+    "verify_host_reachable",
+    "verify_project_exists",
     "collect_results",
 ]
+
+PRE_RUN_CHECKS_BY_TOOL = {
+    "jmeter": ["verify_scenario_exists", "collect_results"],
+    "loadrunner_professional": [
+        "verify_controller_access",
+        "verify_scenario_exists",
+        "verify_load_generators_connected",
+        "collect_results",
+    ],
+    "blazemeter": [
+        "verify_host_reachable",
+        "verify_project_exists",
+        "verify_scenario_exists",
+        "collect_results",
+    ],
+}
 
 
 def base_config() -> dict:
