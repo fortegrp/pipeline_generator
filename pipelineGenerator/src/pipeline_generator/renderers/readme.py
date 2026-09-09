@@ -11,7 +11,7 @@ def render_setup_readme(config: dict, package: GenericPipelinePackage) -> str:
         "- Fill secret variable names in the generated pipeline files.",
         "- Replace TODO placeholders in `customer.yaml`.",
     ]
-    if tool_type in {"blazemeter", "loadrunner_professional"}:
+    if tool_type == "blazemeter":
         todo_lines.append(f"- Fill in the actual API/controller call in `{script_name}` (marked with `# TODO`).")
     else:
         todo_lines.append("- Implement remote tool connectivity details required by the target customer.")

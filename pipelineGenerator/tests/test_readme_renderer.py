@@ -44,3 +44,13 @@ def test_readme_mentions_jmeter_script_in_files_section() -> None:
     readme = render_setup_readme(config, package)
 
     assert "scripts/run-jmeter.sh" in readme
+
+
+def test_readme_mentions_loadrunner_script_without_todo_api_call() -> None:
+    config = _base_config("loadrunner_professional", {"wlrun_path": "wlrun"})
+    package = build_generic_package(config)
+
+    readme = render_setup_readme(config, package)
+
+    assert "scripts/run-loadrunner_professional.sh" in readme
+    assert "Fill in the actual API/controller call" not in readme
