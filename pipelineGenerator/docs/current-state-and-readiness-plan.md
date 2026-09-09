@@ -184,14 +184,12 @@ intended to keep renderer logic separate from raw config parsing.
 Converts the generic pipeline model into CI/CD-specific files for GitHub
 Actions, Azure DevOps, and Jenkins, plus the setup README. `scripts.py`
 additionally writes `scripts/run-<tool_type>.sh` — a real, working script for
-JMeter and LoadRunner Professional, and a connection-details-filled-in
-template (ending in a `# TODO` and a clear "not implemented yet" error) for
-BlazeMeter. Every catalog key it resolves inside the generated script goes
-through an exact-match shell comparison (`if [ "$1" = <key> ]; ...`), not a
-`case` statement — `case` patterns are shell globs, so a catalog key
-containing `*`/`?`/`[`/`]` could otherwise glob-match an environment/scenario
-key it wasn't meant to. This is where real BlazeMeter execution logic should
-be implemented, by filling in its template's `# TODO` block.
+all three supported tools (JMeter, LoadRunner Professional, BlazeMeter).
+Every catalog key it resolves inside the generated script goes through an
+exact-match shell comparison (`if [ "$1" = <key> ]; ...`), not a `case`
+statement — `case` patterns are shell globs, so a catalog key containing
+`*`/`?`/`[`/`]` could otherwise glob-match an environment/scenario key it
+wasn't meant to.
 
 ## CLI Behavior
 
@@ -706,7 +704,7 @@ tools have their own real renderer function (`_render_jmeter_script`,
 tools' generated scripts are now real and complete (`[x]`, see the
 Recommended Implementation Order list below).
 
-### 1. Fill In the BlazeMeter Script Template — Resolved
+### 1. Implement Real BlazeMeter Execution — Resolved
 
 Resolved: the generated script authenticates via `BLAZEMETER_API_KEY_ID`/
 `BLAZEMETER_API_KEY_SECRET`, resolves the workspace/project/test
@@ -890,11 +888,10 @@ Recommended first changes:
 - [x] 6. Add clean CLI error handling (`wizard` and `run`; `generate` has no
       exception paths beyond what validation already catches).
 
-These changes would make the project safer to use immediately while preserving
-the current architecture for future work filling in the BlazeMeter script
-template.
+These changes would make the project safer to use immediately while
+preserving the current architecture for future work (all three tools'
+generated scripts are now real, working execution).
 
 (Items 4 and 6 above predate the removal of the `run` CLI command and the
 Python `runtime`/`adapters` layers entirely — see "Generated Run Script" and
-"BlazeMeter Script Is a Template, Not an Adapter" above for the current
-model.)
+"BlazeMeter and LoadRunner Real Execution" above for the current model.)
