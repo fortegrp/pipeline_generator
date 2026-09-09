@@ -319,3 +319,23 @@ def test_render_loadrunner_script_todo_comments_for_unhandled_checks(tmp_path: P
 
     syntax_check = subprocess.run(["bash", "-n", str(script_path)], capture_output=True, text=True)
     assert syntax_check.returncode == 0, syntax_check.stderr
+
+
+def test_render_jmeter_script_todo_comments_for_unhandled_checks(tmp_path: Path) -> None:
+    config = _base_config(
+        "jmeter",
+        {"test_plan_path": "plan.jmx", "jmeter_bin": ""},
+        checks=["verify_scenario_exists", "verify_controller_access", "verify_load_generators_connected"],
+    )
+    package = build_generic_package(config)
+
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-jmeter.sh"
+    content = script_path.read_text(encoding="utf-8")
+
+    assert "# TODO precheck: verify_scenario_exists" not in content
+    assert "# TODO precheck: verify_controller_access" in content
+    assert "# TODO precheck: verify_load_generators_connected" in content
+
+    syntax_check = subprocess.run(["bash", "-n", str(script_path)], capture_output=True, text=True)
+    assert syntax_check.returncode == 0, syntax_check.stderr
