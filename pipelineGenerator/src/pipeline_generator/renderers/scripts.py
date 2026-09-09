@@ -173,14 +173,50 @@ def _render_blazemeter_script(config: dict, package: GenericPipelinePackage) -> 
 
 def _render_loadrunner_script(config: dict, package: GenericPipelinePackage) -> str:
     connection = config.get("tool", {}).get("connection", {})
-    return _render_template_script(
-        config,
-        package,
-        "LoadRunner Professional",
-        {
-            "CONTROLLER_HOST": connection.get("controller_host") or TODO_VALUE,
-            "CONTROLLER_RESULTS_PATH": connection.get("controller_results_path") or TODO_VALUE,
-            "DOMAIN": connection.get("domain") or "",
-            "PROJECT": connection.get("project") or "",
-        },
-    )
+    wlrun_path = connection.get("wlrun_path") or "wlrun"
+    checks = _allowed_pre_run_checks(config)
+
+    controller_check = ""
+    if "verify_controller_access" in checks:
+        controller_check = """
+  if ! command -v "$wlrun_path" >/dev/null 2>&1; then
+    echo "ERROR: wlrun not found: $wlrun_path" >&2
+    exit 1
+  fi
+"""
+
+    scenario_check = ""
+    if "verify_scenario_exists" in checks:
+        scenario_check = """
+  if [ ! -f "$scenario_identifier" ]; then
+    echo "Scenario file not found: $scenario_identifier" >&2
+    exit 1
+  fi
+"""
+
+    return f"""#!/usr/bin/env bash
+set -euo pipefail
+
+{_render_resolvers(package)}
+
+main() {{
+{_render_arg_parsing()}
+  mkdir -p run-output
+
+  local wlrun_path={shell_quote(wlrun_path)}
+{controller_check}{scenario_check}
+  local results_dir="run-output/${{environment_key}}_${{scenario_key}}"
+  mkdir -p "$results_dir"
+
+  # wlrun's exit code is known to be unreliable on some LoadRunner
+  # versions/configurations (it can return 0 even when a scenario had
+  # errors). We treat nonzero as failure since it is the best signal
+  # available locally; check the results directory's own reports for the
+  # authoritative pass/fail status.
+  "$wlrun_path" -Run -TestPath "$scenario_identifier" -ResultName "$results_dir"
+}}
+
+if [ "${{BASH_SOURCE[0]:-$0}}" = "$0" ]; then
+  main "$@"
+fi
+"""

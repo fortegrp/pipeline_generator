@@ -166,35 +166,99 @@ def test_render_template_script_rejects_pre_run_check_shell_injection(tmp_path: 
     assert syntax_check.returncode == 0, syntax_check.stderr
 
 
-def test_render_loadrunner_professional_script_is_a_template(tmp_path: Path) -> None:
-    config = _base_config(
-        "loadrunner_professional",
-        {
-            "controller_host": "lr.acme.local",
-            "controller_results_path": "C:\\Results",
-            "domain": "DEFAULT",
-            "project": "ACME",
-        },
-    )
+def test_render_loadrunner_script_runs_wlrun_for_real(tmp_path: Path) -> None:
+    config = _base_config("loadrunner_professional", {"wlrun_path": "wlrun"})
     package = build_generic_package(config)
 
     outputs = render_tool_script(config, package, tmp_path)
 
     script_path = tmp_path / "scripts" / "run-loadrunner_professional.sh"
     assert outputs == [str(script_path)]
+    assert script_path.exists()
+    assert script_path.stat().st_mode & 0o111 == 0o111
 
     content = script_path.read_text(encoding="utf-8")
-    # shlex.quote only adds quotes when a value contains a shell-special
-    # character. "lr.acme.local", "DEFAULT", and "ACME" don't, so they come
-    # out bare; "C:\Results" contains a backslash, so it comes out quoted.
-    assert "local controller_host=lr.acme.local" in content
-    assert "local controller_results_path='C:\\Results'" in content
-    assert "local domain=DEFAULT" in content
-    assert "local project=ACME" in content
-    assert (
-        'echo "ERROR: LoadRunner Professional execution is not implemented in this generated script yet." >&2'
-        in content
-    )
+    assert "resolve_environment_identifier() {" in content
+    assert "resolve_scenario_identifier() {" in content
+    assert "local wlrun_path=wlrun" in content
+    assert 'local results_dir="run-output/${environment_key}_${scenario_key}"' in content
+    assert '"$wlrun_path" -Run -TestPath "$scenario_identifier" -ResultName "$results_dir"' in content
+    assert "not implemented in this generated script yet" not in content
 
     syntax_check = subprocess.run(["bash", "-n", str(script_path)], capture_output=True, text=True)
     assert syntax_check.returncode == 0, syntax_check.stderr
+
+
+def test_render_loadrunner_script_checks_wlrun_availability_when_configured(tmp_path: Path) -> None:
+    config = _base_config(
+        "loadrunner_professional", {"wlrun_path": "wlrun"}, checks=["verify_controller_access"]
+    )
+    package = build_generic_package(config)
+
+    render_tool_script(config, package, tmp_path)
+    content = (tmp_path / "scripts" / "run-loadrunner_professional.sh").read_text(encoding="utf-8")
+
+    assert 'if ! command -v "$wlrun_path" >/dev/null 2>&1; then' in content
+    assert 'echo "ERROR: wlrun not found: $wlrun_path" >&2' in content
+
+
+def test_render_loadrunner_script_omits_wlrun_check_when_not_configured(tmp_path: Path) -> None:
+    config = _base_config("loadrunner_professional", {"wlrun_path": "wlrun"}, checks=[])
+    package = build_generic_package(config)
+
+    render_tool_script(config, package, tmp_path)
+    content = (tmp_path / "scripts" / "run-loadrunner_professional.sh").read_text(encoding="utf-8")
+
+    assert "wlrun not found" not in content
+
+
+def test_render_loadrunner_script_checks_scenario_exists_when_configured(tmp_path: Path) -> None:
+    config = _base_config(
+        "loadrunner_professional", {"wlrun_path": "wlrun"}, checks=["verify_scenario_exists"]
+    )
+    package = build_generic_package(config)
+
+    render_tool_script(config, package, tmp_path)
+    content = (tmp_path / "scripts" / "run-loadrunner_professional.sh").read_text(encoding="utf-8")
+
+    assert 'if [ ! -f "$scenario_identifier" ]; then' in content
+    assert 'echo "Scenario file not found: $scenario_identifier" >&2' in content
+
+
+def test_render_loadrunner_script_omits_scenario_check_when_not_configured(tmp_path: Path) -> None:
+    config = _base_config("loadrunner_professional", {"wlrun_path": "wlrun"}, checks=[])
+    package = build_generic_package(config)
+
+    render_tool_script(config, package, tmp_path)
+    content = (tmp_path / "scripts" / "run-loadrunner_professional.sh").read_text(encoding="utf-8")
+
+    assert "Scenario file not found" not in content
+
+
+def test_render_loadrunner_script_quotes_wlrun_path_with_spaces(tmp_path: Path) -> None:
+    config = _base_config(
+        "loadrunner_professional", {"wlrun_path": "C:\\Program Files\\LoadRunner\\bin\\wlrun.exe"}
+    )
+    package = build_generic_package(config)
+
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-loadrunner_professional.sh"
+    content = script_path.read_text(encoding="utf-8")
+
+    # shlex.quote wraps a value containing spaces in single quotes; it
+    # leaves backslashes untouched since they have no special meaning
+    # inside single quotes in POSIX shell.
+    assert "local wlrun_path='C:\\Program Files\\LoadRunner\\bin\\wlrun.exe'" in content
+
+    syntax_check = subprocess.run(["bash", "-n", str(script_path)], capture_output=True, text=True)
+    assert syntax_check.returncode == 0, syntax_check.stderr
+
+
+def test_render_loadrunner_script_defaults_wlrun_path_when_blank(tmp_path: Path) -> None:
+    config = _base_config("loadrunner_professional", {"wlrun_path": ""})
+    package = build_generic_package(config)
+
+    render_tool_script(config, package, tmp_path)
+    content = (tmp_path / "scripts" / "run-loadrunner_professional.sh").read_text(encoding="utf-8")
+
+    assert "local wlrun_path=wlrun" in content
