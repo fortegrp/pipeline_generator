@@ -102,13 +102,6 @@ def validate_config(config: dict) -> ValidationResult:
                 f"Automated job '{job.get('name', 'unknown')}' references an unknown scenario."
             )
 
-    if tool_type == "loadrunner_professional":
-        connection = tool.get("connection", {})
-        for key in ["controller_host", "controller_results_path"]:
-            value = connection.get(key)
-            if is_placeholder(value):
-                result.warnings.append(f"tool.connection.{key} is missing for LoadRunner Professional.")
-
     if tool_type == "blazemeter":
         connection = tool.get("connection", {})
         for key in ["base_url", "workspace_id", "project_id"]:

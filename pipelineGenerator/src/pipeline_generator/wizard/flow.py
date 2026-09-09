@@ -170,21 +170,9 @@ def _prompt_connection(config: dict) -> None:
     tool_type = config["tool"]["type"]
     connection = config["tool"]["connection"]
     if tool_type == "loadrunner_professional":
-        connection["controller_host"] = prompt_text(
-            "LoadRunner controller host",
-            default=connection.get("controller_host", TODO_VALUE),
-        ) or TODO_VALUE
-        connection["controller_results_path"] = prompt_text(
-            "LoadRunner results path on controller",
-            default=connection.get("controller_results_path", TODO_VALUE),
-        ) or TODO_VALUE
-        connection["domain"] = prompt_text(
-            "Optional LoadRunner domain",
-            default=connection.get("domain", ""),
-        )
-        connection["project"] = prompt_text(
-            "Optional LoadRunner project",
-            default=connection.get("project", ""),
+        connection["wlrun_path"] = prompt_text(
+            "Optional path to the wlrun executable (blank uses PATH)",
+            default=connection.get("wlrun_path", ""),
         )
     elif tool_type == "blazemeter":
         connection["base_url"] = prompt_text(
