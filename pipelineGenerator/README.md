@@ -248,19 +248,18 @@ cicd:
 tool:
   type: loadrunner_professional
   auth:
-    type: username_password
+    type: none
   connection:
-    controller_host: lr-controller.acme.local
-    controller_results_path: C:\\Results
+    wlrun_path: wlrun
 catalog:
   environments:
     - key: qa
       name: QA
-      identifier: env-qa
+      identifier: QA
   scenarios:
-    - key: checkout_smoke
-      name: Checkout Smoke
-      identifier: LR_CHECKOUT_SMOKE
+    - key: checkout_smoke_qa
+      name: Checkout Smoke (QA)
+      identifier: C:\Scenarios\checkout_smoke_qa.lrs
 manual_pipeline:
   enabled: true
   name: Performance Manual Run
@@ -269,7 +268,7 @@ automated_jobs:
   - name: post-deploy-smoke
     enabled: true
     environment_ref: qa
-    scenario_ref: checkout_smoke
+    scenario_ref: checkout_smoke_qa
     timeout_minutes: 90
 pre_run_checks:
   - verify_controller_access

@@ -186,15 +186,14 @@ intended to keep renderer logic separate from raw config parsing.
 Converts the generic pipeline model into CI/CD-specific files for GitHub
 Actions, Azure DevOps, and Jenkins, plus the setup README. `scripts.py`
 additionally writes `scripts/run-<tool_type>.sh` — a real, working script for
-JMeter, and a connection-details-filled-in template (ending in a `# TODO`
-and a clear "not implemented yet" error) for BlazeMeter and LoadRunner
-Professional. Every catalog key it resolves inside the generated script goes
+JMeter and LoadRunner Professional, and a connection-details-filled-in
+template (ending in a `# TODO` and a clear "not implemented yet" error) for
+BlazeMeter. Every catalog key it resolves inside the generated script goes
 through an exact-match shell comparison (`if [ "$1" = <key> ]; ...`), not a
 `case` statement — `case` patterns are shell globs, so a catalog key
 containing `*`/`?`/`[`/`]` could otherwise glob-match an environment/scenario
-key it wasn't meant to. This is where real BlazeMeter and LoadRunner
-Professional execution logic should be implemented, by filling in each
-template's `# TODO` block.
+key it wasn't meant to. This is where real BlazeMeter execution logic should
+be implemented, by filling in its template's `# TODO` block.
 
 ## CLI Behavior
 
@@ -882,10 +881,10 @@ Recommended first changes:
       exception paths beyond what validation already catches).
 
 These changes would make the project safer to use immediately while preserving
-the current architecture for future work filling in the BlazeMeter/LoadRunner
-Professional script templates.
+the current architecture for future work filling in the BlazeMeter script
+template.
 
 (Items 4 and 6 above predate the removal of the `run` CLI command and the
 Python `runtime`/`adapters` layers entirely — see "Generated Run Script" and
-"BlazeMeter and LoadRunner Professional Scripts Are Templates, Not Adapters"
-above for the current model.)
+"BlazeMeter Script Is a Template, Not an Adapter" above for the current
+model.)

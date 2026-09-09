@@ -271,11 +271,10 @@ cicd:
 tool:
   type: loadrunner_professional   # loadrunner_professional | blazemeter | jmeter
   auth:
-    type: username_password       # api_token | username_password | service_account
+    type: none                    # api_token | username_password | service_account
                                    # | network_vpn_manual_setup | none
   connection:
-    controller_host: lr-controller.acme.local
-    controller_results_path: C:\Results
+    wlrun_path: wlrun              # optional; blank/absent defaults to "wlrun" on PATH
 
 manual_pipeline:
   enabled: true
@@ -285,19 +284,19 @@ manual_pipeline:
 automated_jobs:
   - name: post-deploy-smoke
     enabled: true
-    environment_ref: qa           # must match a catalog.environments[].key
-    scenario_ref: checkout_smoke  # must match a catalog.scenarios[].key
+    environment_ref: qa              # must match a catalog.environments[].key
+    scenario_ref: checkout_smoke_qa  # must match a catalog.scenarios[].key
     timeout_minutes: 90
 
 catalog:
   environments:
     - key: qa
       name: QA
-      identifier: env-qa
+      identifier: QA
   scenarios:
-    - key: checkout_smoke
-      name: Checkout Smoke
-      identifier: LR_CHECKOUT_SMOKE
+    - key: checkout_smoke_qa
+      name: Checkout Smoke (QA)
+      identifier: C:\Scenarios\checkout_smoke_qa.lrs
 
 pre_run_checks:
   - verify_controller_access
