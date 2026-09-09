@@ -106,3 +106,22 @@ def test_render_jenkins_escapes_adversarial_values(tmp_path: Path) -> None:
     # sh command text.
     assert f"ENVIRONMENT = {groovy_squote(nasty_env_value)}" in automated_content
     assert './scripts/run-jmeter.sh --environment "$ENVIRONMENT" --scenario "$SCENARIO"' in automated_content
+
+
+def test_render_jenkins_includes_timeout_flag_for_blazemeter(tmp_path: Path) -> None:
+    config = _config()
+    config["tool"] = {
+        "type": "blazemeter",
+        "connection": {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"},
+    }
+    package = build_generic_package(config)
+
+    render_jenkins(config, package, tmp_path)
+
+    manual_text = (tmp_path / "jenkins" / "Jenkinsfile.performance-manual").read_text(encoding="utf-8")
+    automated_text = (
+        tmp_path / "jenkins" / "Jenkinsfile.performance-automated-post-deploy-smoke"
+    ).read_text(encoding="utf-8")
+
+    assert "--timeout-minutes 120" in manual_text
+    assert "--timeout-minutes 60" in automated_text

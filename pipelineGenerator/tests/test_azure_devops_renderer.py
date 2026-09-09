@@ -120,3 +120,20 @@ def test_render_azure_devops_escapes_adversarial_values(tmp_path: Path) -> None:
     assert re.match(r"^[A-Za-z0-9_]+$", job_id)
     assert not job_id[0].isdigit()
     assert shell_quote(nasty_env_value) in automated_text
+
+
+def test_render_azure_devops_includes_timeout_flag_for_blazemeter(tmp_path: Path) -> None:
+    config = _config()
+    config["tool"] = {
+        "type": "blazemeter",
+        "connection": {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"},
+    }
+    package = build_generic_package(config)
+
+    render_azure_devops(config, package, tmp_path)
+
+    manual_text = (tmp_path / "azure" / "performance-manual.yml").read_text(encoding="utf-8")
+    automated_text = (tmp_path / "azure" / "performance-automated-post-deploy-smoke.yml").read_text(encoding="utf-8")
+
+    assert "--timeout-minutes 120" in manual_text
+    assert "--timeout-minutes 60" in automated_text
