@@ -24,7 +24,7 @@ def _base_config(tool_type: str, connection: dict) -> dict:
     }
 
 
-def test_readme_mentions_blazemeter_script_and_todo() -> None:
+def test_readme_mentions_blazemeter_secrets_and_verification_caveat() -> None:
     config = _base_config(
         "blazemeter",
         {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"},
@@ -34,7 +34,10 @@ def test_readme_mentions_blazemeter_script_and_todo() -> None:
     readme = render_setup_readme(config, package)
 
     assert "scripts/run-blazemeter.sh" in readme
-    assert "Fill in the actual API/controller call in `scripts/run-blazemeter.sh`" in readme
+    assert "BLAZEMETER_API_KEY_ID" in readme
+    assert "BLAZEMETER_API_KEY_SECRET" in readme
+    assert "verify against a live account" in readme
+    assert "Fill in the actual API/controller call" not in readme
 
 
 def test_readme_mentions_jmeter_script_in_files_section() -> None:
