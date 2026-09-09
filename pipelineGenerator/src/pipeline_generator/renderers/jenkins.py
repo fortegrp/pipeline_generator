@@ -34,6 +34,7 @@ def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
         f"                {groovy_squote(item.value)}," for item in package.manual_pipeline.inputs[1].options
     )
     timeout = package.manual_pipeline.timeout_minutes
+    timeout_flag = f" --timeout-minutes {timeout}" if package.tool_type == "blazemeter" else ""
     return f"""pipeline {{
     agent any
     parameters {{
@@ -62,7 +63,7 @@ def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
                 // Jenkins; referencing them here (rather than Groovy-interpolating
                 // ${{params.X}} into the command text) avoids splicing a
                 // build-triggerer-controlled value directly into the shell script.
-                sh './scripts/run-{package.tool_type}.sh --environment "$ENVIRONMENT" --scenario "$SCENARIO"'
+                sh './scripts/run-{package.tool_type}.sh --environment "$ENVIRONMENT" --scenario "$SCENARIO"{timeout_flag}'
             }}
         }}
     }}
@@ -76,6 +77,7 @@ def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
 
 
 def _render_automated_job(job, tool_type: str) -> str:
+    timeout_flag = f" --timeout-minutes {job.timeout_minutes}" if tool_type == "blazemeter" else ""
     return f"""pipeline {{
     agent any
     environment {{
@@ -88,7 +90,7 @@ def _render_automated_job(job, tool_type: str) -> str:
     stages {{
         stage('Run performance wrapper') {{
             steps {{
-                sh './scripts/run-{tool_type}.sh --environment "$ENVIRONMENT" --scenario "$SCENARIO"'
+                sh './scripts/run-{tool_type}.sh --environment "$ENVIRONMENT" --scenario "$SCENARIO"{timeout_flag}'
             }}
         }}
     }}

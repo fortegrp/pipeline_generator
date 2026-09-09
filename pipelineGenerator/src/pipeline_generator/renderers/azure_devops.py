@@ -42,6 +42,11 @@ def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
     scenario_values = "\n".join(f"      - {yaml_dquote(item.value)}" for item in scenario_options)
     environment_default = yaml_dquote(environment_options[0].value if environment_options else "TODO")
     scenario_default = yaml_dquote(scenario_options[0].value if scenario_options else "TODO")
+    timeout_flag = (
+        f"\n          --timeout-minutes {package.manual_pipeline.timeout_minutes}"
+        if package.tool_type == "blazemeter"
+        else ""
+    )
     return f"""trigger: none
 pr: none
 
@@ -69,7 +74,7 @@ jobs:
       - script: >
           ./scripts/run-{package.tool_type}.sh
           --environment "$ENVIRONMENT"
-          --scenario "$SCENARIO"
+          --scenario "$SCENARIO"{timeout_flag}
         env:
           ENVIRONMENT: ${{{{ parameters.environment }}}}
           SCENARIO: ${{{{ parameters.scenario }}}}
@@ -84,6 +89,7 @@ jobs:
 
 def _render_automated_job(job, tool_type: str) -> str:
     job_id = _safe_job_id(job.name)
+    timeout_flag = f"\n          --timeout-minutes {job.timeout_minutes}" if tool_type == "blazemeter" else ""
     return f"""parameters: []
 
 jobs:
@@ -96,7 +102,7 @@ jobs:
       - script: >
           ./scripts/run-{tool_type}.sh
           --environment {shell_quote(job.environment_ref)}
-          --scenario {shell_quote(job.scenario_ref)}
+          --scenario {shell_quote(job.scenario_ref)}{timeout_flag}
         displayName: Run performance wrapper
       - task: PublishPipelineArtifact@1
         condition: always()

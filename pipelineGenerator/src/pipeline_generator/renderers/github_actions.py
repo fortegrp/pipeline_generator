@@ -43,6 +43,7 @@ def _render_manual_workflow(package: GenericPipelinePackage) -> str:
     environment_options = ", ".join(yaml_dquote(item.value) for item in package.manual_pipeline.inputs[0].options)
     scenario_options = ", ".join(yaml_dquote(item.value) for item in package.manual_pipeline.inputs[1].options)
     timeout = package.manual_pipeline.timeout_minutes
+    timeout_flag = f"\n          --timeout-minutes {timeout}" if package.tool_type == "blazemeter" else ""
     return f"""name: {yaml_dquote(package.manual_pipeline.name)}
 
 on:
@@ -72,7 +73,7 @@ jobs:
         run: >
           ./scripts/run-{package.tool_type}.sh
           --environment "$ENVIRONMENT"
-          --scenario "$SCENARIO"
+          --scenario "$SCENARIO"{timeout_flag}
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
@@ -84,6 +85,7 @@ jobs:
 
 def _render_automated_workflow(job, tool_type: str) -> str:
     job_id = _safe_job_id(job.name)
+    timeout_flag = f"\n          --timeout-minutes {job.timeout_minutes}" if tool_type == "blazemeter" else ""
     return f"""name: {yaml_dquote(f"Performance Automated Job - {job.name}")}
 
 on:
@@ -99,7 +101,7 @@ jobs:
         run: >
           ./scripts/run-{tool_type}.sh
           --environment {shell_quote(job.environment_ref)}
-          --scenario {shell_quote(job.scenario_ref)}
+          --scenario {shell_quote(job.scenario_ref)}{timeout_flag}
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
