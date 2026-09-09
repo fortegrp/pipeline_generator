@@ -12,12 +12,9 @@ cicd:
 tool:
   type: loadrunner_professional
   auth:
-    type: username_password
+    type: none
   connection:
-    controller_host: lr-controller.acme.local
-    controller_results_path: C:\Results
-    domain: DEFAULT
-    project: STOREFRONT
+    wlrun_path: wlrun
 manual_pipeline:
   enabled: true
   name: Performance Manual Run
@@ -26,23 +23,29 @@ automated_jobs:
   - name: post-deploy-smoke
     enabled: true
     environment_ref: qa
-    scenario_ref: checkout_smoke
+    scenario_ref: checkout_smoke_qa
     timeout_minutes: 90
 catalog:
   environments:
     - key: qa
       name: QA
-      identifier: env-qa
+      identifier: QA
     - key: staging
       name: Staging
-      identifier: env-stg
+      identifier: Staging
   scenarios:
-    - key: checkout_smoke
-      name: Checkout Smoke
-      identifier: LR_CHECKOUT_SMOKE
-    - key: browse_baseline
-      name: Browse Baseline
-      identifier: LR_BROWSE_BASELINE
+    - key: checkout_smoke_qa
+      name: Checkout Smoke (QA)
+      identifier: C:\Scenarios\checkout_smoke_qa.lrs
+    - key: checkout_smoke_staging
+      name: Checkout Smoke (Staging)
+      identifier: C:\Scenarios\checkout_smoke_staging.lrs
+    - key: browse_baseline_qa
+      name: Browse Baseline (QA)
+      identifier: C:\Scenarios\browse_baseline_qa.lrs
+    - key: browse_baseline_staging
+      name: Browse Baseline (Staging)
+      identifier: C:\Scenarios\browse_baseline_staging.lrs
 pre_run_checks:
   - verify_controller_access
   - verify_scenario_exists
