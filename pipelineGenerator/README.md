@@ -21,9 +21,10 @@ A Python scaffold for onboarding customer-specific performance testing setups an
   - LoadRunner Professional — a real, working script that runs `wlrun -Run
     -TestPath ...` locally, assuming the CI job runs on an agent co-located
     with the LoadRunner Controller.
-  - BlazeMeter — a real shell script with connection details already filled
-    in, but the actual API call is left as a `# TODO` for now (it exits 1
-    with a clear error until someone fills that in).
+  - BlazeMeter — a real, working script that authenticates via API key,
+    starts a test through BlazeMeter's REST API, polls until it finishes
+    (bounded by a `--timeout-minutes` flag), and downloads a summary
+    report.
 
 `pipeline-generator` itself never executes a performance test or contacts
 any of these tools — its job ends at generating files. The generated script
@@ -36,12 +37,10 @@ This is a scaffolded v1 foundation:
 
 - Wizard, validation, and generation are working
 - `generate` writes a real, working `scripts/run-jmeter.sh` for JMeter
-  setups and `scripts/run-loadrunner_professional.sh` for LoadRunner
+  setups, `scripts/run-loadrunner_professional.sh` for LoadRunner
   Professional setups (assumes the CI job runs on an agent co-located with
-  the LoadRunner Controller)
-- BlazeMeter gets a template script with connection details filled in and
-  the actual API call left as a `# TODO` — running it prints a clear "not
-  implemented yet" error and exits non-zero
+  the LoadRunner Controller), and `scripts/run-blazemeter.sh` for
+  BlazeMeter setups (calls BlazeMeter's REST API directly)
 
 ## Install
 
@@ -147,15 +146,15 @@ scenario to their catalog identifiers and runs `jmeter -n -t ...` for real.
 LoadRunner Professional is also real: it assumes the CI job runs on a
 dedicated agent co-located with the LoadRunner Controller, resolves
 `--environment`/`--scenario` the same way, and runs `wlrun -Run -TestPath
-<scenario_identifier> -ResultName run-output/<environment_key>_
-<scenario_key>` — a scenario's catalog identifier is a full `.lrs` file
+<scenario_identifier> -ResultName run-output/<environment_slug>_
+<scenario_slug>` — a scenario's catalog identifier is a full `.lrs` file
 path rather than a remote name, since `wlrun` has no native "environment"
-switch (see the user guide for the full catalog convention). For BlazeMeter
-it's a template: connection details (base URL/workspace/project) are
-filled in, configured pre-run checks are listed as `# TODO precheck: ...`
-comments, and it ends with a clear
-`echo "ERROR: BlazeMeter execution is not implemented in this generated
-script yet." >&2` and `exit 1` until someone fills in the actual API call.
+switch (see the user guide for the full catalog convention). BlazeMeter is
+also real: it authenticates via API key, starts a test through
+BlazeMeter's REST API (`POST /api/v4/tests/<id>/start`), polls until it
+finishes (bounded by a `--timeout-minutes` flag added only to BlazeMeter's
+invocation), and downloads a summary report — see the user guide for the
+full precheck vocabulary and the API endpoints' verification status.
 
 ## Interactive Wizard
 
@@ -290,11 +289,12 @@ JMeter is local/self-hosted rather than a remote SaaS tool, so its
 
 ## Recommended Next Work
 
-- Fill in the real BlazeMeter API call in the generated `run-blazemeter.sh`
-  template (`renderers/scripts.py`)
 - Add configurable CI/CD runner/agent targeting for LoadRunner Professional
   setups (generated pipelines default to hosted runners that can't reach a
   LoadRunner Controller; today this requires a manual hand-edit after
   generation — see the user guide's section 10 caveat)
+- Verify BlazeMeter's exact status-string vocabulary and report endpoint
+  against a live account (flagged as best-understanding in
+  `renderers/scripts.py` and the generated setup README)
 - Add a GitLab CI renderer
 - Add non-interactive `generate` workflows around completed YAML inputs
