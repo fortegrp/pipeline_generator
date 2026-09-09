@@ -45,10 +45,10 @@ that isn't a `pipeline-generator` command at all:
   --scenario "$SCENARIO"`). It's a plain bash script with no dependency on
   `pipeline-generator` or Python at all, so it runs the same way whether the
   CI/CD platform's job that calls it happens to have this tool installed or
-  not. For JMeter it's real and complete — it resolves the environment/
-  scenario to their catalog identifiers and actually runs `jmeter`. For
-  BlazeMeter and LoadRunner Professional it's a template — connection
-  details are filled in, but the actual API/controller call is left as a
+  not. For JMeter and LoadRunner Professional it's real and complete — it
+  resolves the environment/scenario to their catalog identifiers and
+  actually runs `jmeter`/`wlrun`. For BlazeMeter it's a template —
+  connection details are filled in, but the actual API call is left as a
   `# TODO`, so running it today prints a clear error and exits non-zero
   (section 10 has the details). You can also run it by hand from a checkout
   of the generated setup, without going through the CI/CD platform, to test
@@ -160,10 +160,11 @@ Depends on which tool you picked in Step 2:
 
 | Field | Notes |
 |---|---|
-| `controller_host` | Required. |
-| `controller_results_path` | Required — where results land on the controller (e.g. `C:\Results`). |
-| `domain` | Optional. |
-| `project` | Optional. |
+| `wlrun_path` | Optional — path to the `wlrun` executable; blank uses `PATH`. Assumes the CI job runs on an agent co-located with the LoadRunner Controller (see section 10). |
+
+Catalog scenario entries for LoadRunner Professional use a full `.lrs`
+scenario file path as their `identifier` (one entry per environment/
+scenario combination), rather than a remote name — see section 10 for why.
 
 **BlazeMeter:**
 
@@ -433,20 +434,37 @@ Step 4 is where the three tools currently differ:
   with `${__P(scenario)}` (e.g. `checkout-smoke`) — not a filename. The
   `.jmx` file itself is named once, in `tool.connection.test_plan_path`.
 
-- **BlazeMeter** and **LoadRunner Professional** — a template. The
-  connection details from `tool.connection` (e.g. `base_url`/
-  `workspace_id`/`project_id`, or `controller_host`/
-  `controller_results_path`/`domain`/`project`) are already filled in as
-  shell variables, any configured `pre_run_checks` are listed as
-  `# TODO precheck: ...` comments, and the script ends with:
+- **LoadRunner Professional** — real, working execution, assuming the CI
+  job runs on an agent co-located with the LoadRunner Controller. If
+  `verify_controller_access` is in `pre_run_checks`, it first checks
+  `wlrun_path` resolves to a runnable command; if `verify_scenario_exists`
+  is configured, it checks the resolved scenario `.lrs` file exists. Then
+  it runs:
+
+  ```bash
+  wlrun -Run -TestPath <resolved scenario identifier> \
+    -ResultName run-output/<environment key>_<scenario key>
+  ```
+
+  Unlike JMeter, `wlrun` has no native "environment" parameter, so a
+  scenario's catalog `identifier` is a full `.lrs` file path (one catalog
+  entry per environment/scenario combination) rather than a property
+  value — the environment key is used only to name the results folder.
+  `wlrun`'s own exit code is known to be unreliable on some LoadRunner
+  versions (it can return 0 even on a failed scenario); nonzero is still
+  treated as failure since it's the best signal available locally.
+
+- **BlazeMeter** — a template. The connection details from
+  `tool.connection` (`base_url`/`workspace_id`/`project_id`) are already
+  filled in as shell variables, any configured `pre_run_checks` are listed
+  as `# TODO precheck: ...` comments, and the script ends with:
 
   ```
   ERROR: BlazeMeter execution is not implemented in this generated script yet.
-  Fill in the API/controller call using the variables above.
+  Fill in the API call using the variables above.
   ```
 
-  (or the equivalent for LoadRunner Professional), then exits 1. See
-  section 10 for what's needed to finish either one for real.
+  then exits 1. See section 10 for what's needed to finish it for real.
 
 Bad input (missing `--environment`/`--scenario`, an unrecognized key) is
 reported as a plain one-line message on stderr with a non-zero exit code,
@@ -504,15 +522,21 @@ The config schema, wizard prompts, and validation all work end-to-end for
 all three tools, and `generate` writes a `scripts/run-<tool_type>.sh` for
 each — but they aren't all equally finished:
 
-- **JMeter is real, working execution.** The generated script resolves the
-  environment/scenario and runs `jmeter -n -t <test_plan_path> ...` for
-  real, with no further work needed.
-- **BlazeMeter and LoadRunner Professional are templates, not stubs.** The
-  generated script is real, syntactically valid bash — connection details
-  are filled in, `pre_run_checks` are listed as `# TODO precheck: ...`
-  comments — but the actual API/controller call is left undone: it prints
-  `ERROR: <Tool> execution is not implemented in this generated script yet.`
-  and exits 1. Finishing either one means editing that `# TODO` block in the
+- **JMeter and LoadRunner Professional are real, working execution.** The
+  generated script resolves the environment/scenario and runs `jmeter -n -t
+  <test_plan_path> ...` or `wlrun -Run -TestPath <scenario_identifier> ...`
+  for real, with no further work needed. LoadRunner Professional assumes
+  the CI job runs on an agent co-located with the LoadRunner Controller —
+  see `docs/superpowers/specs/
+  2026-09-09-loadrunner-local-agent-execution-design.md` for the full
+  design and why other execution strategies (SSH/WinRM remoting, LoadRunner
+  Enterprise's REST API) were rejected.
+- **BlazeMeter is a template, not a stub.** The generated script is real,
+  syntactically valid bash — connection details are filled in,
+  `pre_run_checks` are listed as `# TODO precheck: ...` comments — but the
+  actual API call is left undone: it prints
+  `ERROR: BlazeMeter execution is not implemented in this generated script
+  yet.` and exits 1. Finishing it means editing that `# TODO` block in the
   generated script (or, upstream, `renderers/scripts.py`'s
   `_render_template_script`) to make the real call. This is tracked at the
   top of the project's readiness roadmap (see
@@ -520,8 +544,8 @@ each — but they aren't all equally finished:
 
 | Tool | Auth model | Connection fields | Generated script |
 |---|---|---|---|
-| **LoadRunner Professional** | Remote (`username_password`, etc.) | `controller_host`, `controller_results_path`, optional `domain`/`project` | Template — needs a remote-execution strategy decision (WinRM vs. SSH vs. dedicated agent) before the controller call can be filled in. |
-| **BlazeMeter** | Remote (`api_token`, etc.) | `base_url`, `workspace_id`, `project_id` | Template — API-driven; the lower-effort of the two templates to finish. |
+| **LoadRunner Professional** | `none` (runs on a controller-adjacent agent) | optional `wlrun_path` | Real and complete — runs `wlrun` locally; no remote credentials managed by this script. |
+| **BlazeMeter** | Remote (`api_token`, etc.) | `base_url`, `workspace_id`, `project_id` | Template — API-driven; no execution-strategy decision blocks it. |
 | **JMeter** | `none` (runs locally) | `test_plan_path`, optional `jmeter_bin` | Real and complete — no remote API or credentials needed, just a local `jmeter` subprocess call. |
 
 ## 11. Validating Configs
@@ -601,13 +625,18 @@ wizard's Step 7, this shouldn't happen (refs are chosen from the catalog);
 it's more likely if you hand-edited the YAML.
 
 **"ERROR: BlazeMeter execution is not implemented in this generated script
-yet." / "ERROR: LoadRunner Professional execution is not implemented in
-this generated script yet."**
-You ran the generated `scripts/run-blazemeter.sh` or
-`run-loadrunner_professional.sh`. Both are templates (section 10) — the
-connection details are filled in, but the actual API/controller call is
-left as a `# TODO` in the script for someone to implement. JMeter's
-generated script has no such gap.
+yet."**
+You ran the generated `scripts/run-blazemeter.sh`. It's a template
+(section 10) — the connection details are filled in, but the actual API
+call is left as a `# TODO` in the script for someone to implement.
+JMeter's and LoadRunner Professional's generated scripts have no such gap.
+
+**"ERROR: wlrun not found: ..."**
+The generated `scripts/run-loadrunner_professional.sh` couldn't find the
+configured `wlrun_path` on this machine. LoadRunner Professional's script
+assumes it's running on an agent co-located with the LoadRunner Controller
+(section 10) — check `wlrun_path` in `customer.yaml`, or that the CI job
+is actually running on the right agent.
 
 **"Unknown environment key: ..." / "Unknown scenario key: ..."**
 The `--environment`/`--scenario` value passed to `scripts/run-<tool>.sh`
@@ -629,10 +658,9 @@ before the cancellation.
 
 Worth knowing going in:
 
-- **No real remote execution yet for two of the three tools.** JMeter's
-  generated script is real and complete; BlazeMeter's and LoadRunner
-  Professional's are templates whose API/controller call is still a
-  `# TODO` (section 10).
+- **No real execution yet for BlazeMeter.** JMeter's and LoadRunner
+  Professional's generated scripts are real and complete; BlazeMeter's is
+  a template whose API call is still a `# TODO` (section 10).
 - **Renderer output is escaped/safe, but not schema-validated beyond
   YAML/Groovy syntax.** A generated workflow will parse correctly and won't
   let a hostile config value break out of its intended context, but the

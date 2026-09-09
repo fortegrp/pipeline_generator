@@ -133,18 +133,29 @@ Pipeline: **customer YAML → validate → generic pipeline model → CI/CD rend
   checks the test plan file exists first (only if `verify_scenario_exists`
   is in `pre_run_checks`), then runs
   `jmeter -n -t <test_plan_path> -l run-output/results.jtl -e -o
-  run-output/report -Jenvironment=... -Jscenario=...` for real. For
-  `blazemeter` and `loadrunner_professional`, the script is a template, not
-  a stub: it's real, syntactically valid bash with the connection details
-  (`base_url`/`workspace_id`/`project_id`, or `controller_host`/
-  `controller_results_path`/`domain`/`project`) already filled in as
-  variables, remaining `pre_run_checks` listed as `# TODO precheck: ...`
-  comments, and it ends with
-  `echo "ERROR: <Tool> execution is not implemented in this generated
+  run-output/report -Jenvironment=... -Jscenario=...` for real.
+  `loadrunner_professional` is also real: it assumes the CI job runs on a
+  dedicated agent co-located with the LoadRunner Controller (so
+  `wlrun.exe` is already on the box) and runs `wlrun -Run -TestPath
+  <scenario_identifier> -ResultName
+  run-output/<environment_key>_<scenario_key>` — since `wlrun` has no
+  native "environment" parameter, a scenario's catalog `identifier` is a
+  full `.lrs` file path (customers author one catalog scenario entry per
+  environment/scenario combination they have a file for), and the
+  environment only names the results folder. `wlrun`'s exit code is known
+  to be unreliable on some LoadRunner versions (can return 0 on a failed
+  scenario); nonzero is still treated as failure as the best local signal
+  available. For `blazemeter`, the script remains a template, not a stub:
+  it's real, syntactically valid bash with the connection details
+  (`base_url`/`workspace_id`/`project_id`) already filled in as variables,
+  remaining `pre_run_checks` listed as `# TODO precheck: ...` comments, and
+  it ends with
+  `echo "ERROR: BlazeMeter execution is not implemented in this generated
   script yet." >&2` and `exit 1` — same honest not-done-yet stance the old
   Python adapters had, just expressed as shell instead of
-  `NotImplementedError`. JMeter runs locally (no remote API/credentials), so
-  its `tool.auth.type` is `none` — see `AUTH_TYPES` in `config/schema.py`.
+  `NotImplementedError`. JMeter and LoadRunner Professional both run
+  locally/on-agent (no remote API credentials managed by this script), so
+  their `tool.auth.type` is `none` — see `AUTH_TYPES` in `config/schema.py`.
 
 `generate` re-validates the config before doing anything (`cli.py` calls
 `validate_config`, then `_blocks_action()` — see the `config/` bullet above
@@ -153,5 +164,5 @@ handling (`EOFError`/`KeyboardInterrupt`) so far.
 
 See `docs/current-state-and-readiness-plan.md` for the full known-gaps list
 and multi-milestone readiness plan (stricter validation profiles, YAML-safe
-renderer output, filling in the BlazeMeter/LoadRunner Professional script
-templates) if working on hardening this project further.
+renderer output, filling in the BlazeMeter script template) if working on
+hardening this project further.
