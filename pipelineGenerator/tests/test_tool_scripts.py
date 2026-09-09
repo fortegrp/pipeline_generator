@@ -118,11 +118,10 @@ def test_resolver_handles_adversarial_catalog_keys(tmp_path: Path) -> None:
     assert not marker.exists()
 
 
-def test_render_blazemeter_script_is_a_template(tmp_path: Path) -> None:
+def test_render_blazemeter_script_runs_curl_for_real(tmp_path: Path) -> None:
     config = _base_config(
         "blazemeter",
         {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"},
-        checks=["verify_scenario_exists", "collect_results"],
     )
     package = build_generic_package(config)
 
@@ -130,23 +129,188 @@ def test_render_blazemeter_script_is_a_template(tmp_path: Path) -> None:
 
     script_path = tmp_path / "scripts" / "run-blazemeter.sh"
     assert outputs == [str(script_path)]
+    assert script_path.exists()
     assert script_path.stat().st_mode & 0o111 == 0o111
 
     content = script_path.read_text(encoding="utf-8")
-    # shlex.quote leaves values with no shell-special characters unquoted --
-    # none of these three values contain any, so no quotes appear.
+    assert "resolve_environment_slug() {" in content
+    assert "resolve_scenario_slug() {" in content
     assert "local base_url=https://a.blazemeter.com" in content
     assert "local workspace_id=12345" in content
     assert "local project_id=67890" in content
-    assert "# TODO precheck: verify_scenario_exists" in content
-    assert "# TODO precheck: collect_results" in content
-    assert 'echo "ERROR: BlazeMeter execution is not implemented in this generated script yet." >&2' in content
+    assert "command -v jq >/dev/null 2>&1" in content
+    assert '-X POST "$base_url/api/v4/tests/$scenario_identifier/start"' in content
+    assert "jq -r '.result.id'" in content
+    assert '"$base_url/api/v4/masters/$master_id/status"' in content
+    assert '"$base_url/api/v4/masters/$master_id/reports/main/summary"' in content
+    assert "not implemented in this generated script yet" not in content
 
     syntax_check = subprocess.run(["bash", "-n", str(script_path)], capture_output=True, text=True)
     assert syntax_check.returncode == 0, syntax_check.stderr
 
 
-def test_render_template_script_rejects_pre_run_check_shell_injection(tmp_path: Path) -> None:
+def test_render_blazemeter_script_checks_host_reachable_when_configured(tmp_path: Path) -> None:
+    config = _base_config(
+        "blazemeter",
+        {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"},
+        checks=["verify_host_reachable"],
+    )
+    package = build_generic_package(config)
+
+    render_tool_script(config, package, tmp_path)
+    content = (tmp_path / "scripts" / "run-blazemeter.sh").read_text(encoding="utf-8")
+
+    assert 'if ! curl -s -o /dev/null "$base_url"; then' in content
+    assert 'echo "ERROR: cannot reach BlazeMeter host: $base_url" >&2' in content
+
+
+def test_render_blazemeter_script_omits_host_check_when_not_configured(tmp_path: Path) -> None:
+    config = _base_config(
+        "blazemeter",
+        {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"},
+        checks=[],
+    )
+    package = build_generic_package(config)
+
+    render_tool_script(config, package, tmp_path)
+    content = (tmp_path / "scripts" / "run-blazemeter.sh").read_text(encoding="utf-8")
+
+    assert "cannot reach BlazeMeter host" not in content
+
+
+def test_render_blazemeter_script_checks_project_exists_when_configured(tmp_path: Path) -> None:
+    config = _base_config(
+        "blazemeter",
+        {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"},
+        checks=["verify_project_exists"],
+    )
+    package = build_generic_package(config)
+
+    render_tool_script(config, package, tmp_path)
+    content = (tmp_path / "scripts" / "run-blazemeter.sh").read_text(encoding="utf-8")
+
+    assert '"$base_url/api/v4/projects/$project_id?workspaceId=$workspace_id"' in content
+    assert 'if [ "$project_status" != "200" ]; then' in content
+
+
+def test_render_blazemeter_script_omits_project_check_when_not_configured(tmp_path: Path) -> None:
+    config = _base_config(
+        "blazemeter",
+        {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"},
+        checks=[],
+    )
+    package = build_generic_package(config)
+
+    render_tool_script(config, package, tmp_path)
+    content = (tmp_path / "scripts" / "run-blazemeter.sh").read_text(encoding="utf-8")
+
+    assert "project_status=" not in content
+
+
+def test_render_blazemeter_script_checks_scenario_exists_when_configured(tmp_path: Path) -> None:
+    config = _base_config(
+        "blazemeter",
+        {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"},
+        checks=["verify_scenario_exists"],
+    )
+    package = build_generic_package(config)
+
+    render_tool_script(config, package, tmp_path)
+    content = (tmp_path / "scripts" / "run-blazemeter.sh").read_text(encoding="utf-8")
+
+    assert '"$base_url/api/v4/tests/$scenario_identifier"' in content
+    assert 'if [ "$test_status" != "200" ]; then' in content
+
+
+def test_render_blazemeter_script_omits_scenario_check_when_not_configured(tmp_path: Path) -> None:
+    config = _base_config(
+        "blazemeter",
+        {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"},
+        checks=[],
+    )
+    package = build_generic_package(config)
+
+    render_tool_script(config, package, tmp_path)
+    content = (tmp_path / "scripts" / "run-blazemeter.sh").read_text(encoding="utf-8")
+
+    assert "test_status=" not in content
+
+
+def test_render_blazemeter_script_requires_timeout_minutes_flag(tmp_path: Path) -> None:
+    config = _base_config(
+        "blazemeter",
+        {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"},
+    )
+    package = build_generic_package(config)
+
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-blazemeter.sh"
+    content = script_path.read_text(encoding="utf-8")
+
+    assert '--timeout-minutes) timeout_minutes="$2"; shift 2 ;;' in content
+    assert 'echo "Usage: $0 --environment <key> --scenario <key> --timeout-minutes <minutes>" >&2' in content
+
+    # Calling main without --timeout-minutes must fail fast during arg
+    # parsing, before any network call -- safe to actually execute. main's
+    # Usage-error branch calls `exit 1` directly, which terminates this
+    # whole bash -c process immediately (not just the function), so the
+    # process's own exit code IS the check -- there is no shell code after
+    # `main ...` in this command line that would ever run.
+    result = subprocess.run(
+        ["bash", "-c", f'source "{script_path}"; main --environment qa --scenario checkout_smoke'],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 1
+    assert "Usage:" in result.stderr
+
+
+def test_render_blazemeter_script_todo_comments_for_unhandled_checks(tmp_path: Path) -> None:
+    config = _base_config(
+        "blazemeter",
+        {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"},
+        checks=["verify_host_reachable", "verify_project_exists", "verify_scenario_exists", "collect_results"],
+    )
+    package = build_generic_package(config)
+
+    render_tool_script(config, package, tmp_path)
+    content = (tmp_path / "scripts" / "run-blazemeter.sh").read_text(encoding="utf-8")
+
+    assert "# TODO precheck: verify_host_reachable" not in content
+    assert "# TODO precheck: verify_project_exists" not in content
+    assert "# TODO precheck: verify_scenario_exists" not in content
+    assert "# TODO precheck: collect_results" in content
+
+
+def test_render_blazemeter_script_sanitizes_results_dir_from_hostile_catalog_key(tmp_path: Path) -> None:
+    config = _base_config(
+        "blazemeter", {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"}
+    )
+    config["catalog"]["environments"] = [{"key": "../../pwn", "name": "Hostile", "identifier": "Hostile"}]
+    config["catalog"]["scenarios"] = [{"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "1234567"}]
+    package = build_generic_package(config)
+
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-blazemeter.sh"
+    content = script_path.read_text(encoding="utf-8")
+
+    assert "resolve_environment_slug() {" in content
+
+    result = subprocess.run(
+        ["bash", "-c", f'source "{script_path}"; resolve_environment_slug "../../pwn"'],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    slug = result.stdout.strip()
+    assert ".." not in slug
+    assert "/" not in slug
+
+    syntax_check = subprocess.run(["bash", "-n", str(script_path)], capture_output=True, text=True)
+    assert syntax_check.returncode == 0, syntax_check.stderr
+
+
+def test_render_blazemeter_script_rejects_pre_run_check_shell_injection(tmp_path: Path) -> None:
     malicious_check = "verify_scenario_exists\n  touch /tmp/should-not-exist\n  #"
     config = _base_config(
         "blazemeter",
@@ -156,7 +320,6 @@ def test_render_template_script_rejects_pre_run_check_shell_injection(tmp_path: 
     package = build_generic_package(config)
 
     render_tool_script(config, package, tmp_path)
-
     script_path = tmp_path / "scripts" / "run-blazemeter.sh"
     content = script_path.read_text(encoding="utf-8")
 
