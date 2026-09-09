@@ -18,6 +18,7 @@ def render_setup_readme(config: dict, package: GenericPipelinePackage) -> str:
             "best understanding of the BlazeMeter API v4 -- verify against a live account before "
             "relying on this in production."
         )
+        todo_lines.append(f"- Ensure `jq` is installed on whatever agent/runner executes `{script_name}`.")
     elif tool_type == "loadrunner_professional":
         todo_lines.append(
             "- This pipeline's CI/CD job must run on an agent co-located with the LoadRunner "

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shlex
 import subprocess
 from pathlib import Path
@@ -327,6 +328,143 @@ def test_render_blazemeter_script_rejects_pre_run_check_shell_injection(tmp_path
 
     syntax_check = subprocess.run(["bash", "-n", str(script_path)], capture_output=True, text=True)
     assert syntax_check.returncode == 0, syntax_check.stderr
+
+
+def test_render_blazemeter_script_rejects_non_numeric_timeout(tmp_path: Path) -> None:
+    config = _base_config(
+        "blazemeter", {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"}
+    )
+    package = build_generic_package(config)
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-blazemeter.sh"
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f'source "{script_path}"; main --environment qa --scenario checkout_smoke --timeout-minutes abc',
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 1
+    assert "ERROR: --timeout-minutes must be a positive integer" in result.stderr
+
+
+def test_render_blazemeter_script_tolerates_transient_poll_failure(tmp_path: Path) -> None:
+    config = _base_config(
+        "blazemeter", {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"}
+    )
+    package = build_generic_package(config)
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-blazemeter.sh"
+
+    stub_bin = tmp_path / "stub-bin"
+    stub_bin.mkdir()
+    call_counter = tmp_path / "poll_calls"
+    call_counter.write_text("0")
+
+    # Fake curl: the /start and /summary calls always succeed. The /status
+    # call fails (exit 7, simulating a transient network error) on its
+    # first invocation, then succeeds with ENDED on every call after that.
+    (stub_bin / "curl").write_text(f"""#!/usr/bin/env bash
+if [[ "$*" == *"/start"* ]]; then
+  echo '{{"result": {{"id": 999}}}}'
+  exit 0
+fi
+if [[ "$*" == *"/status"* ]]; then
+  count=$(cat "{call_counter}")
+  count=$((count + 1))
+  echo "$count" > "{call_counter}"
+  if [ "$count" -eq 1 ]; then
+    exit 7
+  fi
+  echo '{{"result": {{"status": "ENDED"}}}}'
+  exit 0
+fi
+if [[ "$*" == *"/summary"* ]]; then
+  echo '{{}}'
+  exit 0
+fi
+exit 0
+""")
+    (stub_bin / "curl").chmod(0o755)
+
+    # Fake jq: only supports the two exact filter expressions this script
+    # uses, extracted with grep against the simple flat JSON the fake curl
+    # above produces -- no real jq or python dependency needed for the test.
+    (stub_bin / "jq").write_text("""#!/usr/bin/env bash
+input="$(cat)"
+expr="${@: -1}"
+case "$expr" in
+  '.result.id')
+    echo "$input" | grep -o '"id": *[0-9]*' | grep -o '[0-9]*$'
+    ;;
+  '.result.status')
+    echo "$input" | grep -o '"status": *"[A-Z]*"' | grep -o '"[A-Z]*"$' | tr -d '"'
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+""")
+    (stub_bin / "jq").chmod(0o755)
+
+    env = dict(os.environ)
+    env["PATH"] = f"{stub_bin}:{env['PATH']}"
+    env["BLAZEMETER_API_KEY_ID"] = "id"
+    env["BLAZEMETER_API_KEY_SECRET"] = "secret"
+
+    result = subprocess.run(
+        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke", "--timeout-minutes", "1"],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=tmp_path,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "WARNING: failed to poll BlazeMeter status" in result.stderr
+
+
+def test_render_blazemeter_script_shows_raw_response_on_non_json_start_reply(tmp_path: Path) -> None:
+    config = _base_config(
+        "blazemeter", {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"}
+    )
+    package = build_generic_package(config)
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-blazemeter.sh"
+
+    stub_bin = tmp_path / "stub-bin"
+    stub_bin.mkdir()
+    # Fake curl returns an HTML error page (e.g. a proxy's 502) instead of
+    # JSON -- a routine real-world SaaS/proxy failure mode.
+    (stub_bin / "curl").write_text("""#!/usr/bin/env bash
+echo '<html><body>502 Bad Gateway</body></html>'
+exit 0
+""")
+    (stub_bin / "curl").chmod(0o755)
+    # Fake jq always fails to parse, matching real jq's behavior against
+    # non-JSON input.
+    (stub_bin / "jq").write_text("""#!/usr/bin/env bash
+exit 1
+""")
+    (stub_bin / "jq").chmod(0o755)
+
+    env = dict(os.environ)
+    env["PATH"] = f"{stub_bin}:{env['PATH']}"
+    env["BLAZEMETER_API_KEY_ID"] = "id"
+    env["BLAZEMETER_API_KEY_SECRET"] = "secret"
+
+    result = subprocess.run(
+        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke", "--timeout-minutes", "1"],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=tmp_path,
+    )
+    assert result.returncode == 1
+    assert "ERROR: BlazeMeter did not return a master id" in result.stderr
+    assert "502 Bad Gateway" in result.stderr
 
 
 def test_render_loadrunner_script_runs_wlrun_for_real(tmp_path: Path) -> None:
