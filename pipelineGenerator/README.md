@@ -292,5 +292,9 @@ JMeter is local/self-hosted rather than a remote SaaS tool, so its
 
 - Fill in the real BlazeMeter API call in the generated `run-blazemeter.sh`
   template (`renderers/scripts.py`)
+- Add configurable CI/CD runner/agent targeting for LoadRunner Professional
+  setups (generated pipelines default to hosted runners that can't reach a
+  LoadRunner Controller; today this requires a manual hand-edit after
+  generation — see the user guide's section 10 caveat)
 - Add a GitLab CI renderer
 - Add non-interactive `generate` workflows around completed YAML inputs

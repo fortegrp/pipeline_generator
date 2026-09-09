@@ -5,7 +5,7 @@ from pathlib import Path
 from pipeline_generator.config.placeholders import TODO_VALUE
 from pipeline_generator.config.schema import PRE_RUN_CHECKS
 from pipeline_generator.generator.generic_model import GenericPipelinePackage, InputOption
-from pipeline_generator.renderers.quoting import shell_quote
+from pipeline_generator.renderers.quoting import safe_filename_component, shell_quote
 
 
 def _allowed_pre_run_checks(config: dict) -> list[str]:
@@ -57,6 +57,22 @@ def _render_resolvers(package: GenericPipelinePackage) -> str:
     )
     scenario_resolver = _render_resolver_function("resolve_scenario_identifier", "scenario", package.scenarios)
     return f"{environment_resolver}\n\n{scenario_resolver}"
+
+
+def _render_loadrunner_slug_resolvers(package: GenericPipelinePackage) -> str:
+    environment_slugs = [
+        InputOption(value=item.value, display_name=item.display_name, identifier=safe_filename_component(item.value))
+        for item in package.environments
+    ]
+    scenario_slugs = [
+        InputOption(value=item.value, display_name=item.display_name, identifier=safe_filename_component(item.value))
+        for item in package.scenarios
+    ]
+    environment_slug_resolver = _render_resolver_function(
+        "resolve_environment_slug", "environment", environment_slugs
+    )
+    scenario_slug_resolver = _render_resolver_function("resolve_scenario_slug", "scenario", scenario_slugs)
+    return f"{environment_slug_resolver}\n\n{scenario_slug_resolver}"
 
 
 def _render_arg_parsing() -> str:
@@ -194,18 +210,29 @@ def _render_loadrunner_script(config: dict, package: GenericPipelinePackage) -> 
   fi
 """
 
+    remaining_checks = [check for check in checks if check not in {"verify_controller_access", "verify_scenario_exists"}]
+    precheck_comments = "\n".join(f"  # TODO precheck: {check}" for check in remaining_checks)
+    if precheck_comments:
+        precheck_comments = f"\n{precheck_comments}\n"
+
     return f"""#!/usr/bin/env bash
 set -euo pipefail
 
 {_render_resolvers(package)}
+
+{_render_loadrunner_slug_resolvers(package)}
 
 main() {{
 {_render_arg_parsing()}
   mkdir -p run-output
 
   local wlrun_path={shell_quote(wlrun_path)}
-{controller_check}{scenario_check}
-  local results_dir="run-output/${{environment_key}}_${{scenario_key}}"
+{controller_check}{scenario_check}{precheck_comments}
+  local environment_slug
+  local scenario_slug
+  environment_slug="$(resolve_environment_slug "$environment_key")"
+  scenario_slug="$(resolve_scenario_slug "$scenario_key")"
+  local results_dir="run-output/${{environment_slug}}_${{scenario_slug}}"
   mkdir -p "$results_dir"
 
   # wlrun's exit code is known to be unreliable on some LoadRunner

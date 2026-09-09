@@ -181,7 +181,7 @@ def test_render_loadrunner_script_runs_wlrun_for_real(tmp_path: Path) -> None:
     assert "resolve_environment_identifier() {" in content
     assert "resolve_scenario_identifier() {" in content
     assert "local wlrun_path=wlrun" in content
-    assert 'local results_dir="run-output/${environment_key}_${scenario_key}"' in content
+    assert 'local results_dir="run-output/${environment_slug}_${scenario_slug}"' in content
     assert '"$wlrun_path" -Run -TestPath "$scenario_identifier" -ResultName "$results_dir"' in content
     assert "not implemented in this generated script yet" not in content
 
@@ -262,3 +262,60 @@ def test_render_loadrunner_script_defaults_wlrun_path_when_blank(tmp_path: Path)
     content = (tmp_path / "scripts" / "run-loadrunner_professional.sh").read_text(encoding="utf-8")
 
     assert "local wlrun_path=wlrun" in content
+
+
+def test_render_loadrunner_script_sanitizes_results_dir_from_hostile_catalog_key(tmp_path: Path) -> None:
+    config = _base_config("loadrunner_professional", {"wlrun_path": "wlrun"})
+    config["catalog"]["environments"] = [{"key": "../../pwn", "name": "Hostile", "identifier": "Hostile"}]
+    config["catalog"]["scenarios"] = [
+        {"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "C:\\Scenarios\\checkout_smoke.lrs"}
+    ]
+    package = build_generic_package(config)
+
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-loadrunner_professional.sh"
+    content = script_path.read_text(encoding="utf-8")
+
+    assert "resolve_environment_slug() {" in content
+    assert "resolve_scenario_slug() {" in content
+
+    # The slug resolver must map the hostile key to a sanitized value at
+    # generation time (safe_filename_component == slugify), not pass it
+    # through raw -- this is what closes the run-output/../../pwn escape
+    # the final review demonstrated.
+    result = subprocess.run(
+        ["bash", "-c", f'source "{script_path}"; resolve_environment_slug "../../pwn"'],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    slug = result.stdout.strip()
+    assert ".." not in slug
+    assert "/" not in slug
+
+    syntax_check = subprocess.run(["bash", "-n", str(script_path)], capture_output=True, text=True)
+    assert syntax_check.returncode == 0, syntax_check.stderr
+
+
+def test_render_loadrunner_script_todo_comments_for_unhandled_checks(tmp_path: Path) -> None:
+    config = _base_config(
+        "loadrunner_professional",
+        {"wlrun_path": "wlrun"},
+        checks=["verify_controller_access", "verify_scenario_exists", "verify_load_generators_connected", "collect_results"],
+    )
+    package = build_generic_package(config)
+
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-loadrunner_professional.sh"
+    content = script_path.read_text(encoding="utf-8")
+
+    # The two implemented checks get real guards, not TODO comments.
+    assert "# TODO precheck: verify_controller_access" not in content
+    assert "# TODO precheck: verify_scenario_exists" not in content
+    # The two unimplemented checks get TODO comments instead of silently
+    # vanishing.
+    assert "# TODO precheck: verify_load_generators_connected" in content
+    assert "# TODO precheck: collect_results" in content
+
+    syntax_check = subprocess.run(["bash", "-n", str(script_path)], capture_output=True, text=True)
+    assert syntax_check.returncode == 0, syntax_check.stderr
