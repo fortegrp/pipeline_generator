@@ -412,7 +412,8 @@ cd generated/acme-github-actions-jmeter-storefront
 
 What the script does:
 
-1. Parses `--environment` and `--scenario` (both required).
+1. Parses `--environment` and `--scenario` (both required; BlazeMeter also
+   requires `--timeout-minutes`).
 2. Resolves each to its catalog `identifier` using generated shell
    functions (`resolve_environment_identifier`/
    `resolve_scenario_identifier`) — an unrecognized key prints
@@ -458,21 +459,23 @@ Step 4 is where the three tools currently differ:
   versions (it can return 0 even on a failed scenario); nonzero is still
   treated as failure since it's the best signal available locally.
 
-- **BlazeMeter** — real, working execution. If configured,
-  `verify_host_reachable` checks `base_url` responds at all;
-  `verify_project_exists` checks the configured `project_id` exists inside
-  `workspace_id`; `verify_scenario_exists` checks the configured test ID
-  exists — each an authenticated BlazeMeter API call except the first. Then
-  it requires `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET` to be set,
-  starts the test via `POST /api/v4/tests/<id>/start`, polls
+- **BlazeMeter** — real, working execution. It first requires
+  `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET` to be set (two of the
+  three prechecks below need them). If configured, `verify_host_reachable`
+  checks `base_url` responds at all (no auth needed); `verify_project_exists`
+  checks the configured `project_id` exists inside `workspace_id`;
+  `verify_scenario_exists` checks the configured test ID exists — both
+  authenticated BlazeMeter API calls. It then starts the test via
+  `POST /api/v4/tests/<id>/start`, polls
   `GET /api/v4/masters/<id>/status` every 15 seconds until it finishes
   (bounded by a required `--timeout-minutes` flag the generated pipeline
   always passes), and downloads a summary report into
-  `run-output/<environment>_<scenario>/summary.json`. See section 10 for
-  the two API-surface details flagged as needing verification against a
-  live account.
+  `run-output/<environment_slug>_<scenario_slug>/summary.json`. See
+  section 10 for the two API-surface details flagged as needing
+  verification against a live account.
 
-Bad input (missing `--environment`/`--scenario`, an unrecognized key) is
+Bad input (missing `--environment`/`--scenario`/`--timeout-minutes` where
+required, an unrecognized key, or a non-numeric `--timeout-minutes`) is
 reported as a plain one-line message on stderr with a non-zero exit code,
 not a stack trace.
 
@@ -652,6 +655,12 @@ The generated `scripts/run-blazemeter.sh` needs both env vars set before
 it will make any API call — set them as CI/CD secrets (see the generated
 setup README).
 
+**"ERROR: jq is required to parse BlazeMeter API responses but was not found."**
+The generated `scripts/run-blazemeter.sh` needs `jq` installed on whatever
+agent/runner executes it. GitHub-hosted and Azure-hosted runners have it
+preinstalled; self-hosted agents (including any Jenkins agent) may not —
+install it there first.
+
 **"ERROR: cannot reach BlazeMeter host: ..." / "... project not found ..." / "... test not found ..."**
 One of BlazeMeter's configured prechecks
 (`verify_host_reachable`/`verify_project_exists`/`verify_scenario_exists`)
@@ -677,8 +686,9 @@ doesn't match any `key` in `catalog.environments`/`catalog.scenarios` for
 that setup. Check the value against `customer.yaml`, or regenerate if the
 catalog changed after the script was last written.
 
-**"Usage: ./scripts/run-<tool>.sh --environment <key> --scenario <key>"**
-The script was called without both `--environment` and `--scenario` — check
+**"Usage: ./scripts/run-<tool>.sh --environment <key> --scenario <key>" / "... --timeout-minutes <minutes>"**
+The script was called without a required flag — `--environment`/
+`--scenario` for every tool, plus `--timeout-minutes` for BlazeMeter — check
 the CI/CD step (or your own command line) that invokes it, against
 section 8.
 

@@ -80,11 +80,20 @@ def _render_arg_parsing(include_timeout: bool = False) -> str:
     timeout_case = ""
     timeout_required_check = ""
     timeout_usage = ""
+    timeout_numeric_check = ""
     if include_timeout:
         timeout_local = '  local timeout_minutes=""\n'
         timeout_case = '      --timeout-minutes) timeout_minutes="$2"; shift 2 ;;\n'
         timeout_required_check = ' || [ -z "$timeout_minutes" ]'
         timeout_usage = ' --timeout-minutes <minutes>'
+        timeout_numeric_check = """
+  case "$timeout_minutes" in
+    ''|*[!0-9]*)
+      echo "ERROR: --timeout-minutes must be a positive integer, got: $timeout_minutes" >&2
+      exit 1
+      ;;
+  esac
+"""
 
     return f"""  local environment_key=""
   local scenario_key=""
@@ -100,7 +109,7 @@ def _render_arg_parsing(include_timeout: bool = False) -> str:
     echo "Usage: $0 --environment <key> --scenario <key>{timeout_usage}" >&2
     exit 1
   fi
-
+{timeout_numeric_check}
   local environment_identifier
   local scenario_identifier
   environment_identifier="$(resolve_environment_identifier "$environment_key")"
@@ -169,6 +178,7 @@ def _render_blazemeter_script(config: dict, package: GenericPipelinePackage) -> 
     project_check = ""
     if "verify_project_exists" in checks:
         project_check = """
+  local project_status
   project_status=$(curl -s -o /dev/null -w "%{http_code}" -u "$BLAZEMETER_API_KEY_ID:$BLAZEMETER_API_KEY_SECRET" \\
     "$base_url/api/v4/projects/$project_id?workspaceId=$workspace_id")
   if [ "$project_status" != "200" ]; then
@@ -180,6 +190,7 @@ def _render_blazemeter_script(config: dict, package: GenericPipelinePackage) -> 
     scenario_check = ""
     if "verify_scenario_exists" in checks:
         scenario_check = """
+  local test_status
   test_status=$(curl -s -o /dev/null -w "%{http_code}" -u "$BLAZEMETER_API_KEY_ID:$BLAZEMETER_API_KEY_SECRET" \\
     "$base_url/api/v4/tests/$scenario_identifier")
   if [ "$test_status" != "200" ]; then
@@ -229,7 +240,7 @@ main() {{
   start_response="$(curl -s -u "$BLAZEMETER_API_KEY_ID:$BLAZEMETER_API_KEY_SECRET" \\
     -X POST "$base_url/api/v4/tests/$scenario_identifier/start")"
   local master_id
-  master_id="$(echo "$start_response" | jq -r '.result.id')"
+  master_id="$(echo "$start_response" | jq -r '.result.id' 2>/dev/null)" || master_id=""
   if [ -z "$master_id" ] || [ "$master_id" = "null" ]; then
     echo "ERROR: BlazeMeter did not return a master id when starting the test. Response: $start_response" >&2
     exit 1
@@ -243,8 +254,13 @@ main() {{
   local deadline=$(( $(date +%s) + timeout_minutes * 60 ))
   local status="UNKNOWN"
   while [ "$(date +%s)" -lt "$deadline" ]; do
-    status="$(curl -s -u "$BLAZEMETER_API_KEY_ID:$BLAZEMETER_API_KEY_SECRET" \\
-      "$base_url/api/v4/masters/$master_id/status" | jq -r '.result.status')"
+    if ! status="$(curl -s -u "$BLAZEMETER_API_KEY_ID:$BLAZEMETER_API_KEY_SECRET" \\
+      "$base_url/api/v4/masters/$master_id/status" | jq -r '.result.status' 2>/dev/null)"; then
+      echo "WARNING: failed to poll BlazeMeter status (network or parse error); retrying" >&2
+      status="UNKNOWN"
+      sleep 15
+      continue
+    fi
     case "$status" in
       ENDED) break ;;
       ERROR|ABORTED)

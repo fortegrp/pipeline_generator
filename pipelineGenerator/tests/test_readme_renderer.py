@@ -38,6 +38,7 @@ def test_readme_mentions_blazemeter_secrets_and_verification_caveat() -> None:
     assert "BLAZEMETER_API_KEY_SECRET" in readme
     assert "verify against a live account" in readme
     assert "Fill in the actual API/controller call" not in readme
+    assert "Ensure `jq` is installed" in readme
 
 
 def test_readme_mentions_jmeter_script_in_files_section() -> None:
