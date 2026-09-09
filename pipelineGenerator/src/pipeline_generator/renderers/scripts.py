@@ -150,56 +150,125 @@ fi
 """
 
 
-def _render_template_script(
-    config: dict, package: GenericPipelinePackage, tool_label: str, connection_vars: dict[str, str]
-) -> str:
+def _render_blazemeter_script(config: dict, package: GenericPipelinePackage) -> str:
+    connection = config.get("tool", {}).get("connection", {})
+    base_url = connection.get("base_url") or TODO_VALUE
+    workspace_id = connection.get("workspace_id") or TODO_VALUE
+    project_id = connection.get("project_id") or TODO_VALUE
     checks = _allowed_pre_run_checks(config)
-    var_lines = "\n".join(f"  local {name.lower()}={shell_quote(value)}" for name, value in connection_vars.items())
-    var_names = ", ".join(name.lower() for name in connection_vars)
-    precheck_comments = "\n".join(
-        f"  # TODO precheck: {check} (requires a {tool_label} API/controller call; not implemented)"
-        for check in checks
-    )
+
+    host_check = ""
+    if "verify_host_reachable" in checks:
+        host_check = """
+  if ! curl -s -o /dev/null "$base_url"; then
+    echo "ERROR: cannot reach BlazeMeter host: $base_url" >&2
+    exit 1
+  fi
+"""
+
+    project_check = ""
+    if "verify_project_exists" in checks:
+        project_check = """
+  project_status=$(curl -s -o /dev/null -w "%{http_code}" -u "$BLAZEMETER_API_KEY_ID:$BLAZEMETER_API_KEY_SECRET" \\
+    "$base_url/api/v4/projects/$project_id?workspaceId=$workspace_id")
+  if [ "$project_status" != "200" ]; then
+    echo "ERROR: BlazeMeter project not found in workspace, or inaccessible: project $project_id, workspace $workspace_id (HTTP $project_status)" >&2
+    exit 1
+  fi
+"""
+
+    scenario_check = ""
+    if "verify_scenario_exists" in checks:
+        scenario_check = """
+  test_status=$(curl -s -o /dev/null -w "%{http_code}" -u "$BLAZEMETER_API_KEY_ID:$BLAZEMETER_API_KEY_SECRET" \\
+    "$base_url/api/v4/tests/$scenario_identifier")
+  if [ "$test_status" != "200" ]; then
+    echo "ERROR: BlazeMeter test not found or inaccessible: $scenario_identifier (HTTP $test_status)" >&2
+    exit 1
+  fi
+"""
+
+    remaining_checks = [
+        check for check in checks
+        if check not in {"verify_host_reachable", "verify_project_exists", "verify_scenario_exists"}
+    ]
+    precheck_comments = "\n".join(f"  # TODO precheck: {check}" for check in remaining_checks)
+    if precheck_comments:
+        precheck_comments = f"\n{precheck_comments}\n"
 
     return f"""#!/usr/bin/env bash
 set -euo pipefail
 
 {_render_resolvers(package)}
 
+{_render_slug_resolvers(package)}
+
 main() {{
-{_render_arg_parsing()}
+{_render_arg_parsing(include_timeout=True)}
   mkdir -p run-output
 
-{var_lines}
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "ERROR: jq is required to parse BlazeMeter API responses but was not found." >&2
+    exit 1
+  fi
+  : "${{BLAZEMETER_API_KEY_ID:?BLAZEMETER_API_KEY_ID must be set}}"
+  : "${{BLAZEMETER_API_KEY_SECRET:?BLAZEMETER_API_KEY_SECRET must be set}}"
 
-{precheck_comments}
-  # TODO: this generated script does not yet call the {tool_label} API/controller.
-  # Use {var_names}, environment_identifier, and scenario_identifier above to
-  # start a {tool_label} test run, poll for completion, and collect results
-  # into run-output/.
-  echo "ERROR: {tool_label} execution is not implemented in this generated script yet." >&2
-  echo "Fill in the API/controller call using the variables above." >&2
-  exit 1
+  local base_url={shell_quote(base_url)}
+  local workspace_id={shell_quote(workspace_id)}
+  local project_id={shell_quote(project_id)}
+{host_check}{project_check}{scenario_check}{precheck_comments}
+  local environment_slug
+  local scenario_slug
+  environment_slug="$(resolve_environment_slug "$environment_key")"
+  scenario_slug="$(resolve_scenario_slug "$scenario_key")"
+  local results_dir="run-output/${{environment_slug}}_${{scenario_slug}}"
+  mkdir -p "$results_dir"
+
+  local start_response
+  start_response="$(curl -s -u "$BLAZEMETER_API_KEY_ID:$BLAZEMETER_API_KEY_SECRET" \\
+    -X POST "$base_url/api/v4/tests/$scenario_identifier/start")"
+  local master_id
+  master_id="$(echo "$start_response" | jq -r '.result.id')"
+  if [ -z "$master_id" ] || [ "$master_id" = "null" ]; then
+    echo "ERROR: BlazeMeter did not return a master id when starting the test. Response: $start_response" >&2
+    exit 1
+  fi
+
+  # NOTE: the exact status-string vocabulary below (ENDED/ERROR/ABORTED)
+  # and the reports/main/summary endpoint used after the loop are our best
+  # understanding of the BlazeMeter API v4 as of this writing -- verify
+  # both against a live BlazeMeter account before relying on this in
+  # production.
+  local deadline=$(( $(date +%s) + timeout_minutes * 60 ))
+  local status="UNKNOWN"
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    status="$(curl -s -u "$BLAZEMETER_API_KEY_ID:$BLAZEMETER_API_KEY_SECRET" \\
+      "$base_url/api/v4/masters/$master_id/status" | jq -r '.result.status')"
+    case "$status" in
+      ENDED) break ;;
+      ERROR|ABORTED)
+        echo "ERROR: BlazeMeter test ended with status $status (master $master_id)" >&2
+        exit 1
+        ;;
+    esac
+    sleep 15
+  done
+  if [ "$status" != "ENDED" ]; then
+    echo "ERROR: Timed out after $timeout_minutes minutes waiting for BlazeMeter test to finish (master $master_id, last status: $status)" >&2
+    exit 1
+  fi
+
+  curl -s -u "$BLAZEMETER_API_KEY_ID:$BLAZEMETER_API_KEY_SECRET" \\
+    "$base_url/api/v4/masters/$master_id/reports/main/summary" > "$results_dir/summary.json"
+  printf '{{"master_id": "%s", "report_url": "%s/app/#/masters/%s/summary"}}' \\
+    "$master_id" "$base_url" "$master_id" > "$results_dir/report_link.json"
 }}
 
 if [ "${{BASH_SOURCE[0]:-$0}}" = "$0" ]; then
   main "$@"
 fi
 """
-
-
-def _render_blazemeter_script(config: dict, package: GenericPipelinePackage) -> str:
-    connection = config.get("tool", {}).get("connection", {})
-    return _render_template_script(
-        config,
-        package,
-        "BlazeMeter",
-        {
-            "BASE_URL": connection.get("base_url") or TODO_VALUE,
-            "WORKSPACE_ID": connection.get("workspace_id") or TODO_VALUE,
-            "PROJECT_ID": connection.get("project_id") or TODO_VALUE,
-        },
-    )
 
 
 def _render_loadrunner_script(config: dict, package: GenericPipelinePackage) -> str:
