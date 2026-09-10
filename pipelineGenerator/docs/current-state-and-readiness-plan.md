@@ -274,8 +274,11 @@ from a checkout of the generated setup.
 - For **JMeter**, it's real and complete: it resolves `--environment`/
   `--scenario` to their catalog identifiers, optionally checks the test plan
   file exists first (if `verify_scenario_exists` is in `pre_run_checks`),
-  then runs `jmeter -n -t <test_plan_path> -l run-output/results.jtl -e -o
-  run-output/report -Jenvironment=... -Jscenario=...` for real.
+  then creates `run-output/<environment_slug>_<scenario_slug>/` and runs
+  `jmeter -n -t <test_plan_path> -l
+  run-output/<environment_slug>_<scenario_slug>/results.jtl -e -o
+  run-output/<environment_slug>_<scenario_slug>/report
+  -Jenvironment=... -Jscenario=...` for real.
 - For **LoadRunner Professional**, it's also real and complete: it resolves
   `--environment`/`--scenario` the same way (a scenario's identifier is a
   full `.lrs` file path), optionally checks `wlrun_path` resolves to a
@@ -381,8 +384,10 @@ whatever machine the CI/CD job executes on:
 3. Create `run-output/`.
 4. Run the tool:
    - **JMeter**: optionally verify the test plan file exists (if
-     `verify_scenario_exists` is configured), then run `jmeter -n -t ...`
-     for real.
+     `verify_scenario_exists` is configured), then create
+     `run-output/<environment_slug>_<scenario_slug>/` and run
+     `jmeter -n -t ...` for real, writing `results.jtl`/`report/` into
+     that per-run folder.
    - **LoadRunner Professional**: optionally verify `wlrun_path` is
      runnable and/or the resolved `.lrs` scenario file exists (if
      `verify_controller_access`/`verify_scenario_exists` are configured),
@@ -396,6 +401,13 @@ All three tools now call a real remote/local execution path — see
 "BlazeMeter and LoadRunner Real Execution" below for the two remaining
 known limitations neither script has closed yet (a CI/CD runner-targeting
 gap for LoadRunner, and unverified API-surface assumptions for BlazeMeter).
+
+5. Write `run-output/<environment_slug>_<scenario_slug>/run-summary.json`
+   — one shared schema across all three tools (`tool`, `run_id`,
+   `environment`, `scenario`, `status`, `started_at`/`ended_at`/
+   `duration_seconds`, `report_link`, `results_dir`, `artifact_status`),
+   written once the tool run is attempted and its outcome is known (never
+   for a pre-run-check failure). See "Normalize Runtime Output" below.
 
 ## Current Examples
 
@@ -756,24 +768,28 @@ Tasks:
 - Have each check produce a clear pass/fail message and exit code from the
   script, rather than only a `# TODO` comment.
 
-### 4. Normalize Runtime Output
+### 4. Normalize Runtime Output — Resolved
 
-Goals:
-
-- Give CI/CD systems stable artifacts and summaries from every generated
-  script, once BlazeMeter/LoadRunner Professional execution is real.
-
-Tasks:
-
-- Define a summary file each generated script writes to `run-output/` after
-  running (e.g. `run-output/summary.json`) — JMeter's script does not write
-  one yet either, since it just calls `jmeter` and lets it fill
-  `run-output/` directly.
-- Include timestamps, duration, run ID, report link, status, environment,
-  scenario, and artifact status in that summary.
-- Keep the format the same across all three tools' generated scripts.
-- Ensure every generated script writes to `run-output/` (already true
-  today) rather than anywhere configurable per-invocation.
+All three generated scripts now write
+`run-output/<environment_slug>_<scenario_slug>/run-summary.json` after
+attempting a run, using one shared schema: `tool`, `run_id`, `environment`,
+`scenario`, `status` (`passed`/`failed`/`error`), `started_at`/`ended_at`/
+`duration_seconds`, `report_link`, `results_dir`, `artifact_status`
+(`complete`/`incomplete`). `status` is derived purely from each tool's own
+exit code or terminal API status (JMeter/`wlrun` exit code, BlazeMeter's
+`ENDED`/`ERROR`/`ABORTED`/timeout) — not from parsing `.jtl`/results
+content, matching the existing, documented precedent that `wlrun`'s exit
+code is "best local signal available, known to be unreliable on some
+versions." `run-summary.json` is written only once prechecks pass and the
+tool is actually invoked; a precheck failure still exits immediately with
+its existing one-line stderr message and no JSON artifact. This also gave
+JMeter a `run-output/<environment_slug>_<scenario_slug>/` folder for the
+first time, fixing its previous overwrite-on-rerun gap as a side effect.
+BlazeMeter's pre-existing `summary.json`/`report_link.json` (its raw API
+report passthrough) are unchanged and remain separate from
+`run-summary.json`. See
+`docs/superpowers/specs/2026-09-10-normalize-runtime-output-design.md` for
+the full design.
 
 ## Recommended Implementation Order
 
@@ -856,10 +872,14 @@ considered ready for executing tests when:
   Work" above); BlazeMeter's API-surface assumptions still need
   verification against a live account (see "BlazeMeter and LoadRunner
   Real Execution" above).
-- Failed runs produce clear summary output (JMeter and LoadRunner don't
-  write one yet; BlazeMeter now writes `summary.json`/`report_link.json`
-  into its per-invocation results folder — see Milestone 2 item 4,
-  "Normalize Runtime Output", for making this consistent across all three).
+- [x] Failed runs produce clear summary output — resolved: all three tools
+  now write `run-output/<environment_slug>_<scenario_slug>/run-summary.json`
+  with a shared schema (`status` of `passed`/`failed`/`error`, plus
+  timestamps, duration, report link, and artifact status); BlazeMeter also
+  still writes its own `summary.json`/`report_link.json` into that same
+  per-invocation results folder, unchanged and separate from
+  `run-summary.json` — see Milestone 2 item 4, "Normalize Runtime Output —
+  Resolved."
 - Timeout and partial artifact cases are handled (LoadRunner and JMeter
   rely entirely on the CI job's own timeout and the tool's own exit code;
   BlazeMeter has its own script-level `--timeout-minutes` poll bound, the

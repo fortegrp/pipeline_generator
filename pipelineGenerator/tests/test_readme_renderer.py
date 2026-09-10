@@ -68,3 +68,15 @@ def test_readme_mentions_loadrunner_agent_caveat() -> None:
 
     assert "co-located with the LoadRunner" in readme
     assert "retarget the generated pipeline's runner/agent/pool" in readme
+
+
+def test_readme_mentions_run_summary_json_for_every_tool() -> None:
+    for tool_type, connection in (
+        ("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": ""}),
+        ("loadrunner_professional", {"wlrun_path": "wlrun"}),
+        ("blazemeter", {"base_url": "https://a.blazemeter.com", "workspace_id": "1", "project_id": "2"}),
+    ):
+        config = _base_config(tool_type, connection)
+        package = build_generic_package(config)
+        readme = render_setup_readme(config, package)
+        assert "run-summary.json" in readme

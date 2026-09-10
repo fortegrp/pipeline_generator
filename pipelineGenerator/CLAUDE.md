@@ -131,9 +131,12 @@ Pipeline: **customer YAML → validate → generic pipeline model → CI/CD rend
   it wasn't meant to. For `jmeter`, the rendered script is real: it resolves
   the passed `--environment`/`--scenario` to their identifiers, optionally
   checks the test plan file exists first (only if `verify_scenario_exists`
-  is in `pre_run_checks`), then runs
-  `jmeter -n -t <test_plan_path> -l run-output/results.jtl -e -o
-  run-output/report -Jenvironment=... -Jscenario=...` for real.
+  is in `pre_run_checks`), then creates
+  `run-output/<environment_slug>_<scenario_slug>/` and runs
+  `jmeter -n -t <test_plan_path> -l
+  run-output/<environment_slug>_<scenario_slug>/results.jtl -e -o
+  run-output/<environment_slug>_<scenario_slug>/report
+  -Jenvironment=... -Jscenario=...` for real.
   `loadrunner_professional` is also real: it assumes the CI job runs on a
   dedicated agent co-located with the LoadRunner Controller (so
   `wlrun.exe` is already on the box) and runs `wlrun -Run -TestPath
@@ -164,6 +167,25 @@ Pipeline: **customer YAML → validate → generic pipeline model → CI/CD rend
   remote API credentials managed by this script), so their `tool.auth.type`
   is `none`; BlazeMeter's stays `api_token` — see `AUTH_TYPES` in
   `config/schema.py`.
+
+All three tools now also write a normalized
+`run-output/<environment_slug>_<scenario_slug>/run-summary.json` after the
+tool run is actually attempted (never for a pre-run-check failure, which
+still exits immediately with its existing one-line stderr message) — one
+shared schema (`tool`, `run_id`, `environment`, `scenario`, `status`
+(`passed`/`failed`/`error`), `started_at`/`ended_at`/`duration_seconds`,
+`report_link`, `results_dir`, `artifact_status`) produced by shared
+`_render_summary_capture_start`/`_render_summary_write` helpers in
+`scripts.py`, so a CI/CD step downstream of any of the three
+`run-<tool_type>.sh` scripts can read one consistent file regardless of
+which tool ran. `environment`/`scenario` are passed through a generated
+`json_escape` bash function before embedding, since they carry the raw,
+unsanitized `--environment`/`--scenario` CLI values (catalog keys) rather
+than the already-sanitized slugs `results_dir` is built from. This also
+gave JMeter its own `results_dir` for the first time — it previously wrote
+flat into `run-output/`, so a second run silently overwrote the first.
+BlazeMeter's own `summary.json`/`report_link.json` (its raw API-report
+passthrough) are unchanged and remain separate from `run-summary.json`.
 
 `generate` re-validates the config before doing anything (`cli.py` calls
 `validate_config`, then `_blocks_action()` — see the `config/` bullet above

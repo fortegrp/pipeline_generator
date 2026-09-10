@@ -419,8 +419,12 @@ What the script does:
    `resolve_scenario_identifier`) — an unrecognized key prints
    `Unknown environment key: ...` / `Unknown scenario key: ...` and exits
    non-zero.
-3. Creates `run-output/`.
+3. Creates `run-output/<environment_slug>_<scenario_slug>/` (all three
+   tools now use this same per-run folder, resolved via generated
+   `resolve_environment_slug`/`resolve_scenario_slug` functions).
 4. Runs the tool.
+5. Writes `run-summary.json` into that folder — see "Run Summaries" below.
+   This step is skipped if a precheck in step 4 already failed.
 
 Step 4 is where the three tools currently differ:
 
@@ -429,7 +433,9 @@ Step 4 is where the three tools currently differ:
   (`Test plan not found: ...` and exit 1 if not), then runs:
 
   ```bash
-  jmeter -n -t <test_plan_path> -l run-output/results.jtl -e -o run-output/report \
+  jmeter -n -t <test_plan_path> \
+    -l run-output/<environment_slug>_<scenario_slug>/results.jtl \
+    -e -o run-output/<environment_slug>_<scenario_slug>/report \
     -Jenvironment=<resolved environment identifier> -Jscenario=<resolved scenario identifier>
   ```
 
@@ -473,6 +479,36 @@ Step 4 is where the three tools currently differ:
   `run-output/<environment_slug>_<scenario_slug>/summary.json`. See
   section 10 for the two API-surface details flagged as needing
   verification against a live account.
+
+### Run Summaries
+
+After a run is attempted (skipped entirely if a precheck failed first),
+every generated script writes one JSON file to
+`run-output/<environment_slug>_<scenario_slug>/run-summary.json`:
+
+```json
+{
+  "tool": "jmeter",
+  "run_id": "staging_smoke-test_20260910T143000Z",
+  "environment": "staging",
+  "scenario": "smoke-test",
+  "status": "passed",
+  "started_at": "2026-09-10T14:30:00Z",
+  "ended_at": "2026-09-10T14:34:12Z",
+  "duration_seconds": 252,
+  "report_link": "run-output/staging_smoke-test/report/index.html",
+  "results_dir": "run-output/staging_smoke-test",
+  "artifact_status": "complete"
+}
+```
+
+`status` is `passed`, `failed`, or `error` (`error` only occurs for
+BlazeMeter, when it times out before reaching a terminal API status —
+JMeter/LoadRunner's own exit codes only ever produce `passed`/`failed`).
+`report_link` is a relative filesystem path for JMeter/LoadRunner and a
+BlazeMeter web UI URL for BlazeMeter — don't assume it's always a URL.
+This file is separate from BlazeMeter's own `summary.json`/
+`report_link.json` (its raw API report), which are unchanged.
 
 Bad input (missing `--environment`/`--scenario`/`--timeout-minutes` where
 required, an unrecognized key, or a non-numeric `--timeout-minutes`) is
