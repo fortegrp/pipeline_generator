@@ -383,6 +383,8 @@ set -euo pipefail
 
 {_render_slug_resolvers(package)}
 
+{_render_json_escape_helper()}
+
 main() {{
 {_render_arg_parsing()}
   mkdir -p run-output
@@ -396,12 +398,30 @@ main() {{
   local results_dir="run-output/${{environment_slug}}_${{scenario_slug}}"
   mkdir -p "$results_dir"
 
+{_render_summary_capture_start()}
+  local run_id="${{environment_slug}}_${{scenario_slug}}_${{started_at_compact}}"
+  local report_link="$results_dir"
+
   # wlrun's exit code is known to be unreliable on some LoadRunner
   # versions/configurations (it can return 0 even when a scenario had
   # errors). We treat nonzero as failure since it is the best signal
   # available locally; check the results directory's own reports for the
   # authoritative pass/fail status.
-  "$wlrun_path" -Run -TestPath "$scenario_identifier" -ResultName "$results_dir"
+  local run_status=0
+  if ! "$wlrun_path" -Run -TestPath "$scenario_identifier" -ResultName "$results_dir"; then
+    run_status=1
+  fi
+
+  local summary_status="passed"
+  if [ "$run_status" -ne 0 ]; then
+    summary_status="failed"
+  fi
+  local artifact_status="incomplete"
+  if [ -n "$(ls -A "$results_dir" 2>/dev/null)" ]; then
+    artifact_status="complete"
+  fi
+{_render_summary_write("loadrunner_professional")}
+  exit "$run_status"
 }}
 
 if [ "${{BASH_SOURCE[0]:-$0}}" = "$0" ]; then
