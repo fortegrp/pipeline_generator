@@ -33,14 +33,23 @@ is what actually runs, and it runs entirely independently of this tool
 
 ## Status
 
-This is a scaffolded v1 foundation:
+`1.0.0rc3` — first internal release candidate, actively used and tested,
+not yet verified against a live BlazeMeter account:
 
-- Wizard, validation, and generation are working
+- Wizard, validation, and generation are all working, with dedicated tests
+  for valid and invalid configs and for CLI success/failure paths
 - `generate` writes a real, working `scripts/run-jmeter.sh` for JMeter
   setups, `scripts/run-loadrunner_professional.sh` for LoadRunner
   Professional setups (assumes the CI job runs on an agent co-located with
   the LoadRunner Controller), and `scripts/run-blazemeter.sh` for
-  BlazeMeter setups (calls BlazeMeter's REST API directly)
+  BlazeMeter setups (calls BlazeMeter's REST API directly) — all three
+  write a normalized `run-summary.json` after attempting a run
+- Config validation catches malformed sections, unrecognized
+  `pre_run_checks` values, duplicate catalog keys, and no-op setups with
+  clean errors/warnings rather than crashing
+- See `CHANGELOG.md` for the full version history and
+  `docs/current-state-and-readiness-plan.md` for what's resolved vs. still
+  open
 
 ## Install
 
