@@ -77,7 +77,12 @@ def _render_slug_resolvers(package: GenericPipelinePackage) -> str:
 
 def _render_json_escape_helper() -> str:
     return r"""json_escape() {
-  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+  local value
+  value="$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+  value="${value//$'\n'/\\n}"
+  value="${value//$'\r'/\\r}"
+  value="${value//$'\t'/\\t}"
+  printf '%s' "$value"
 }"""
 
 
@@ -99,10 +104,14 @@ def _render_summary_write(tool_type: str) -> str:
   local duration_seconds=$((ended_at_epoch - started_at_epoch))
   local environment_escaped
   local scenario_escaped
+  local run_id_escaped
+  local report_link_escaped
   environment_escaped="$(json_escape "$environment_key")"
   scenario_escaped="$(json_escape "$scenario_key")"
+  run_id_escaped="$(json_escape "$run_id")"
+  report_link_escaped="$(json_escape "$report_link")"
   printf '{{"tool": "{tool_type}", "run_id": "%s", "environment": "%s", "scenario": "%s", "status": "%s", "started_at": "%s", "ended_at": "%s", "duration_seconds": %s, "report_link": "%s", "results_dir": "%s", "artifact_status": "%s"}}' \\
-    "$run_id" "$environment_escaped" "$scenario_escaped" "$summary_status" "$started_at_iso" "$ended_at_iso" "$duration_seconds" "$report_link" "$results_dir" "$artifact_status" \\
+    "$run_id_escaped" "$environment_escaped" "$scenario_escaped" "$summary_status" "$started_at_iso" "$ended_at_iso" "$duration_seconds" "$report_link_escaped" "$results_dir" "$artifact_status" \\
     > "$results_dir/run-summary.json"
 """
 
@@ -340,11 +349,15 @@ main() {{
   case "$status" in
     ENDED)
       summary_status="passed"
-      curl -s -u "$BLAZEMETER_API_KEY_ID:$BLAZEMETER_API_KEY_SECRET" \\
-        "$base_url/api/v4/masters/$master_id/reports/main/summary" > "$results_dir/summary.json"
+      if ! curl -s -u "$BLAZEMETER_API_KEY_ID:$BLAZEMETER_API_KEY_SECRET" \\
+        "$base_url/api/v4/masters/$master_id/reports/main/summary" > "$results_dir/summary.json"; then
+        echo "WARNING: failed to fetch BlazeMeter summary report (master $master_id)" >&2
+      fi
       printf '{{"master_id": "%s", "report_url": "%s/app/#/masters/%s/summary"}}' \\
         "$master_id" "$base_url" "$master_id" > "$results_dir/report_link.json"
-      artifact_status="complete"
+      if [ -s "$results_dir/summary.json" ] && [ -s "$results_dir/report_link.json" ]; then
+        artifact_status="complete"
+      fi
       ;;
     ERROR|ABORTED)
       echo "ERROR: BlazeMeter test ended with status $status (master $master_id)" >&2

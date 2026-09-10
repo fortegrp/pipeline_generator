@@ -421,7 +421,10 @@ What the script does:
    non-zero.
 3. Creates `run-output/<environment_slug>_<scenario_slug>/` (all three
    tools now use this same per-run folder, resolved via generated
-   `resolve_environment_slug`/`resolve_scenario_slug` functions).
+   `resolve_environment_slug`/`resolve_scenario_slug` functions) — in
+   practice this happens just before the tool actually runs, after any
+   configured prechecks in step 4 have already passed, so a precheck
+   failure leaves no per-run folder behind.
 4. Runs the tool.
 5. Writes `run-summary.json` into that folder — see "Run Summaries" below.
    This step is skipped if a precheck in step 4 already failed.
@@ -505,8 +508,13 @@ every generated script writes one JSON file to
 `status` is `passed`, `failed`, or `error` (`error` only occurs for
 BlazeMeter, when it times out before reaching a terminal API status —
 JMeter/LoadRunner's own exit codes only ever produce `passed`/`failed`).
-`report_link` is a relative filesystem path for JMeter/LoadRunner and a
-BlazeMeter web UI URL for BlazeMeter — don't assume it's always a URL.
+`run_id` also varies by tool: it's
+`<environment_slug>_<scenario_slug>_<UTC timestamp>` for JMeter/LoadRunner,
+and BlazeMeter's own API `master_id` for BlazeMeter — so, like
+`report_link`, its exact format isn't uniform across tools even though the
+field name is. `report_link` is a relative filesystem path for
+JMeter/LoadRunner and a BlazeMeter web UI URL for BlazeMeter — don't assume
+it's always a URL.
 This file is separate from BlazeMeter's own `summary.json`/
 `report_link.json` (its raw API report), which are unchanged.
 

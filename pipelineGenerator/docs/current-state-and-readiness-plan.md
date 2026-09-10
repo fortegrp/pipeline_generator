@@ -396,18 +396,17 @@ whatever machine the CI/CD job executes on:
      exists / the test exists (`verify_host_reachable`/
      `verify_project_exists`/`verify_scenario_exists`), then start, poll,
      and download a summary report for real.
-
-All three tools now call a real remote/local execution path — see
-"BlazeMeter and LoadRunner Real Execution" below for the two remaining
-known limitations neither script has closed yet (a CI/CD runner-targeting
-gap for LoadRunner, and unverified API-surface assumptions for BlazeMeter).
-
 5. Write `run-output/<environment_slug>_<scenario_slug>/run-summary.json`
    — one shared schema across all three tools (`tool`, `run_id`,
    `environment`, `scenario`, `status`, `started_at`/`ended_at`/
    `duration_seconds`, `report_link`, `results_dir`, `artifact_status`),
    written once the tool run is attempted and its outcome is known (never
    for a pre-run-check failure). See "Normalize Runtime Output" below.
+
+All three tools now call a real remote/local execution path — see
+"BlazeMeter and LoadRunner Real Execution" below for the two remaining
+known limitations neither script has closed yet (a CI/CD runner-targeting
+gap for LoadRunner, and unverified API-surface assumptions for BlazeMeter).
 
 ## Current Examples
 

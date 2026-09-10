@@ -987,6 +987,74 @@ esac
     assert summary["report_link"] == "https://a.blazemeter.com/app/#/masters/999/summary"
 
 
+def test_render_blazemeter_script_writes_run_summary_when_summary_fetch_fails(tmp_path: Path) -> None:
+    config = _base_config(
+        "blazemeter", {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"}
+    )
+    package = build_generic_package(config)
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-blazemeter.sh"
+
+    stub_bin = tmp_path / "stub-bin"
+    stub_bin.mkdir()
+    # /start and /status succeed as in test_render_blazemeter_script_writes_run_summary_on_ended,
+    # but /reports/main/summary fails (nonzero exit) -- this must not abort the
+    # whole script under set -euo pipefail, and run-summary.json must still be
+    # written with artifact_status "incomplete" since the summary fetch failed.
+    (stub_bin / "curl").write_text("""#!/usr/bin/env bash
+if [[ "$*" == *"/start"* ]]; then
+  echo '{"result": {"id": 999}}'
+  exit 0
+fi
+if [[ "$*" == *"/status"* ]]; then
+  echo '{"result": {"status": "ENDED"}}'
+  exit 0
+fi
+if [[ "$*" == *"/summary"* ]]; then
+  exit 22
+fi
+exit 0
+""")
+    (stub_bin / "curl").chmod(0o755)
+    (stub_bin / "jq").write_text("""#!/usr/bin/env bash
+input="$(cat)"
+expr="${@: -1}"
+case "$expr" in
+  '.result.id')
+    echo "$input" | grep -o '"id": *[0-9]*' | grep -o '[0-9]*$'
+    ;;
+  '.result.status')
+    echo "$input" | grep -o '"status": *"[A-Z]*"' | grep -o '"[A-Z]*"$' | tr -d '"'
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+""")
+    (stub_bin / "jq").chmod(0o755)
+
+    env = dict(os.environ)
+    env["PATH"] = f"{stub_bin}:{env['PATH']}"
+    env["BLAZEMETER_API_KEY_ID"] = "id"
+    env["BLAZEMETER_API_KEY_SECRET"] = "secret"
+
+    result = subprocess.run(
+        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke", "--timeout-minutes", "1"],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=tmp_path,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "WARNING: failed to fetch BlazeMeter summary report" in result.stderr
+
+    summary_path = tmp_path / "run-output" / "qa_checkout-smoke" / "run-summary.json"
+    assert summary_path.exists()
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["status"] == "passed"
+    assert summary["artifact_status"] == "incomplete"
+
+
 def test_render_blazemeter_script_writes_run_summary_on_error_status(tmp_path: Path) -> None:
     config = _base_config(
         "blazemeter", {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"}
@@ -1106,6 +1174,257 @@ esac
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["status"] == "error"
     assert summary["artifact_status"] == "incomplete"
+
+
+def test_render_blazemeter_script_escapes_hostile_base_url_in_run_summary(tmp_path: Path) -> None:
+    # A hostile base_url containing an embedded `", "status": "passed", "junk": "`
+    # sequence would, if report_link/run_id were spliced into run-summary.json
+    # unescaped, produce syntactically valid JSON with a duplicate "status" key --
+    # and both json.loads and jq take the LAST value for a duplicate key, so a
+    # genuinely FAILED run would be read back as "passed". This proves that
+    # injection is closed now that report_link/run_id are run through json_escape.
+    hostile_base_url = 'https://a.example.com", "status": "passed", "junk": "'
+    config = _base_config(
+        "blazemeter", {"base_url": hostile_base_url, "workspace_id": "12345", "project_id": "67890"}
+    )
+    package = build_generic_package(config)
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-blazemeter.sh"
+
+    stub_bin = tmp_path / "stub-bin"
+    stub_bin.mkdir()
+    (stub_bin / "curl").write_text("""#!/usr/bin/env bash
+if [[ "$*" == *"/start"* ]]; then
+  echo '{"result": {"id": 999}}'
+  exit 0
+fi
+if [[ "$*" == *"/status"* ]]; then
+  echo '{"result": {"status": "ERROR"}}'
+  exit 0
+fi
+exit 0
+""")
+    (stub_bin / "curl").chmod(0o755)
+    (stub_bin / "jq").write_text("""#!/usr/bin/env bash
+input="$(cat)"
+expr="${@: -1}"
+case "$expr" in
+  '.result.id')
+    echo "$input" | grep -o '"id": *[0-9]*' | grep -o '[0-9]*$'
+    ;;
+  '.result.status')
+    echo "$input" | grep -o '"status": *"[A-Z]*"' | grep -o '"[A-Z]*"$' | tr -d '"'
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+""")
+    (stub_bin / "jq").chmod(0o755)
+
+    env = dict(os.environ)
+    env["PATH"] = f"{stub_bin}:{env['PATH']}"
+    env["BLAZEMETER_API_KEY_ID"] = "id"
+    env["BLAZEMETER_API_KEY_SECRET"] = "secret"
+
+    result = subprocess.run(
+        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke", "--timeout-minutes", "1"],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=tmp_path,
+    )
+    assert result.returncode == 1, result.stderr
+
+    summary_path = tmp_path / "run-output" / "qa_checkout-smoke" / "run-summary.json"
+    assert summary_path.exists()
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["status"] == "failed"
+
+
+def test_render_jmeter_script_escapes_embedded_control_characters_in_run_summary(tmp_path: Path) -> None:
+    stub_bin = tmp_path / "stub-bin"
+    stub_bin.mkdir()
+    (stub_bin / "jmeter").write_text("""#!/usr/bin/env bash
+logfile=""
+outdir=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "-l" ]; then logfile="$arg"; fi
+  if [ "$prev" = "-o" ]; then outdir="$arg"; fi
+  prev="$arg"
+done
+mkdir -p "$outdir"
+echo "<html></html>" > "$outdir/index.html"
+touch "$logfile"
+exit 0
+""")
+    (stub_bin / "jmeter").chmod(0o755)
+
+    hostile_scenario_key = "smoke\ntest\tcase"
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": "jmeter"})
+    config["catalog"]["scenarios"] = [
+        {"key": hostile_scenario_key, "name": "Checkout Smoke", "identifier": "SC-1"}
+    ]
+    package = build_generic_package(config)
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-jmeter.sh"
+
+    env = dict(os.environ)
+    env["PATH"] = f"{stub_bin}:{env['PATH']}"
+
+    result = subprocess.run(
+        ["bash", str(script_path), "--environment", "qa", "--scenario", hostile_scenario_key],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=tmp_path,
+    )
+    assert result.returncode == 0, result.stderr
+
+    run_output = tmp_path / "run-output"
+    summary_files = list(run_output.rglob("run-summary.json"))
+    assert len(summary_files) == 1
+    summary = json.loads(summary_files[0].read_text(encoding="utf-8"))
+    assert summary["scenario"] == hostile_scenario_key
+
+
+def test_all_three_tools_run_summary_share_same_key_set(tmp_path: Path) -> None:
+    # JMeter
+    jmeter_dir = tmp_path / "jmeter-setup"
+    jmeter_stub_bin = tmp_path / "jmeter-stub-bin"
+    jmeter_stub_bin.mkdir()
+    (jmeter_stub_bin / "jmeter").write_text("""#!/usr/bin/env bash
+logfile=""
+outdir=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "-l" ]; then logfile="$arg"; fi
+  if [ "$prev" = "-o" ]; then outdir="$arg"; fi
+  prev="$arg"
+done
+mkdir -p "$outdir"
+echo "<html></html>" > "$outdir/index.html"
+touch "$logfile"
+exit 0
+""")
+    (jmeter_stub_bin / "jmeter").chmod(0o755)
+    jmeter_config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": "jmeter"})
+    jmeter_package = build_generic_package(jmeter_config)
+    render_tool_script(jmeter_config, jmeter_package, jmeter_dir)
+    jmeter_env = dict(os.environ)
+    jmeter_env["PATH"] = f"{jmeter_stub_bin}:{jmeter_env['PATH']}"
+    jmeter_result = subprocess.run(
+        ["bash", str(jmeter_dir / "scripts" / "run-jmeter.sh"), "--environment", "qa", "--scenario", "checkout_smoke"],
+        capture_output=True,
+        text=True,
+        env=jmeter_env,
+        cwd=jmeter_dir,
+    )
+    assert jmeter_result.returncode == 0, jmeter_result.stderr
+    jmeter_summary = json.loads(
+        (jmeter_dir / "run-output" / "qa_checkout-smoke" / "run-summary.json").read_text(encoding="utf-8")
+    )
+
+    # LoadRunner Professional
+    loadrunner_dir = tmp_path / "loadrunner-setup"
+    loadrunner_stub_bin = tmp_path / "loadrunner-stub-bin"
+    loadrunner_stub_bin.mkdir()
+    (loadrunner_stub_bin / "wlrun").write_text("""#!/usr/bin/env bash
+resultname=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "-ResultName" ]; then resultname="$arg"; fi
+  prev="$arg"
+done
+mkdir -p "$resultname"
+echo "result" > "$resultname/results.xml"
+exit 0
+""")
+    (loadrunner_stub_bin / "wlrun").chmod(0o755)
+    loadrunner_config = _base_config("loadrunner_professional", {"wlrun_path": "wlrun"})
+    loadrunner_package = build_generic_package(loadrunner_config)
+    render_tool_script(loadrunner_config, loadrunner_package, loadrunner_dir)
+    loadrunner_env = dict(os.environ)
+    loadrunner_env["PATH"] = f"{loadrunner_stub_bin}:{loadrunner_env['PATH']}"
+    loadrunner_result = subprocess.run(
+        [
+            "bash",
+            str(loadrunner_dir / "scripts" / "run-loadrunner_professional.sh"),
+            "--environment", "qa", "--scenario", "checkout_smoke",
+        ],
+        capture_output=True,
+        text=True,
+        env=loadrunner_env,
+        cwd=loadrunner_dir,
+    )
+    assert loadrunner_result.returncode == 0, loadrunner_result.stderr
+    loadrunner_summary = json.loads(
+        (loadrunner_dir / "run-output" / "qa_checkout-smoke" / "run-summary.json").read_text(encoding="utf-8")
+    )
+
+    # BlazeMeter
+    blazemeter_dir = tmp_path / "blazemeter-setup"
+    blazemeter_stub_bin = tmp_path / "blazemeter-stub-bin"
+    blazemeter_stub_bin.mkdir()
+    (blazemeter_stub_bin / "curl").write_text("""#!/usr/bin/env bash
+if [[ "$*" == *"/start"* ]]; then
+  echo '{"result": {"id": 999}}'
+  exit 0
+fi
+if [[ "$*" == *"/status"* ]]; then
+  echo '{"result": {"status": "ENDED"}}'
+  exit 0
+fi
+if [[ "$*" == *"/summary"* ]]; then
+  echo '{}'
+  exit 0
+fi
+exit 0
+""")
+    (blazemeter_stub_bin / "curl").chmod(0o755)
+    (blazemeter_stub_bin / "jq").write_text("""#!/usr/bin/env bash
+input="$(cat)"
+expr="${@: -1}"
+case "$expr" in
+  '.result.id')
+    echo "$input" | grep -o '"id": *[0-9]*' | grep -o '[0-9]*$'
+    ;;
+  '.result.status')
+    echo "$input" | grep -o '"status": *"[A-Z]*"' | grep -o '"[A-Z]*"$' | tr -d '"'
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+""")
+    (blazemeter_stub_bin / "jq").chmod(0o755)
+    blazemeter_config = _base_config(
+        "blazemeter", {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"}
+    )
+    blazemeter_package = build_generic_package(blazemeter_config)
+    render_tool_script(blazemeter_config, blazemeter_package, blazemeter_dir)
+    blazemeter_env = dict(os.environ)
+    blazemeter_env["PATH"] = f"{blazemeter_stub_bin}:{blazemeter_env['PATH']}"
+    blazemeter_env["BLAZEMETER_API_KEY_ID"] = "id"
+    blazemeter_env["BLAZEMETER_API_KEY_SECRET"] = "secret"
+    blazemeter_result = subprocess.run(
+        [
+            "bash",
+            str(blazemeter_dir / "scripts" / "run-blazemeter.sh"),
+            "--environment", "qa", "--scenario", "checkout_smoke", "--timeout-minutes", "1",
+        ],
+        capture_output=True,
+        text=True,
+        env=blazemeter_env,
+        cwd=blazemeter_dir,
+    )
+    assert blazemeter_result.returncode == 0, blazemeter_result.stderr
+    blazemeter_summary = json.loads(
+        (blazemeter_dir / "run-output" / "qa_checkout-smoke" / "run-summary.json").read_text(encoding="utf-8")
+    )
+
+    assert set(jmeter_summary.keys()) == set(loadrunner_summary.keys()) == set(blazemeter_summary.keys())
 
 
 def test_render_blazemeter_script_no_run_summary_when_master_id_missing(tmp_path: Path) -> None:

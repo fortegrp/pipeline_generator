@@ -154,7 +154,12 @@ also real: it authenticates via API key, starts a test through
 BlazeMeter's REST API (`POST /api/v4/tests/<id>/start`), polls until it
 finishes (bounded by a `--timeout-minutes` flag added only to BlazeMeter's
 invocation), and downloads a summary report — see the user guide for the
-full precheck vocabulary and the API endpoints' verification status.
+full precheck vocabulary and the API endpoints' verification status. All
+three tools also write a
+`run-output/<environment_slug>_<scenario_slug>/run-summary.json` after
+attempting a run, with a normalized schema (tool, status, timestamps,
+duration, report link) shared across JMeter, LoadRunner Professional, and
+BlazeMeter.
 
 ## Interactive Wizard
 
