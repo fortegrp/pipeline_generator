@@ -205,8 +205,7 @@ def build_request_jmx_xml(
 
 def generate_jmx_files(
     entries: List[Any],
-    project: str,
-    product: str,
+    template_vars: Dict[str, str],
     host_var_map: Dict[str, str],
     out_dir: Union[str, Path],
     verbose: bool = False,
@@ -221,7 +220,7 @@ def generate_jmx_files(
     if config is None:
         config = default_config()
 
-    processed = process_har_entries(entries, project, product, config)
+    processed = process_har_entries(entries, template_vars, config)
 
     if verbose:
         for skipped in processed.skipped:

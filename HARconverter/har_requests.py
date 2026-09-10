@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import urlencode, urlparse
 
+from naming import render
+
 
 STATIC_EXTENSIONS = (
     ".js", ".css", ".woff", ".woff2", ".ttf", ".otf",
@@ -126,7 +128,7 @@ def extract_body(post_data: Any) -> Optional[str]:
     return urlencode(pairs) if pairs else None
 
 
-def process_har_entries(entries: Iterable[Any], project: str, product: str, config: Any = None) -> ProcessedRequests:
+def process_har_entries(entries: Iterable[Any], template_vars: Dict[str, str], config: Any = None) -> ProcessedRequests:
     """
     Filter, normalize, de-duplicate, and name HAR requests.
     """
@@ -169,7 +171,12 @@ def process_har_entries(entries: Iterable[Any], project: str, product: str, conf
         host = (parsed.hostname or "").lower()
         last_segment = extract_last_segment(path).lower()
         safe_segment = slugify(last_segment or "root")
-        base_name = f"{project}_{product}_{method}_{safe_segment}"
+        base_name = render(
+            config.naming.template,
+            **template_vars,
+            method=method,
+            segment=safe_segment,
+        )
 
         base_count = base_name_counts.get(base_name, 0) + 1
         base_name_counts[base_name] = base_count
