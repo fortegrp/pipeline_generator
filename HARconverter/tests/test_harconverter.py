@@ -159,7 +159,7 @@ class FilteringAndNamingTests(unittest.TestCase):
             har_entry("https://example.com/api/users"),
         ]
 
-        processed = process_har_entries(entries, "Project", "Product")
+        processed = process_har_entries(entries, {"project": "Project", "product": "Product"})
 
         self.assertEqual([request.url for request in processed.requests], ["https://example.com/api/users"])
         self.assertEqual(len(processed.skipped), 7)
@@ -173,12 +173,31 @@ class FilteringAndNamingTests(unittest.TestCase):
             har_entry("https://example.com/api/users?id=1"),
             har_entry("https://example.com/other/users?id=2"),
         ]
-        processed = process_har_entries(entries, "Project", "Product")
+        processed = process_har_entries(entries, {"project": "Project", "product": "Product"})
 
         self.assertEqual(
             [request.file_name for request in processed.requests],
             ["Project_Product_GET_users.jmx", "Project_Product_GET_users_2.jmx"],
         )
+
+    def test_naming_template_is_configurable(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "config.json"
+            config_path.write_text(
+                json.dumps({"naming": {"template": "{method}_{segment}"}}),
+                encoding="utf-8",
+            )
+            config = load_config(config_path)
+
+        entries = [har_entry("https://example.com/api/users")]
+        processed = process_har_entries(entries, {}, config)
+
+        self.assertEqual(processed.requests[0].file_name, "GET_users.jmx")
+
+    def test_process_har_entries_raises_on_missing_template_variable(self):
+        entries = [har_entry("https://example.com/api/users")]
+        with self.assertRaises(KeyError):
+            process_har_entries(entries, {})
 
     def test_form_encoded_params_without_text_are_captured_as_body(self):
         entry = {
@@ -196,7 +215,7 @@ class FilteringAndNamingTests(unittest.TestCase):
             }
         }
 
-        processed = process_har_entries([entry], "Project", "Product")
+        processed = process_har_entries([entry], {"project": "Project", "product": "Product"})
 
         self.assertEqual(len(processed.requests), 1)
         self.assertEqual(processed.requests[0].body, "username=alice&password=s3cr3t%21")
@@ -210,7 +229,7 @@ class FilteringAndNamingTests(unittest.TestCase):
             har_entry("https://example.com/api/users"),
         ]
 
-        processed = process_har_entries(entries, "Project", "Product")
+        processed = process_har_entries(entries, {"project": "Project", "product": "Product"})
 
         self.assertEqual([request.url for request in processed.requests], ["https://example.com/api/users"])
         self.assertEqual(processed.skipped[0].reason, "skipped header value substring")
@@ -231,7 +250,7 @@ class FilteringAndNamingTests(unittest.TestCase):
             ),
             har_entry("https://example.com/api/users"),
         ]
-        processed = process_har_entries(entries, "Project", "Product", config)
+        processed = process_har_entries(entries, {"project": "Project", "product": "Product"}, config)
 
         self.assertEqual([request.url for request in processed.requests], ["https://example.com/api/users"])
 
@@ -259,7 +278,7 @@ class FilteringAndNamingTests(unittest.TestCase):
             har_entry("https://example.com/api/users.data"),
             har_entry("https://example.com/api/trace", method="TRACE"),
         ]
-        processed = process_har_entries(entries, "Project", "Product", config)
+        processed = process_har_entries(entries, {"project": "Project", "product": "Product"}, config)
 
         self.assertEqual(
             [request.url for request in processed.requests],
@@ -414,8 +433,10 @@ class CliSmokeTests(unittest.TestCase):
                     sys.executable,
                     str(ROOT / "har_to_jmx.py"),
                     str(har_path),
-                    "Project",
-                    "Product",
+                    "--var",
+                    "project=Project",
+                    "--var",
+                    "product=Product",
                     "--out-dir",
                     str(out_dir),
                 ],
@@ -465,8 +486,10 @@ class CliSmokeTests(unittest.TestCase):
                     sys.executable,
                     str(ROOT / "har_to_jmx.py"),
                     str(invalid_har),
-                    "Project",
-                    "Product",
+                    "--var",
+                    "project=Project",
+                    "--var",
+                    "product=Product",
                 ],
                 cwd=ROOT,
                 text=True,
@@ -486,9 +509,11 @@ class CliSmokeTests(unittest.TestCase):
                     sys.executable,
                     str(ROOT / "har_to_jmx.py"),
                     str(valid_har),
-                    "Project",
-                    "Product",
                     str(missing_csv),
+                    "--var",
+                    "project=Project",
+                    "--var",
+                    "product=Product",
                     "--out-dir",
                     str(out_dir),
                 ],
@@ -523,8 +548,10 @@ class CliSmokeTests(unittest.TestCase):
                     sys.executable,
                     str(ROOT / "har_to_jmx.py"),
                     str(har_path),
-                    "Project",
-                    "Product",
+                    "--var",
+                    "project=Project",
+                    "--var",
+                    "product=Product",
                     "--out-dir",
                     str(out_dir),
                     "--config",
@@ -543,8 +570,10 @@ class CliSmokeTests(unittest.TestCase):
                     sys.executable,
                     str(ROOT / "har_to_jmx.py"),
                     str(har_path),
-                    "Project",
-                    "Product",
+                    "--var",
+                    "project=Project",
+                    "--var",
+                    "product=Product",
                     "--config",
                     str(bad_config_path),
                 ],
@@ -566,8 +595,10 @@ class CliSmokeTests(unittest.TestCase):
                     sys.executable,
                     str(ROOT / "har_to_jmx.py"),
                     str(har_path),
-                    "Project",
-                    "Product",
+                    "--var",
+                    "project=Project",
+                    "--var",
+                    "product=Product",
                 ],
                 cwd=ROOT,
                 text=True,
@@ -577,12 +608,42 @@ class CliSmokeTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("No entries found in HAR.", result.stdout)
 
+    def test_cli_var_validation(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            har_path = temp_path / "recording.har"
+            har_path.write_text(
+                json.dumps([har_entry("https://example.com/api/users")]),
+                encoding="utf-8",
+            )
+
+            missing_var = subprocess.run(
+                [sys.executable, str(ROOT / "har_to_jmx.py"), str(har_path), "--var", "project=Project"],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(missing_var.returncode, 0)
+            self.assertIn("Invalid --var arguments", missing_var.stderr)
+            self.assertIn("product", missing_var.stderr)
+
+            malformed_var = subprocess.run(
+                [sys.executable, str(ROOT / "har_to_jmx.py"), str(har_path), "--var", "project"],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(malformed_var.returncode, 0)
+            self.assertIn("--var must be KEY=VALUE", malformed_var.stderr)
+
 
 class DirectGenerationTests(unittest.TestCase):
     def test_direct_generation_and_scenario_builder_are_parseable(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             entries = [har_entry("https://example.com/api/users")]
-            count = generate_jmx_files(entries, "Project", "Product", {}, temp_dir)
+            count = generate_jmx_files(entries, {"project": "Project", "product": "Product"}, {}, temp_dir)
             self.assertEqual(count, 1)
             fragment_path = Path(temp_dir) / "Project_Product_GET_users.jmx"
             ET.fromstring(fragment_path.read_text(encoding="utf-8"))

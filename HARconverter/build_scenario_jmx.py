@@ -79,7 +79,7 @@ def main() -> None:
         print("No entries found in HAR.")
         sys.exit(0)
 
-    processed = process_har_entries(entries, args.project, args.product, config)
+    processed = process_har_entries(entries, {"project": args.project, "product": args.product}, config)
 
     if args.verbose:
         for skipped in processed.skipped:
