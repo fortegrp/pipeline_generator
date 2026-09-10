@@ -659,6 +659,51 @@ class CliSmokeTests(unittest.TestCase):
             self.assertNotEqual(missing_var.returncode, 0)
             self.assertIn("Invalid --var arguments", missing_var.stderr)
 
+    def test_scenario_cli_var_validation_catches_fragment_template_only(self):
+        # naming.scenario_template here needs nothing beyond the reserved
+        # scenario_name, so only the fragment-template (naming.template)
+        # validate_vars call can catch the missing "project" var. This
+        # guards against the two validate_vars calls in main() being
+        # collapsed into one, which would let this slip through as a raw
+        # KeyError from process_har_entries instead of a clean CLI error.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            har_path = temp_path / "recording.har"
+            har_path.write_text(
+                json.dumps([har_entry("https://example.com/api/users")]),
+                encoding="utf-8",
+            )
+            config_path = temp_path / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "naming": {
+                            "template": "{project}_{method}_{segment}",
+                            "scenario_template": "{scenario_name}",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            missing_fragment_var = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "build_scenario_jmx.py"),
+                    str(har_path),
+                    "Scenario",
+                    "--config",
+                    str(config_path),
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(missing_fragment_var.returncode, 0)
+            self.assertIn("Invalid --var arguments", missing_fragment_var.stderr)
+            self.assertIn("project", missing_fragment_var.stderr)
+
 
 class DirectGenerationTests(unittest.TestCase):
     def test_direct_generation_and_scenario_builder_are_parseable(self):

@@ -85,6 +85,9 @@ def main() -> None:
 
     template_vars: Dict[str, str] = dict(args.var)
 
+    # Both naming.template and naming.scenario_template are validated up front: naming.template is
+    # also used internally by process_har_entries below, and would otherwise surface as a raw
+    # KeyError instead of this clean message.
     try:
         validate_vars(config.naming.template, template_vars, reserved={"method", "segment"})
         validate_vars(config.naming.scenario_template, template_vars, reserved={"scenario_name"})
