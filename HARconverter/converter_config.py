@@ -14,6 +14,12 @@ class HeaderMaskRule:
 
 
 @dataclass(frozen=True)
+class NamingConfig:
+    template: str = "{project}_{product}_{method}_{segment}"
+    scenario_template: str = "{project}_{product}_{scenario_name}"
+
+
+@dataclass(frozen=True)
 class FilterConfig:
     skip_methods: List[str] = field(default_factory=list)
     skip_host_contains: List[str] = field(default_factory=list)
@@ -22,6 +28,7 @@ class FilterConfig:
     skip_final_segments: List[str] = field(default_factory=list)
     skip_url_contains: List[str] = field(default_factory=list)
     keep_url_contains: List[str] = field(default_factory=list)
+    skip_header_value_contains: List[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -32,6 +39,7 @@ class JMeterConfig:
     http_defaults_protocol: str = "${__P(protocol,https)}"
     http_defaults_domain: str = "${__P(hostName)}"
     http_defaults_port: str = ""
+    version: str = "5.6.0"
 
 
 @dataclass(frozen=True)
@@ -40,6 +48,7 @@ class ConverterConfig:
     hosts: Dict[str, str]
     header_masks: List[HeaderMaskRule]
     jmeter: JMeterConfig
+    naming: NamingConfig
 
 
 def default_config() -> ConverterConfig:
@@ -51,6 +60,7 @@ def default_config() -> ConverterConfig:
             skip_extensions=list(STATIC_EXTENSIONS),
             skip_final_segments=sorted(STATIC_SEGMENTS),
             skip_url_contains=["nrjs", "nr-data.net"],
+            skip_header_value_contains=["nrjs"],
             keep_url_contains=[],
         ),
         hosts={},
@@ -62,6 +72,7 @@ def default_config() -> ConverterConfig:
             )
         ],
         jmeter=JMeterConfig(),
+        naming=NamingConfig(),
     )
 
 
@@ -85,6 +96,7 @@ def merge_config(base: ConverterConfig, raw: Dict[str, Any]) -> ConverterConfig:
         hosts=_merge_hosts(base.hosts, _object(raw, "hosts")),
         header_masks=_merge_header_masks(base.header_masks, _object(raw, "headers")),
         jmeter=_merge_jmeter(base.jmeter, _object(raw, "jmeter")),
+        naming=_merge_naming(base.naming, _object(raw, "naming")),
     )
 
 
@@ -112,6 +124,9 @@ def _merge_filters(base: FilterConfig, raw: Dict[str, Any]) -> FilterConfig:
         skip_final_segments=_merged_list(base.skip_final_segments, raw.get("skip_final_segments"), lower=True),
         skip_url_contains=_merged_list(base.skip_url_contains, raw.get("skip_url_contains"), lower=True),
         keep_url_contains=_merged_list(base.keep_url_contains, raw.get("keep_url_contains"), lower=True),
+        skip_header_value_contains=_merged_list(
+            base.skip_header_value_contains, raw.get("skip_header_value_contains"), lower=True
+        ),
     )
 
 
@@ -156,6 +171,14 @@ def _merge_jmeter(base: JMeterConfig, raw: Dict[str, Any]) -> JMeterConfig:
         http_defaults_protocol=_string(raw, "http_defaults_protocol", base.http_defaults_protocol),
         http_defaults_domain=_string(raw, "http_defaults_domain", base.http_defaults_domain),
         http_defaults_port=_string(raw, "http_defaults_port", base.http_defaults_port),
+        version=_string(raw, "version", base.version),
+    )
+
+
+def _merge_naming(base: NamingConfig, raw: Dict[str, Any]) -> NamingConfig:
+    return NamingConfig(
+        template=_string(raw, "template", base.template, section="naming"),
+        scenario_template=_string(raw, "scenario_template", base.scenario_template, section="naming"),
     )
 
 
@@ -188,8 +211,8 @@ def _bool(raw: Dict[str, Any], key: str, default: bool) -> bool:
     return value
 
 
-def _string(raw: Dict[str, Any], key: str, default: str) -> str:
+def _string(raw: Dict[str, Any], key: str, default: str, section: str = "jmeter") -> str:
     value = raw.get(key, default)
     if not isinstance(value, str):
-        raise ValueError(f"jmeter.{key} must be a string")
+        raise ValueError(f"{section}.{key} must be a string")
     return value

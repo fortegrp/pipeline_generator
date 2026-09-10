@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from build_scenario_jmx import build_scenario_jmx
-from converter_config import load_config, merge_host_maps
+from converter_config import default_config, load_config, merge_host_maps
 from har_requests import extract_last_segment, process_har_entries, slugify
 from har_utils import load_har_entries
 from jmx_generator import build_jmx_xml, generate_jmx_files
@@ -111,6 +111,39 @@ class NamingTests(unittest.TestCase):
             {"project": "Abbot", "product": "Merlin"},
             reserved={"method", "segment"},
         )
+
+
+class ConverterConfigTests(unittest.TestCase):
+    def test_default_config_has_expected_naming_and_version_defaults(self):
+        config = default_config()
+        self.assertEqual(config.naming.template, "{project}_{product}_{method}_{segment}")
+        self.assertEqual(config.naming.scenario_template, "{project}_{product}_{scenario_name}")
+        self.assertEqual(config.jmeter.version, "5.6.0")
+        self.assertIn("nrjs", config.filters.skip_header_value_contains)
+
+    def test_config_json_can_override_naming_and_jmeter_version(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "naming": {
+                            "template": "{method}_{segment}",
+                            "scenario_template": "{scenario_name}",
+                        },
+                        "jmeter": {"version": "5.5.0"},
+                        "filters": {"skip_header_value_contains": ["x-debug"]},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            config = load_config(config_path)
+
+        self.assertEqual(config.naming.template, "{method}_{segment}")
+        self.assertEqual(config.naming.scenario_template, "{scenario_name}")
+        self.assertEqual(config.jmeter.version, "5.5.0")
+        self.assertIn("x-debug", config.filters.skip_header_value_contains)
+        self.assertIn("nrjs", config.filters.skip_header_value_contains)
 
 
 class FilteringAndNamingTests(unittest.TestCase):
