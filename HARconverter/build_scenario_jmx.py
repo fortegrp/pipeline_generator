@@ -3,19 +3,22 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
-from converter_config import load_config
+from converter_config import ConverterConfig, default_config, load_config
 from har_requests import process_har_entries
 from har_utils import load_har_entries
 from jmx_xml import build_test_plan_scaffold, jmx_to_string as _jmx_to_string, string_prop as _string_prop, sub as _sub
 
 
-def build_scenario_jmx(plan_name: str, include_files: List[str]) -> str:
+def build_scenario_jmx(plan_name: str, include_files: List[str], config: Optional[ConverterConfig] = None) -> str:
     """
     Build a JMX with a Test Plan, disabled Test Fragment, and Include Controllers.
     """
-    root, fragment_tree = build_test_plan_scaffold(plan_name)
+    if config is None:
+        config = default_config()
+
+    root, fragment_tree = build_test_plan_scaffold(plan_name, config.jmeter.version)
 
     for jmx_file in include_files:
         base = Path(jmx_file).stem
@@ -101,7 +104,7 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     plan_name = f"{args.project}_{args.product}_{args.scenario_name}"
     output_path = out_dir / f"{plan_name}.jmx"
-    output_path.write_text(build_scenario_jmx(plan_name, include_files), encoding="utf-8")
+    output_path.write_text(build_scenario_jmx(plan_name, include_files, config), encoding="utf-8")
 
     print(f"\nScenario JMX created: {output_path}")
 

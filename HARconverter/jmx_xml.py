@@ -23,14 +23,14 @@ def jmx_to_string(root: ET.Element) -> str:
     return f'<?xml version="1.0" encoding="UTF-8"?>\n{xml}\n'
 
 
-def build_test_plan_scaffold(name: str) -> Tuple[ET.Element, ET.Element]:
+def build_test_plan_scaffold(name: str, jmeter_version: str) -> Tuple[ET.Element, ET.Element]:
     """
     Builds the jmeterTestPlan root through a disabled TestFragmentController,
     shared by fragment (jmx_generator) and scenario (build_scenario_jmx) output.
     Returns (root, fragment_tree); callers append their own children to
     fragment_tree before serializing root with jmx_to_string.
     """
-    root = ET.Element("jmeterTestPlan", version="1.2", properties="5.0", jmeter="5.6.0")
+    root = ET.Element("jmeterTestPlan", version="1.2", properties="5.0", jmeter=jmeter_version)
     root_tree = sub(root, "hashTree")
 
     test_plan = sub(
