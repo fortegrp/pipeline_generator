@@ -826,3 +826,95 @@ exit 0
 
     assert (tmp_path / "run-output" / "qa_checkout-smoke" / "run-summary.json").exists()
     assert (tmp_path / "run-output" / "qa_checkout-full" / "run-summary.json").exists()
+
+
+def test_render_loadrunner_script_writes_passing_run_summary(tmp_path: Path) -> None:
+    stub_bin = tmp_path / "stub-bin"
+    stub_bin.mkdir()
+    (stub_bin / "wlrun").write_text("""#!/usr/bin/env bash
+resultname=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "-ResultName" ]; then resultname="$arg"; fi
+  prev="$arg"
+done
+mkdir -p "$resultname"
+echo "result" > "$resultname/results.xml"
+exit 0
+""")
+    (stub_bin / "wlrun").chmod(0o755)
+
+    config = _base_config("loadrunner_professional", {"wlrun_path": "wlrun"})
+    package = build_generic_package(config)
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-loadrunner_professional.sh"
+
+    env = dict(os.environ)
+    env["PATH"] = f"{stub_bin}:{env['PATH']}"
+
+    result = subprocess.run(
+        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke"],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=tmp_path,
+    )
+    assert result.returncode == 0, result.stderr
+
+    summary_path = tmp_path / "run-output" / "qa_checkout-smoke" / "run-summary.json"
+    assert summary_path.exists()
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["tool"] == "loadrunner_professional"
+    assert summary["status"] == "passed"
+    assert summary["artifact_status"] == "complete"
+    assert summary["report_link"] == "run-output/qa_checkout-smoke"
+
+
+def test_render_loadrunner_script_writes_failing_run_summary_and_propagates_exit_code(tmp_path: Path) -> None:
+    stub_bin = tmp_path / "stub-bin"
+    stub_bin.mkdir()
+    (stub_bin / "wlrun").write_text("#!/usr/bin/env bash\nexit 3\n")
+    (stub_bin / "wlrun").chmod(0o755)
+
+    config = _base_config("loadrunner_professional", {"wlrun_path": "wlrun"})
+    package = build_generic_package(config)
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-loadrunner_professional.sh"
+
+    env = dict(os.environ)
+    env["PATH"] = f"{stub_bin}:{env['PATH']}"
+
+    result = subprocess.run(
+        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke"],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=tmp_path,
+    )
+    assert result.returncode == 1
+
+    summary_path = tmp_path / "run-output" / "qa_checkout-smoke" / "run-summary.json"
+    assert summary_path.exists()
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["status"] == "failed"
+    assert summary["artifact_status"] == "incomplete"
+
+
+def test_render_loadrunner_script_no_run_summary_on_precheck_failure(tmp_path: Path) -> None:
+    config = _base_config(
+        "loadrunner_professional", {"wlrun_path": "wlrun"}, checks=["verify_scenario_exists"]
+    )
+    package = build_generic_package(config)
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-loadrunner_professional.sh"
+
+    result = subprocess.run(
+        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke"],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+    )
+    assert result.returncode == 1
+    assert "Scenario file not found" in result.stderr
+    run_output = tmp_path / "run-output"
+    assert not run_output.exists() or not list(run_output.rglob("run-summary.json"))
