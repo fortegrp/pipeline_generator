@@ -650,23 +650,41 @@ Tasks:
 - Add secret and variable placeholders where each platform expects them.
 - Make generated output deterministic.
 
-### 4. Improve Generated Documentation
+### 4. Improve Generated Documentation — Resolved
 
 Goals:
 
 - Make each generated setup package self-explanatory for performance engineers
   and DevOps users.
 
-Tasks:
+Tasks — all done, in `renderers/readme.py`:
 
-- Include CI/CD-specific manual run instructions.
-- Include automated job integration instructions.
-- Include required secrets and variables.
-- Include tool-specific connection details.
-- Include artifact behavior and output locations.
-- Include troubleshooting guidance.
-- Reflect `working_location` and `final_pipeline_destination` in the generated
-  README.
+- [x] Include CI/CD-specific manual run instructions (literal click-paths:
+      GitHub's Actions tab, Azure's Run pipeline, Jenkins' Build with
+      Parameters).
+- [x] Include automated job integration instructions (per platform, named
+      per configured job — e.g. GitHub's `uses:` reusable-workflow syntax,
+      Jenkins' `build job:`).
+- [x] Include required secrets and variables (trimmed "Remaining TODOs" to
+      genuine must-fill-ins: secrets, YAML placeholders, BlazeMeter's two
+      API keys and its `jq` prerequisite).
+- [x] Include tool-specific connection details (new "Connection Details"
+      section echoes the setup's actual configured values — test plan
+      path, `wlrun` path, BlazeMeter base URL/workspace/project — so a
+      reader doesn't need to open `customer.yaml`).
+- [x] Include artifact behavior and output locations (new "Artifacts &
+      Output" section: JMeter's `results.jtl`/`report/`, LoadRunner's
+      `wlrun` result files, BlazeMeter's `summary.json`/`report_link.json`,
+      and `run-summary.json` for all three).
+- [x] Include troubleshooting guidance (new "Troubleshooting" section:
+      generic guidance — read `run-summary.json`'s `status`/
+      `artifact_status` first, what an `Unknown environment/scenario key`
+      message means — plus the tool-specific caveats moved out of TODOs:
+      LoadRunner's agent-colocation requirement and `wlrun`'s exit-code
+      unreliability, BlazeMeter's API-surface verification note).
+- [x] Reflect `working_location` and `final_pipeline_destination` in the
+      generated README (already done in "Setup Summary", unchanged by this
+      pass).
 
 ### 5. Improve CLI UX
 
@@ -814,7 +832,8 @@ the full design.
 - [x] 8. Harden Azure DevOps rendering (same treatment as GitHub Actions).
       Jenkins received the same treatment separately (not one of the
       original 14 items, since Jenkins support was added afterward).
-- [ ] 9. Improve generated README content.
+- [x] 9. Improve generated README content (see "Improve Generated
+      Documentation" above).
 - [x] 10. Replace the Python runtime/adapter subsystem with a generated
       `scripts/run-<tool_type>.sh` per setup — real for JMeter immediately
       (local subprocess call — needed no remote API or credentials, as
