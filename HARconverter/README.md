@@ -21,7 +21,7 @@ The converter is designed for application and API traffic. By default, it filter
 | `har_requests.py` | Shared request filtering, normalization, de-duplication, and collision-safe filename generation. |
 | `har_utils.py` | Loads HAR entries from supported HAR JSON shapes. |
 | `host_mapping.py` | Loads hostname-to-JMeter-property mappings from CSV. |
-| `hosts.csv` | Current sample/configured host mapping file. |
+| `hosts.csv.example` | Template for the host mapping CSV format. Copy to `hosts.csv` (gitignored) with your project's real hosts. |
 | `tests/` | Standard-library regression tests for loading, filtering, naming, XML generation, and CLI smoke behavior. |
 | `jmeter.log` | Runtime log produced by Apache JMeter. Not part of the converter logic. |
 | `__pycache__/` | Python bytecode cache generated automatically by Python. Not part of the source logic. |
@@ -78,13 +78,15 @@ Host mappings are optional. They are loaded from a CSV file with this format:
 host,variableName
 ```
 
-The current `hosts.csv` contains:
+`hosts.csv` is project-specific and gitignored, since it typically maps real internal hostnames. `hosts.csv.example` shows the expected format:
 
 ```csv
-q1eu-merlin.merlin.net,hostName
-q1mrb2ceu.b2clogin.com,ADHost
-q1euapim.merlin.net,apiHost
+app.example.com,hostName
+login.example.com,ADHost
+api.example.com,apiHost
 ```
+
+Copy it to `hosts.csv` (or any filename) and fill in your project's real hosts before running the converter.
 
 Blank lines and lines starting with `#` are ignored.
 
@@ -97,7 +99,7 @@ ${__P(variableName)}
 For example:
 
 ```text
-q1eu-merlin.merlin.net
+app.example.com
 ```
 
 becomes:
