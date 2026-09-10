@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Tuple
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 
 STATIC_EXTENSIONS = (
@@ -101,6 +101,31 @@ def slugify(text: str) -> str:
     return text.strip("_") or "root"
 
 
+def extract_body(post_data: Any) -> Optional[str]:
+    """
+    Returns the request body text for a HAR postData object.
+    Falls back to url-encoding postData.params when text is absent, since
+    some HAR captures store form-encoded bodies only as params.
+    """
+    if not isinstance(post_data, dict):
+        return None
+
+    text = post_data.get("text")
+    if text is not None:
+        return text
+
+    params = post_data.get("params")
+    if not isinstance(params, list):
+        return None
+
+    pairs = [
+        (str(param.get("name", "")), str(param.get("value", "")))
+        for param in params
+        if isinstance(param, dict)
+    ]
+    return urlencode(pairs) if pairs else None
+
+
 def process_har_entries(entries: Iterable[Any], project: str, product: str, config: Any = None) -> ProcessedRequests:
     """
     Filter, normalize, de-duplicate, and name HAR requests.
@@ -150,8 +175,7 @@ def process_har_entries(entries: Iterable[Any], project: str, product: str, conf
         base_name_counts[base_name] = base_count
         unique_base_name = base_name if base_count == 1 else f"{base_name}_{base_count}"
 
-        post_data = req.get("postData")
-        body = post_data.get("text") if isinstance(post_data, dict) else None
+        body = extract_body(req.get("postData"))
         headers = req.get("headers", [])
         if not isinstance(headers, list):
             headers = []
