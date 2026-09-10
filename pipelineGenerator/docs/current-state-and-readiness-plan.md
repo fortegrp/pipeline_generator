@@ -902,7 +902,8 @@ the full design.
       stubs at once to confirm they emit the same `run-summary.json` key
       set. Built up incrementally across the BlazeMeter real-execution
       work and the `normalize-runtime-output` plan.
-- [ ] 15. Publish an internal release candidate.
+- [x] 15. Publish an internal release candidate — `1.0.0rc1`
+      (`pyproject.toml`, `CHANGELOG.md`, tag `v1.0.0rc1`).
 
 ## Definition of Ready
 
