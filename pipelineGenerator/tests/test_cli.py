@@ -147,6 +147,21 @@ def test_validate_config_with_validation_errors_exits_1(
     assert "Traceback" not in output.out + output.err
 
 
+def test_wizard_resume_from_malformed_draft_prints_clean_message_and_exits_1(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    draft = tmp_path / "corrupt-draft.yaml"
+    draft.write_text("key: [unclosed", encoding="utf-8")
+
+    code = main(["wizard", "--output", str(draft), "--resume"])
+
+    assert code == 1
+    output = capsys.readouterr()
+    combined = output.out + output.err
+    assert "Traceback" not in combined
+    assert str(draft) in combined
+
+
 def test_wizard_eof_during_prompt_prints_clean_message_and_exits_130(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:

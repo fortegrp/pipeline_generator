@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from pipeline_generator.config.loader import save_config
@@ -19,6 +20,12 @@ def generate_assets(config: dict, output_dir: Path) -> list[str]:
     # collaborators -- slugify it so a value like "../../etc" or an absolute
     # path can't write outside output_dir.
     setup_dir = output_dir / slugify(package.setup_id)
+    # Wipe and rebuild rather than writing on top of a prior generation --
+    # otherwise a stale file from an earlier config (e.g. the previous
+    # tool's scripts/run-<tool_type>.sh, or a since-removed automated job's
+    # workflow file) would silently survive alongside the new output.
+    if setup_dir.exists():
+        shutil.rmtree(setup_dir)
     setup_dir.mkdir(parents=True, exist_ok=True)
 
     save_config(setup_dir / "customer.yaml", config)
