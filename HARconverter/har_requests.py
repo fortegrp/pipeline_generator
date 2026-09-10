@@ -216,8 +216,10 @@ def skip_reason(req: Dict[str, Any], method: str, url: str, config: Any) -> Opti
         return "skipped URL substring"
 
     headers = req.get("headers", [])
-    if isinstance(headers, list) and any("nrjs" in str(h.get("value", "")).lower() for h in headers if isinstance(h, dict)):
-        return "New Relic header"
+    if isinstance(headers, list):
+        header_values = [str(h.get("value", "")).lower() for h in headers if isinstance(h, dict)]
+        if any(skip in value for value in header_values for skip in config.filters.skip_header_value_contains):
+            return "skipped header value substring"
 
     parsed = urlparse(url)
     host = (parsed.hostname or "").lower()

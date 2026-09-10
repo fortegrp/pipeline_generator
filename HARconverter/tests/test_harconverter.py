@@ -201,6 +201,40 @@ class FilteringAndNamingTests(unittest.TestCase):
         self.assertEqual(len(processed.requests), 1)
         self.assertEqual(processed.requests[0].body, "username=alice&password=s3cr3t%21")
 
+    def test_header_value_filter_skips_matching_requests(self):
+        entries = [
+            har_entry(
+                "https://example.com/api/beacon",
+                headers=[{"name": "X-Trace", "value": "nrjs-session-123"}],
+            ),
+            har_entry("https://example.com/api/users"),
+        ]
+
+        processed = process_har_entries(entries, "Project", "Product")
+
+        self.assertEqual([request.url for request in processed.requests], ["https://example.com/api/users"])
+        self.assertEqual(processed.skipped[0].reason, "skipped header value substring")
+
+    def test_header_value_filter_is_config_driven(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "config.json"
+            config_path.write_text(
+                json.dumps({"filters": {"skip_header_value_contains": ["x-debug-token"]}}),
+                encoding="utf-8",
+            )
+            config = load_config(config_path)
+
+        entries = [
+            har_entry(
+                "https://example.com/api/beacon",
+                headers=[{"name": "X-Debug", "value": "x-debug-token-abc"}],
+            ),
+            har_entry("https://example.com/api/users"),
+        ]
+        processed = process_har_entries(entries, "Project", "Product", config)
+
+        self.assertEqual([request.url for request in processed.requests], ["https://example.com/api/users"])
+
     def test_config_can_extend_filters_and_keep_urls(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = Path(temp_dir) / "config.json"
