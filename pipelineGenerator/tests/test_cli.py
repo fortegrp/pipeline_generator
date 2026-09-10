@@ -103,3 +103,63 @@ def test_generate_malformed_yaml_prints_clean_message_and_exits_1(
     output = capsys.readouterr()
     combined = output.out + output.err
     assert "Traceback" not in combined
+
+
+def _example_config_path() -> Path:
+    return Path(__file__).parent.parent / "examples" / "github-jmeter" / "customer.yaml"
+
+
+def test_validate_successful_config_exits_0(capsys: pytest.CaptureFixture[str]) -> None:
+    code = main(["validate", "--config", str(_example_config_path())])
+
+    assert code == 0
+    output = capsys.readouterr()
+    assert "Errors:" not in output.out
+
+
+def test_generate_successful_config_creates_files_and_exits_0(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = main(["generate", "--config", str(_example_config_path()), "--output-dir", str(tmp_path)])
+
+    assert code == 0
+    output = capsys.readouterr()
+    combined = output.out + output.err
+    assert "Traceback" not in combined
+    generated_scripts = list(tmp_path.rglob("run-jmeter.sh"))
+    assert len(generated_scripts) == 1
+    assert list(tmp_path.rglob("README.md"))
+
+
+def test_validate_config_with_validation_errors_exits_1(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    bad_config = tmp_path / "invalid.yaml"
+    bad_config.write_text(
+        "version: 1\nincomplete: false\ncicd:\n  type: not_a_real_platform\n", encoding="utf-8"
+    )
+
+    code = main(["validate", "--config", str(bad_config)])
+
+    assert code == 1
+    output = capsys.readouterr()
+    assert "Errors:" in output.out
+    assert "Traceback" not in output.out + output.err
+
+
+def test_wizard_eof_during_prompt_prints_clean_message_and_exits_130(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _raise_eof(*args: object, **kwargs: object) -> str:
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", _raise_eof)
+    output_path = tmp_path / "draft.yaml"
+
+    code = main(["wizard", "--output", str(output_path)])
+
+    assert code == 130
+    output = capsys.readouterr()
+    combined = output.out + output.err
+    assert "Traceback" not in combined
+    assert "cancelled" in combined

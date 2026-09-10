@@ -43,14 +43,22 @@ Implemented:
 - Generated setup README.
 - A generated `scripts/run-<tool_type>.sh` per setup, written alongside the
   CI/CD files — real, working execution for all three supported tools
-  (JMeter, LoadRunner Professional, BlazeMeter).
+  (JMeter, LoadRunner Professional, BlazeMeter), each also writing a
+  normalized `run-summary.json` after attempting a run.
+- Safe generated YAML/Groovy/shell escaping (`renderers/quoting.py`) across
+  all three CI/CD renderers, covered by adversarial-input tests per
+  renderer.
 - Example customer configs for the supported CI/CD and tool combinations.
 - Renderer tests for all three CI/CD platforms (GitHub Actions and Azure
   DevOps tests also parse the generated YAML to catch syntax breakage).
 - A test that validates and generates every example config.
-- Clean CLI error handling for `wizard` (expected exceptions are caught and
-  printed as plain messages instead of tracebacks; `generate` has no
-  exception paths beyond what validation already catches).
+- Clean CLI error handling for `wizard`, `validate`, and `generate`
+  (expected exceptions — cancelled prompts, missing/malformed config
+  files — are caught and printed as plain messages instead of tracebacks,
+  with stable, documented exit codes).
+- Dedicated tests for configs that should fail validation and for CLI
+  successful/failing command paths (`tests/test_validation.py`,
+  `tests/test_cli.py`).
 - CI (GitHub Actions, `.github/workflows/pipeline-generator-ci.yml` at the
   repo root) running `pytest` on push/PR across Python 3.9 and 3.12.
 
@@ -65,13 +73,7 @@ Not implemented yet:
   `verify_load_generators_connected` needs Controller-side load-generator
   host-status querying with no local CLI equivalent; `collect_results`'
   meaning is still an open question — see below).
-- Robust generated YAML/Groovy escaping and validation (the renderers still
-  build output via unescaped f-strings; the new renderer tests catch
-  accidental syntax breakage but don't guard against a customer value like a
-  stray quote producing invalid output).
 - Strong schema enforcement.
-- Dedicated tests for configs that should fail validation, and CLI tests for
-  successful/failing command paths.
 
 ## Supported Platforms and Tools
 
@@ -723,15 +725,25 @@ Tasks:
 - [x] Run tests with `pytest`.
 - [x] Add GitHub Actions or Azure DevOps CI for this repository.
 - [x] Test supported Python versions (3.9 and 3.12 in the CI matrix).
-- [ ] Add validation tests for valid and invalid configs (the example-config
-      test below covers the valid side; there's no dedicated test yet for
-      configs that should fail validation).
+- [x] Add validation tests for valid and invalid configs — the example-config
+      test below covers the valid side; `tests/test_validation.py` now also
+      covers the invalid side directly: `test_validation_errors_for_unsupported_enum_values`
+      (unsupported `cicd.type`/`tool.type`/`tool.auth.type`/
+      `setup.generation_mode` all produce errors, not warnings) and
+      `test_validation_errors_when_required_field_missing_on_complete_config`
+      (a missing required field on an `incomplete: false` config is an
+      error, confirmed absent from `warnings`).
 - [x] Add renderer tests for GitHub Actions and Azure DevOps.
 - [x] Add tests for the generated `scripts/run-<tool_type>.sh` content, for
       manual and automated modes across all three tools (superseded what
       would have been "dry-run tests for manual and automated runtime
       modes" back when a `run --dry-run` command existed).
-- [ ] Add CLI tests for successful and failing paths.
+- [x] Add CLI tests for successful and failing paths — `tests/test_cli.py`
+      now covers both: successful `validate`/`generate` runs against a real
+      example config (exit `0`, expected files created), plus failing
+      paths for `validate` (both a validation-error config and a missing/
+      malformed config file) and `wizard` (an `EOFError` mid-prompt exits
+      `130` with a clean message, no traceback).
 - [x] Add tests that generate assets for every example config.
 
 ## Milestone 2: Runtime Execution Readiness
