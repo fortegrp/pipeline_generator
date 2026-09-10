@@ -108,6 +108,9 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print("\nWizard cancelled before any progress was saved.")
             return 130
+        except (OSError, yaml.YAMLError) as exc:
+            print(f"Could not resume from {args.output}: {exc}")
+            return 1
         print(f"\nSaved setup draft to {args.output}")
         print(json.dumps({"setup_id": config["setup"]["id"], "incomplete": config["incomplete"]}, indent=2))
         print(f"\nNext step: pipeline-generator generate --config {args.output} --output-dir generated")
