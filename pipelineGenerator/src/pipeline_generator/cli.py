@@ -4,26 +4,51 @@ import argparse
 import json
 from pathlib import Path
 
+import yaml
+
 from pipeline_generator.config.loader import load_config
 from pipeline_generator.config.validator import ValidationResult, validate_config
 from pipeline_generator.generator.service import generate_assets
 from pipeline_generator.wizard.flow import run_wizard
 
+CONFIG_HELP = "Path to the customer.yaml setup file."
+
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="pipeline-generator")
+    parser = argparse.ArgumentParser(
+        prog="pipeline-generator",
+        description=(
+            "Generate CI/CD pipeline files and a runnable performance-test script from a "
+            "customer YAML config."
+        ),
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    wizard_parser = subparsers.add_parser("wizard", help="Create or resume a setup YAML interactively.")
+    wizard_parser = subparsers.add_parser(
+        "wizard",
+        help="Create or resume a setup YAML interactively.",
+        description="Interactively build or resume a customer.yaml setup draft.",
+    )
     wizard_parser.add_argument("--output", type=Path, required=True, help="Path to the YAML file to create or update.")
     wizard_parser.add_argument("--resume", action="store_true", help="Resume from an existing YAML draft if present.")
 
-    validate_parser = subparsers.add_parser("validate", help="Validate a setup YAML file.")
-    validate_parser.add_argument("--config", type=Path, required=True)
+    validate_parser = subparsers.add_parser(
+        "validate",
+        help="Validate a setup YAML file.",
+        description="Validate a customer.yaml setup file and report its errors and warnings.",
+    )
+    validate_parser.add_argument("--config", type=Path, required=True, help=CONFIG_HELP)
     validate_parser.add_argument("--strict", action="store_true", help="Treat warnings as errors.")
 
-    generate_parser = subparsers.add_parser("generate", help="Generate CI/CD files and README from a setup YAML file.")
-    generate_parser.add_argument("--config", type=Path, required=True)
+    generate_parser = subparsers.add_parser(
+        "generate",
+        help="Generate CI/CD files and README from a setup YAML file.",
+        description=(
+            "Generate CI/CD pipeline files, a run script, and a README from a validated "
+            "customer.yaml setup."
+        ),
+    )
+    generate_parser.add_argument("--config", type=Path, required=True, help=CONFIG_HELP)
     generate_parser.add_argument(
         "--output-dir",
         type=Path,
@@ -32,6 +57,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     return parser
+
+
+def _load_config_or_none(config_path: Path) -> dict | None:
+    """Load a config file, printing a clean message and returning None on expected failures.
+
+    load_config() can raise OSError (missing file, permission issues, etc.) or a YAML parse
+    error for malformed input -- both are user-input problems, not bugs, so they get a
+    one-line message instead of a traceback.
+    """
+    try:
+        return load_config(config_path)
+    except OSError as exc:
+        print(f"Could not read {config_path}: {exc.strerror or exc}")
+        return None
+    except yaml.YAMLError as exc:
+        print(f"Could not parse {config_path} as YAML: {exc}")
+        return None
 
 
 def _blocks_action(result: ValidationResult, config: dict, action: str) -> bool:
@@ -47,9 +89,9 @@ def _blocks_action(result: ValidationResult, config: dict, action: str) -> bool:
     return False
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.command == "wizard":
         if args.output.exists() and not args.resume:
@@ -72,7 +114,9 @@ def main() -> int:
         return 0
 
     if args.command == "validate":
-        config = load_config(args.config)
+        config = _load_config_or_none(args.config)
+        if config is None:
+            return 1
         result = validate_config(config)
         print(result.to_console())
         if result.errors or (args.strict and result.warnings):
@@ -80,7 +124,9 @@ def main() -> int:
         return 0
 
     if args.command == "generate":
-        config = load_config(args.config)
+        config = _load_config_or_none(args.config)
+        if config is None:
+            return 1
         result = validate_config(config)
         if _blocks_action(result, config, "generate"):
             return 1

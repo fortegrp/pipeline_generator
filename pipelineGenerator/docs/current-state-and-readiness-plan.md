@@ -694,11 +694,27 @@ Goals:
 
 Tasks:
 
-- Catch expected exceptions and print clean error messages.
-- Return stable nonzero exit codes for validation failures.
-- Add `--version`.
-- Add clear help text for every command.
-- Consider adding a non-interactive config creation mode.
+- [x] Catch expected exceptions and print clean error messages — `validate`
+      and `generate` both route `load_config()` through
+      `cli.py:_load_config_or_none()`, which catches `OSError` (missing
+      file, permission errors) and `yaml.YAMLError` (malformed YAML) and
+      prints a clean one-line message instead of a traceback.
+- [x] Return stable nonzero exit codes for validation failures — closed
+      together with the item above: every "your input was wrong" case
+      (a missing/malformed config file, or `validate_config` reporting
+      errors/blocking warnings) now returns exit code `1` via a deliberate
+      `return`, never via an uncaught exception. Argparse's own usage
+      errors (bad flags) keep their existing, unchanged code `2`.
+- [ ] Add `--version` — explicitly deferred (low value pre-1.0, single
+      internal team, not blocking anything else on this roadmap).
+- [x] Add clear help text for every command — `build_parser()` now sets a
+      top-level `description`, a `description` for each of the three
+      subparsers (shown on `pipeline-generator <command> --help`, not just
+      the one-line summary in the parent listing), and the previously
+      undocumented `--config` argument (`validate`/`generate`) now has
+      `help=`.
+- [ ] Consider adding a non-interactive config creation mode — not
+      addressed by this pass; still open if wanted later.
 
 ### 6. Add Project CI and Tests
 
