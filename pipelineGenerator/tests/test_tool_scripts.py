@@ -918,3 +918,227 @@ def test_render_loadrunner_script_no_run_summary_on_precheck_failure(tmp_path: P
     assert "Scenario file not found" in result.stderr
     run_output = tmp_path / "run-output"
     assert not run_output.exists() or not list(run_output.rglob("run-summary.json"))
+
+
+def test_render_blazemeter_script_writes_run_summary_on_ended(tmp_path: Path) -> None:
+    config = _base_config(
+        "blazemeter", {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"}
+    )
+    package = build_generic_package(config)
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-blazemeter.sh"
+
+    stub_bin = tmp_path / "stub-bin"
+    stub_bin.mkdir()
+    (stub_bin / "curl").write_text("""#!/usr/bin/env bash
+if [[ "$*" == *"/start"* ]]; then
+  echo '{"result": {"id": 999}}'
+  exit 0
+fi
+if [[ "$*" == *"/status"* ]]; then
+  echo '{"result": {"status": "ENDED"}}'
+  exit 0
+fi
+if [[ "$*" == *"/summary"* ]]; then
+  echo '{}'
+  exit 0
+fi
+exit 0
+""")
+    (stub_bin / "curl").chmod(0o755)
+    (stub_bin / "jq").write_text("""#!/usr/bin/env bash
+input="$(cat)"
+expr="${@: -1}"
+case "$expr" in
+  '.result.id')
+    echo "$input" | grep -o '"id": *[0-9]*' | grep -o '[0-9]*$'
+    ;;
+  '.result.status')
+    echo "$input" | grep -o '"status": *"[A-Z]*"' | grep -o '"[A-Z]*"$' | tr -d '"'
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+""")
+    (stub_bin / "jq").chmod(0o755)
+
+    env = dict(os.environ)
+    env["PATH"] = f"{stub_bin}:{env['PATH']}"
+    env["BLAZEMETER_API_KEY_ID"] = "id"
+    env["BLAZEMETER_API_KEY_SECRET"] = "secret"
+
+    result = subprocess.run(
+        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke", "--timeout-minutes", "1"],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=tmp_path,
+    )
+    assert result.returncode == 0, result.stderr
+
+    summary_path = tmp_path / "run-output" / "qa_checkout-smoke" / "run-summary.json"
+    assert summary_path.exists()
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["tool"] == "blazemeter"
+    assert summary["run_id"] == "999"
+    assert summary["status"] == "passed"
+    assert summary["artifact_status"] == "complete"
+    assert summary["report_link"] == "https://a.blazemeter.com/app/#/masters/999/summary"
+
+
+def test_render_blazemeter_script_writes_run_summary_on_error_status(tmp_path: Path) -> None:
+    config = _base_config(
+        "blazemeter", {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"}
+    )
+    package = build_generic_package(config)
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-blazemeter.sh"
+
+    stub_bin = tmp_path / "stub-bin"
+    stub_bin.mkdir()
+    (stub_bin / "curl").write_text("""#!/usr/bin/env bash
+if [[ "$*" == *"/start"* ]]; then
+  echo '{"result": {"id": 999}}'
+  exit 0
+fi
+if [[ "$*" == *"/status"* ]]; then
+  echo '{"result": {"status": "ERROR"}}'
+  exit 0
+fi
+exit 0
+""")
+    (stub_bin / "curl").chmod(0o755)
+    (stub_bin / "jq").write_text("""#!/usr/bin/env bash
+input="$(cat)"
+expr="${@: -1}"
+case "$expr" in
+  '.result.id')
+    echo "$input" | grep -o '"id": *[0-9]*' | grep -o '[0-9]*$'
+    ;;
+  '.result.status')
+    echo "$input" | grep -o '"status": *"[A-Z]*"' | grep -o '"[A-Z]*"$' | tr -d '"'
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+""")
+    (stub_bin / "jq").chmod(0o755)
+
+    env = dict(os.environ)
+    env["PATH"] = f"{stub_bin}:{env['PATH']}"
+    env["BLAZEMETER_API_KEY_ID"] = "id"
+    env["BLAZEMETER_API_KEY_SECRET"] = "secret"
+
+    result = subprocess.run(
+        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke", "--timeout-minutes", "1"],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=tmp_path,
+    )
+    assert result.returncode == 1
+    assert "ERROR: BlazeMeter test ended with status ERROR" in result.stderr
+
+    summary_path = tmp_path / "run-output" / "qa_checkout-smoke" / "run-summary.json"
+    assert summary_path.exists()
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["status"] == "failed"
+    assert summary["artifact_status"] == "incomplete"
+
+
+def test_render_blazemeter_script_writes_run_summary_on_timeout(tmp_path: Path) -> None:
+    config = _base_config(
+        "blazemeter", {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"}
+    )
+    package = build_generic_package(config)
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-blazemeter.sh"
+
+    stub_bin = tmp_path / "stub-bin"
+    stub_bin.mkdir()
+    (stub_bin / "curl").write_text("""#!/usr/bin/env bash
+if [[ "$*" == *"/start"* ]]; then
+  echo '{"result": {"id": 999}}'
+  exit 0
+fi
+exit 0
+""")
+    (stub_bin / "curl").chmod(0o755)
+    (stub_bin / "jq").write_text("""#!/usr/bin/env bash
+input="$(cat)"
+expr="${@: -1}"
+case "$expr" in
+  '.result.id')
+    echo "$input" | grep -o '"id": *[0-9]*' | grep -o '[0-9]*$'
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+""")
+    (stub_bin / "jq").chmod(0o755)
+
+    env = dict(os.environ)
+    env["PATH"] = f"{stub_bin}:{env['PATH']}"
+    env["BLAZEMETER_API_KEY_ID"] = "id"
+    env["BLAZEMETER_API_KEY_SECRET"] = "secret"
+
+    # --timeout-minutes 0 makes the poll deadline equal to "now", so the
+    # while loop's condition is already false on its first check -- the
+    # loop body (which would otherwise poll /status and sleep 15 real
+    # seconds) never runs, keeping this test fast while still exercising
+    # the "never reached a terminal status" branch exactly as a real
+    # timeout would reach it.
+    result = subprocess.run(
+        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke", "--timeout-minutes", "0"],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=tmp_path,
+    )
+    assert result.returncode == 1
+    assert "Timed out after 0 minutes" in result.stderr
+
+    summary_path = tmp_path / "run-output" / "qa_checkout-smoke" / "run-summary.json"
+    assert summary_path.exists()
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["status"] == "error"
+    assert summary["artifact_status"] == "incomplete"
+
+
+def test_render_blazemeter_script_no_run_summary_when_master_id_missing(tmp_path: Path) -> None:
+    config = _base_config(
+        "blazemeter", {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"}
+    )
+    package = build_generic_package(config)
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-blazemeter.sh"
+
+    stub_bin = tmp_path / "stub-bin"
+    stub_bin.mkdir()
+    (stub_bin / "curl").write_text("""#!/usr/bin/env bash
+echo '<html><body>502 Bad Gateway</body></html>'
+exit 0
+""")
+    (stub_bin / "curl").chmod(0o755)
+    (stub_bin / "jq").write_text("#!/usr/bin/env bash\nexit 1\n")
+    (stub_bin / "jq").chmod(0o755)
+
+    env = dict(os.environ)
+    env["PATH"] = f"{stub_bin}:{env['PATH']}"
+    env["BLAZEMETER_API_KEY_ID"] = "id"
+    env["BLAZEMETER_API_KEY_SECRET"] = "secret"
+
+    result = subprocess.run(
+        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke", "--timeout-minutes", "1"],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=tmp_path,
+    )
+    assert result.returncode == 1
+
+    run_output = tmp_path / "run-output"
+    assert not run_output.exists() or not list(run_output.rglob("run-summary.json"))
