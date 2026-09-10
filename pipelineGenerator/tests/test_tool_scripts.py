@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import shlex
 import subprocess
@@ -640,3 +641,188 @@ def test_render_jmeter_script_todo_comments_for_unhandled_checks(tmp_path: Path)
 
     syntax_check = subprocess.run(["bash", "-n", str(script_path)], capture_output=True, text=True)
     assert syntax_check.returncode == 0, syntax_check.stderr
+
+
+def test_json_escape_helper_produces_valid_json_string(tmp_path: Path) -> None:
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": ""})
+    package = build_generic_package(config)
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-jmeter.sh"
+
+    hostile = 'back\\slash "and quote"'
+    result = subprocess.run(
+        ["bash", "-c", f'source "{script_path}"; json_escape {shlex.quote(hostile)}'],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    escaped = result.stdout.rstrip("\n")
+    assert json.loads(f'"{escaped}"') == hostile
+
+
+def test_render_jmeter_script_uses_results_dir_and_slug_resolvers(tmp_path: Path) -> None:
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": ""})
+    package = build_generic_package(config)
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-jmeter.sh"
+    content = script_path.read_text(encoding="utf-8")
+
+    assert "resolve_environment_slug() {" in content
+    assert "resolve_scenario_slug() {" in content
+    assert "json_escape() {" in content
+    assert 'local results_dir="run-output/${environment_slug}_${scenario_slug}"' in content
+    assert '-l "$results_dir/results.jtl"' in content
+    assert '-o "$results_dir/report"' in content
+    assert '> "$results_dir/run-summary.json"' in content
+
+    syntax_check = subprocess.run(["bash", "-n", str(script_path)], capture_output=True, text=True)
+    assert syntax_check.returncode == 0, syntax_check.stderr
+
+
+def test_render_jmeter_script_writes_passing_run_summary(tmp_path: Path) -> None:
+    stub_bin = tmp_path / "stub-bin"
+    stub_bin.mkdir()
+    (stub_bin / "jmeter").write_text("""#!/usr/bin/env bash
+logfile=""
+outdir=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "-l" ]; then logfile="$arg"; fi
+  if [ "$prev" = "-o" ]; then outdir="$arg"; fi
+  prev="$arg"
+done
+mkdir -p "$outdir"
+echo "<html></html>" > "$outdir/index.html"
+touch "$logfile"
+exit 0
+""")
+    (stub_bin / "jmeter").chmod(0o755)
+
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": "jmeter"})
+    package = build_generic_package(config)
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-jmeter.sh"
+
+    env = dict(os.environ)
+    env["PATH"] = f"{stub_bin}:{env['PATH']}"
+
+    result = subprocess.run(
+        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke"],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=tmp_path,
+    )
+    assert result.returncode == 0, result.stderr
+
+    summary_path = tmp_path / "run-output" / "qa_checkout-smoke" / "run-summary.json"
+    assert summary_path.exists()
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["tool"] == "jmeter"
+    assert summary["status"] == "passed"
+    assert summary["artifact_status"] == "complete"
+    assert summary["environment"] == "qa"
+    assert summary["scenario"] == "checkout_smoke"
+    assert summary["results_dir"] == "run-output/qa_checkout-smoke"
+    assert summary["report_link"] == "run-output/qa_checkout-smoke/report/index.html"
+    assert set(summary.keys()) == {
+        "tool", "run_id", "environment", "scenario", "status", "started_at", "ended_at",
+        "duration_seconds", "report_link", "results_dir", "artifact_status",
+    }
+
+
+def test_render_jmeter_script_writes_failing_run_summary_and_propagates_exit_code(tmp_path: Path) -> None:
+    stub_bin = tmp_path / "stub-bin"
+    stub_bin.mkdir()
+    (stub_bin / "jmeter").write_text("#!/usr/bin/env bash\nexit 2\n")
+    (stub_bin / "jmeter").chmod(0o755)
+
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": "jmeter"})
+    package = build_generic_package(config)
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-jmeter.sh"
+
+    env = dict(os.environ)
+    env["PATH"] = f"{stub_bin}:{env['PATH']}"
+
+    result = subprocess.run(
+        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke"],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=tmp_path,
+    )
+    assert result.returncode == 1
+
+    summary_path = tmp_path / "run-output" / "qa_checkout-smoke" / "run-summary.json"
+    assert summary_path.exists()
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["status"] == "failed"
+    assert summary["artifact_status"] == "incomplete"
+
+
+def test_render_jmeter_script_no_run_summary_on_precheck_failure(tmp_path: Path) -> None:
+    config = _base_config(
+        "jmeter",
+        {"test_plan_path": "nonexistent-plan.jmx", "jmeter_bin": "jmeter"},
+        checks=["verify_scenario_exists"],
+    )
+    package = build_generic_package(config)
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-jmeter.sh"
+
+    result = subprocess.run(
+        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke"],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+    )
+    assert result.returncode == 1
+    assert "Test plan not found" in result.stderr
+    run_output = tmp_path / "run-output"
+    assert not run_output.exists() or not list(run_output.rglob("run-summary.json"))
+
+
+def test_render_jmeter_script_rerun_with_different_scenario_uses_separate_dirs(tmp_path: Path) -> None:
+    stub_bin = tmp_path / "stub-bin"
+    stub_bin.mkdir()
+    (stub_bin / "jmeter").write_text("""#!/usr/bin/env bash
+logfile=""
+outdir=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "-l" ]; then logfile="$arg"; fi
+  if [ "$prev" = "-o" ]; then outdir="$arg"; fi
+  prev="$arg"
+done
+mkdir -p "$outdir"
+echo "<html></html>" > "$outdir/index.html"
+touch "$logfile"
+exit 0
+""")
+    (stub_bin / "jmeter").chmod(0o755)
+
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": "jmeter"})
+    config["catalog"]["scenarios"] = [
+        {"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "SC-1"},
+        {"key": "checkout_full", "name": "Checkout Full", "identifier": "SC-2"},
+    ]
+    package = build_generic_package(config)
+    render_tool_script(config, package, tmp_path)
+    script_path = tmp_path / "scripts" / "run-jmeter.sh"
+
+    env = dict(os.environ)
+    env["PATH"] = f"{stub_bin}:{env['PATH']}"
+
+    for scenario in ("checkout_smoke", "checkout_full"):
+        result = subprocess.run(
+            ["bash", str(script_path), "--environment", "qa", "--scenario", scenario],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=tmp_path,
+        )
+        assert result.returncode == 0, result.stderr
+
+    assert (tmp_path / "run-output" / "qa_checkout-smoke" / "run-summary.json").exists()
+    assert (tmp_path / "run-output" / "qa_checkout-full" / "run-summary.json").exists()

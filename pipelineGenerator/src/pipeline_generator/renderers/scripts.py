@@ -75,6 +75,38 @@ def _render_slug_resolvers(package: GenericPipelinePackage) -> str:
     return f"{environment_slug_resolver}\n\n{scenario_slug_resolver}"
 
 
+def _render_json_escape_helper() -> str:
+    return r"""json_escape() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}"""
+
+
+def _render_summary_capture_start() -> str:
+    return """  local started_at_iso
+  local started_at_epoch
+  local started_at_compact
+  started_at_iso="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  started_at_epoch="$(date -u +%s)"
+  started_at_compact="$(date -u +%Y%m%dT%H%M%SZ)"
+"""
+
+
+def _render_summary_write(tool_type: str) -> str:
+    return f"""  local ended_at_iso
+  local ended_at_epoch
+  ended_at_iso="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  ended_at_epoch="$(date -u +%s)"
+  local duration_seconds=$((ended_at_epoch - started_at_epoch))
+  local environment_escaped
+  local scenario_escaped
+  environment_escaped="$(json_escape "$environment_key")"
+  scenario_escaped="$(json_escape "$scenario_key")"
+  printf '{{"tool": "{tool_type}", "run_id": "%s", "environment": "%s", "scenario": "%s", "status": "%s", "started_at": "%s", "ended_at": "%s", "duration_seconds": %s, "report_link": "%s", "results_dir": "%s", "artifact_status": "%s"}}' \\
+    "$run_id" "$environment_escaped" "$scenario_escaped" "$summary_status" "$started_at_iso" "$ended_at_iso" "$duration_seconds" "$report_link" "$results_dir" "$artifact_status" \\
+    > "$results_dir/run-summary.json"
+"""
+
+
 def _render_arg_parsing(include_timeout: bool = False) -> str:
     timeout_local = ""
     timeout_case = ""
@@ -142,6 +174,10 @@ set -euo pipefail
 
 {_render_resolvers(package)}
 
+{_render_slug_resolvers(package)}
+
+{_render_json_escape_helper()}
+
 main() {{
 {_render_arg_parsing()}
   mkdir -p run-output
@@ -149,8 +185,33 @@ main() {{
   local test_plan_path={shell_quote(test_plan_path)}
   local jmeter_bin={shell_quote(jmeter_bin)}
 {precheck}{precheck_comments}
-  "$jmeter_bin" -n -t "$test_plan_path" -l run-output/results.jtl -e -o run-output/report \\
-    -Jenvironment="$environment_identifier" -Jscenario="$scenario_identifier"
+  local environment_slug
+  local scenario_slug
+  environment_slug="$(resolve_environment_slug "$environment_key")"
+  scenario_slug="$(resolve_scenario_slug "$scenario_key")"
+  local results_dir="run-output/${{environment_slug}}_${{scenario_slug}}"
+  mkdir -p "$results_dir"
+
+{_render_summary_capture_start()}
+  local run_id="${{environment_slug}}_${{scenario_slug}}_${{started_at_compact}}"
+  local report_link="$results_dir/report/index.html"
+
+  local run_status=0
+  if ! "$jmeter_bin" -n -t "$test_plan_path" -l "$results_dir/results.jtl" -e -o "$results_dir/report" \\
+    -Jenvironment="$environment_identifier" -Jscenario="$scenario_identifier"; then
+    run_status=1
+  fi
+
+  local summary_status="passed"
+  if [ "$run_status" -ne 0 ]; then
+    summary_status="failed"
+  fi
+  local artifact_status="incomplete"
+  if [ -f "$results_dir/results.jtl" ] && [ -f "$results_dir/report/index.html" ]; then
+    artifact_status="complete"
+  fi
+{_render_summary_write("jmeter")}
+  exit "$run_status"
 }}
 
 if [ "${{BASH_SOURCE[0]:-$0}}" = "$0" ]; then
