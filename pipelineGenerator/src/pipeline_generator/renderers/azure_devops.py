@@ -3,8 +3,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from pipeline_generator.generator.generic_model import GenericPipelinePackage
-from pipeline_generator.renderers.quoting import safe_filename_component, shell_quote, yaml_dquote
+from pipeline_generator.generator.generic_model import AutomatedJobSpec, GenericPipelinePackage
+from pipeline_generator.renderers.quoting import blazemeter_timeout_flag, safe_filename_component, shell_quote, yaml_dquote
 
 
 def render_azure_devops(config: dict, package: GenericPipelinePackage, setup_dir: Path) -> list[str]:
@@ -42,10 +42,8 @@ def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
     scenario_values = "\n".join(f"      - {yaml_dquote(item.value)}" for item in scenario_options)
     environment_default = yaml_dquote(environment_options[0].value if environment_options else "TODO")
     scenario_default = yaml_dquote(scenario_options[0].value if scenario_options else "TODO")
-    timeout_flag = (
-        f"\n          --timeout-minutes {package.manual_pipeline.timeout_minutes}"
-        if package.tool_type == "blazemeter"
-        else ""
+    timeout_flag = blazemeter_timeout_flag(
+        package.tool_type, package.manual_pipeline.timeout_minutes, separator="\n          "
     )
     return f"""trigger: none
 pr: none
@@ -87,9 +85,9 @@ jobs:
 """
 
 
-def _render_automated_job(job, tool_type: str) -> str:
+def _render_automated_job(job: AutomatedJobSpec, tool_type: str) -> str:
     job_id = _safe_job_id(job.name)
-    timeout_flag = f"\n          --timeout-minutes {job.timeout_minutes}" if tool_type == "blazemeter" else ""
+    timeout_flag = blazemeter_timeout_flag(tool_type, job.timeout_minutes, separator="\n          ")
     return f"""parameters: []
 
 jobs:

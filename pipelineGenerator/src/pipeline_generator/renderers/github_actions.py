@@ -3,8 +3,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from pipeline_generator.generator.generic_model import GenericPipelinePackage
-from pipeline_generator.renderers.quoting import safe_filename_component, shell_quote, yaml_dquote
+from pipeline_generator.generator.generic_model import AutomatedJobSpec, GenericPipelinePackage
+from pipeline_generator.renderers.quoting import blazemeter_timeout_flag, safe_filename_component, shell_quote, yaml_dquote
 
 
 def render_github_actions(config: dict, package: GenericPipelinePackage, setup_dir: Path) -> list[str]:
@@ -43,7 +43,7 @@ def _render_manual_workflow(package: GenericPipelinePackage) -> str:
     environment_options = ", ".join(yaml_dquote(item.value) for item in package.manual_pipeline.inputs[0].options)
     scenario_options = ", ".join(yaml_dquote(item.value) for item in package.manual_pipeline.inputs[1].options)
     timeout = package.manual_pipeline.timeout_minutes
-    timeout_flag = f"\n          --timeout-minutes {timeout}" if package.tool_type == "blazemeter" else ""
+    timeout_flag = blazemeter_timeout_flag(package.tool_type, timeout, separator="\n          ")
     return f"""name: {yaml_dquote(package.manual_pipeline.name)}
 
 on:
@@ -83,9 +83,9 @@ jobs:
 """
 
 
-def _render_automated_workflow(job, tool_type: str) -> str:
+def _render_automated_workflow(job: AutomatedJobSpec, tool_type: str) -> str:
     job_id = _safe_job_id(job.name)
-    timeout_flag = f"\n          --timeout-minutes {job.timeout_minutes}" if tool_type == "blazemeter" else ""
+    timeout_flag = blazemeter_timeout_flag(tool_type, job.timeout_minutes, separator="\n          ")
     return f"""name: {yaml_dquote(f"Performance Automated Job - {job.name}")}
 
 on:

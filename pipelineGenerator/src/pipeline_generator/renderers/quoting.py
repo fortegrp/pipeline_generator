@@ -39,3 +39,13 @@ def safe_filename_component(value: str) -> str:
     other filesystem-unsafe characters from reaching the generated path.
     """
     return slugify(value)
+
+
+def blazemeter_timeout_flag(tool_type: str, timeout_minutes: int, separator: str = " ") -> str:
+    """Render the --timeout-minutes flag appended to a manual/automated pipeline's
+    generated script invocation. BlazeMeter-only -- JMeter's and LoadRunner
+    Professional's generated scripts don't take this flag.
+    """
+    if tool_type != "blazemeter":
+        return ""
+    return f"{separator}--timeout-minutes {timeout_minutes}"

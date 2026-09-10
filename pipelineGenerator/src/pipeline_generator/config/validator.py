@@ -10,6 +10,7 @@ from pipeline_generator.config.schema import (
     PRE_RUN_CHECKS,
     SUPPORTED_CICD,
     SUPPORTED_TOOLS,
+    required_field_values,
 )
 
 
@@ -73,15 +74,7 @@ def validate_config(config: dict) -> ValidationResult:
     automated_jobs = _as_list_of_dicts(config.get("automated_jobs", []), "automated_jobs", result)
     auth = _as_dict(tool.get("auth", {}), "tool.auth", result)
 
-    required_paths = [
-        ("setup.id", setup.get("id")),
-        ("setup.target_repository", setup.get("target_repository")),
-        ("cicd.type", cicd.get("type")),
-        ("tool.type", tool.get("type")),
-        ("tool.auth.type", auth.get("type")),
-    ]
-
-    for path, value in required_paths:
+    for path, value in required_field_values(config):
         if is_placeholder(value):
             target = result.warnings if incomplete else result.errors
             target.append(f"{path} is missing.")

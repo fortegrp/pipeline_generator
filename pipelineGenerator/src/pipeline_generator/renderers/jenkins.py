@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pipeline_generator.generator.generic_model import GenericPipelinePackage
-from pipeline_generator.renderers.quoting import groovy_squote, safe_filename_component
+from pipeline_generator.generator.generic_model import AutomatedJobSpec, GenericPipelinePackage
+from pipeline_generator.renderers.quoting import blazemeter_timeout_flag, groovy_squote, safe_filename_component
 
 
 def render_jenkins(config: dict, package: GenericPipelinePackage, setup_dir: Path) -> list[str]:
@@ -34,7 +34,7 @@ def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
         f"                {groovy_squote(item.value)}," for item in package.manual_pipeline.inputs[1].options
     )
     timeout = package.manual_pipeline.timeout_minutes
-    timeout_flag = f" --timeout-minutes {timeout}" if package.tool_type == "blazemeter" else ""
+    timeout_flag = blazemeter_timeout_flag(package.tool_type, timeout)
     return f"""pipeline {{
     agent any
     parameters {{
@@ -76,8 +76,8 @@ def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
 """
 
 
-def _render_automated_job(job, tool_type: str) -> str:
-    timeout_flag = f" --timeout-minutes {job.timeout_minutes}" if tool_type == "blazemeter" else ""
+def _render_automated_job(job: AutomatedJobSpec, tool_type: str) -> str:
+    timeout_flag = blazemeter_timeout_flag(tool_type, job.timeout_minutes)
     return f"""pipeline {{
     agent any
     environment {{
