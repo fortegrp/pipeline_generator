@@ -2,6 +2,65 @@
 
 All notable changes to `pipeline-generator` are documented here.
 
+## [1.0.0rc2] - 2026-09-10
+
+A QA, security, and code-quality pass over `1.0.0rc1`, before any external
+use. No new features -- all changes are bug fixes or internal cleanup.
+
+### Fixed (functional/robustness bugs found in manual QA testing)
+
+- `pre_run_checks` typos (e.g. `verify_scenario_exist`) were silently
+  dropped with no warning and no trace in the generated script; now
+  warned by `validate`.
+- Duplicate catalog keys (two environments/scenarios sharing a `key`)
+  made the second entry's identifier silently unreachable in the
+  generated resolver function; now warned.
+- A config with no manual pipeline and no automated jobs enabled
+  validated clean and generated zero CI/CD pipeline files with no
+  warning; now warned.
+- Regenerating into the same `--output-dir` after switching `tool.type`
+  (or removing an automated job) left stale files behind (e.g. the old
+  tool's `scripts/run-<tool>.sh`); `generate` now wipes and rebuilds the
+  setup directory each time.
+- `wizard --resume` crashed with a raw traceback on a malformed existing
+  draft YAML; now a clean message and exit code `1`.
+
+### Fixed (security/robustness hardening)
+
+- `validate_config` assumed every config section (`setup`, `cicd`,
+  `tool`, `tool.auth`, `tool.connection`, `catalog`, `manual_pipeline`,
+  `automated_jobs`, and every catalog entry) was the correct dict/list
+  shape, with zero defensive checks -- a blank YAML key (parsing to
+  `null`) or a list of plain strings instead of mappings crashed with an
+  uncaught `AttributeError`. This is reachable through ordinary customer
+  mistakes, not just adversarial input. Every mismatch now produces a
+  clean validation error instead of a crash, and validation still
+  continues past a malformed section to report other real problems in
+  the same pass.
+- Confirmed not exploitable: YAML "billion laughs" alias-expansion DoS
+  (PyYAML aliases share object references rather than textually
+  re-expanding); no `eval`/`exec`/`os.system`/`subprocess`/`shell=True`/
+  `pickle` anywhere in the Python source.
+
+### Changed (code quality, no behavior change to generated output)
+
+- `build_setup_id()` strips a trailing `.git` from `target_repository`
+  before slugifying.
+- The wizard's `_is_incomplete()` and `validate_config()`'s
+  required-fields check now read from one shared `required_field_values()`
+  helper instead of two hand-maintained lists that could drift apart.
+- The wizard's "keep as-is / add more / start over" resume-list logic,
+  duplicated between catalog and automated-job prompting, is now one
+  shared helper.
+- The BlazeMeter `--timeout-minutes` flag computation, duplicated 6
+  times across the three CI/CD renderers, is now one shared helper.
+- `AutomatedJobSpec` type hint added to a previously-untyped parameter
+  in all three renderers.
+- Removed `slugify()`'s dead second regex.
+
+Confirmed generated output for all 9 example configs is byte-for-byte
+identical to `1.0.0rc1`.
+
 ## [1.0.0rc1] - 2026-09-10
 
 First internal release candidate. Everything below is implemented and
