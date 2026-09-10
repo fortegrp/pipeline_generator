@@ -66,6 +66,32 @@ PRE_RUN_CHECKS_BY_TOOL = {
 }
 
 
+REQUIRED_FIELD_PATHS = [
+    "setup.id",
+    "setup.target_repository",
+    "cicd.type",
+    "tool.type",
+    "tool.auth.type",
+]
+
+
+def required_field_values(config: dict) -> list[tuple[str, object]]:
+    """Resolve each dotted path in REQUIRED_FIELD_PATHS against config.
+
+    The single source of truth for which fields a "complete" (non-draft)
+    config must have filled in -- both validator.py's error/warning split
+    and the wizard's own incomplete-flag computation read from this same
+    list, so the two can't silently drift apart from each other.
+    """
+    resolved: list[tuple[str, object]] = []
+    for path in REQUIRED_FIELD_PATHS:
+        value: object = config
+        for part in path.split("."):
+            value = value.get(part) if isinstance(value, dict) else None
+        resolved.append((path, value))
+    return resolved
+
+
 def base_config() -> dict:
     return {
         "version": 1,

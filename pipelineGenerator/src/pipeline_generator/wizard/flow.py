@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
 from pipeline_generator.config.loader import load_config, save_config
 from pipeline_generator.config.placeholders import TODO_VALUE
@@ -14,6 +15,7 @@ from pipeline_generator.config.schema import (
     SUPPORTED_TOOLS,
     WORKING_LOCATIONS,
     merged_base_config,
+    required_field_values,
 )
 from pipeline_generator.config.validator import validate_config
 from pipeline_generator.wizard.id_builder import build_setup_id
@@ -212,22 +214,30 @@ def _prompt_catalog_items(kind: str) -> list[dict]:
     return items
 
 
-def _prompt_catalog_section(kind: str, existing: list[dict]) -> list[dict]:
+def _prompt_resumable_list(
+    label: str, existing: list[dict], item_names: list[str], collect: Callable[[], list[dict]]
+) -> list[dict]:
     if existing:
-        print(f"Existing {kind}s: {', '.join(item['key'] for item in existing)}")
+        print(f"Existing {label}: {', '.join(item_names)}")
         action = prompt_choice(
-            f"What do you want to do with {kind}s?",
+            f"What do you want to do with {label}?",
             ["keep as-is", "add more", "start over"],
             default="keep as-is",
         )
         if action == "keep as-is":
             return existing
         if action == "start over":
-            return _prompt_catalog_items(kind)
-        return existing + _prompt_catalog_items(kind)
-    if prompt_bool(f"Add {kind}s now?", default=False):
-        return _prompt_catalog_items(kind)
+            return collect()
+        return existing + collect()
+    if prompt_bool(f"Add {label} now?", default=False):
+        return collect()
     return existing
+
+
+def _prompt_catalog_section(kind: str, existing: list[dict]) -> list[dict]:
+    return _prompt_resumable_list(
+        f"{kind}s", existing, [item["key"] for item in existing], lambda: _prompt_catalog_items(kind)
+    )
 
 
 def _prompt_automated_jobs(config: dict) -> list[dict]:
@@ -262,21 +272,9 @@ def _prompt_automated_jobs(config: dict) -> list[dict]:
 
 def _prompt_automated_jobs_section(config: dict) -> list[dict]:
     existing = config["automated_jobs"]
-    if existing:
-        print(f"Existing automated jobs: {', '.join(job['name'] for job in existing)}")
-        action = prompt_choice(
-            "What do you want to do with automated jobs?",
-            ["keep as-is", "add more", "start over"],
-            default="keep as-is",
-        )
-        if action == "keep as-is":
-            return existing
-        if action == "start over":
-            return _prompt_automated_jobs(config)
-        return existing + _prompt_automated_jobs(config)
-    if prompt_bool("Add automated jobs now?", default=False):
-        return _prompt_automated_jobs(config)
-    return existing
+    return _prompt_resumable_list(
+        "automated jobs", existing, [job["name"] for job in existing], lambda: _prompt_automated_jobs(config)
+    )
 
 
 def _prompt_checks(existing: list[str], tool_type: str) -> list[str]:
@@ -298,11 +296,5 @@ def _print_summary(config: dict) -> None:
 
 
 def _is_incomplete(config: dict) -> bool:
-    values_to_check = [
-        config["setup"]["id"],
-        config["setup"]["target_repository"],
-        config["cicd"]["type"],
-        config["tool"]["type"],
-        config["tool"]["auth"]["type"],
-    ]
+    values_to_check = [value for _, value in required_field_values(config)]
     return any(value in {"", TODO_VALUE, None} for value in values_to_check)
