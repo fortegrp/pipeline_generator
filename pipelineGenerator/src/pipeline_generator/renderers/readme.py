@@ -78,7 +78,7 @@ def render_setup_readme(config: dict, package: GenericPipelinePackage) -> str:
             "- `customer.yaml`: setup source of truth",
             "- generated pipeline files: CI/CD-specific assets",
             f"- `{script_name}`: the script the generated pipeline calls to run the performance test",
-            "- `run-output/<environment>_<scenario>/run-summary.json`: machine-readable run status "
+            "- `run-output/<environment_slug>_<scenario_slug>/run-summary.json`: machine-readable run status "
             "(tool, status, timestamps, duration, report link, artifact status), written after each run",
             "- this README: setup guidance",
             "",
