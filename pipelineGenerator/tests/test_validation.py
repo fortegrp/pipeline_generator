@@ -49,3 +49,36 @@ def test_validation_does_not_warn_about_optional_wlrun_path() -> None:
     assert not any("wlrun_path" in warning for warning in result.warnings)
     assert not any("controller_host" in warning for warning in result.warnings)
 
+
+def test_validation_errors_for_unsupported_enum_values() -> None:
+    config = base_config()
+    config["incomplete"] = False
+    config["setup"]["id"] = "example-setup"
+    config["setup"]["target_repository"] = "https://example.com/repo.git"
+    config["setup"]["generation_mode"] = "not_a_real_mode"
+    config["cicd"]["type"] = "not_a_real_cicd_platform"
+    config["tool"]["type"] = "not_a_real_tool"
+    config["tool"]["auth"]["type"] = "not_a_real_auth_type"
+
+    result = validate_config(config)
+
+    assert "Unsupported cicd.type: not_a_real_cicd_platform" in result.errors
+    assert "Unsupported tool.type: not_a_real_tool" in result.errors
+    assert "Unsupported tool.auth.type: not_a_real_auth_type" in result.errors
+    assert "Unsupported setup.generation_mode: not_a_real_mode" in result.errors
+
+
+def test_validation_errors_when_required_field_missing_on_complete_config() -> None:
+    config = base_config()
+    config["incomplete"] = False
+    config["setup"]["id"] = ""
+    config["setup"]["target_repository"] = "https://example.com/repo.git"
+    config["cicd"]["type"] = "github_actions"
+    config["tool"]["type"] = "jmeter"
+    config["tool"]["auth"]["type"] = "none"
+
+    result = validate_config(config)
+
+    assert "setup.id is missing." in result.errors
+    assert not any("setup.id is missing." in warning for warning in result.warnings)
+
