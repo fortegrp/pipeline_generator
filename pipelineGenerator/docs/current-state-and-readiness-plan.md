@@ -563,21 +563,16 @@ execution layer at all. In its place, `generate` writes a
   explorer) — flagged in the script's own comments and the generated
   setup README; confirm against a real account before production use.
 
-### Test Coverage Is Minimal
+### Test Coverage Is Minimal — Resolved
 
-Current tests cover only:
-
-- Setup ID slug generation.
-- Base config validation warnings.
-
-Risk:
-
-- Renderer regressions, CLI regressions, and config edge cases can go unnoticed.
-
-Recommended change:
-
-- Add tests around validation, generation output, generated script content
-  (per tool), and CLI exit behavior.
+This described the project very early on, when tests covered only setup ID
+slug generation and base config validation warnings. That's no longer
+true: the suite now covers validation (valid/invalid/warning configs),
+generation output for every example config, all three CI/CD renderers'
+YAML/Groovy output, per-tool generated script content and real end-to-end
+execution against mocked/fake remote systems (see "Recommended
+Implementation Order" item 14), the generated README, and CLI exit
+behavior/help text (see Milestone 1 section 5, "Improve CLI UX").
 
 ## Readiness Plan
 
@@ -755,10 +750,10 @@ Resolved: the generated script authenticates via `BLAZEMETER_API_KEY_ID`/
 `BLAZEMETER_API_KEY_SECRET`, resolves the workspace/project/test
 identifiers already filled in as variables, starts a test run, polls
 status bounded by a `--timeout-minutes` flag, and downloads a summary
-report into `run-output/`. See `docs/superpowers/specs/
-2026-09-09-blazemeter-real-api-execution-design.md` for the full design.
-Automated tests against a mocked/fake BlazeMeter API remain open — see
-"Recommended Implementation Order" item 14.
+report into `run-output/<environment_slug>_<scenario_slug>/`. See
+`docs/superpowers/specs/2026-09-09-blazemeter-real-api-execution-design.md`
+for the full design. Automated tests against a mocked/fake BlazeMeter API
+are also resolved — see "Recommended Implementation Order" item 14.
 
 ### 2. Define LoadRunner Execution Strategy — Resolved
 
@@ -878,8 +873,23 @@ the full design.
       Controller-side load-generator host-status querying with no local
       CLI equivalent — there is no BlazeMeter analog for this check at all
       (it isn't in BlazeMeter's precheck vocabulary).
-- [ ] 14. Add tests that exercise the generated scripts against
-      mocked/fake remote systems.
+- [x] 14. Add tests that exercise the generated scripts against
+      mocked/fake remote systems — resolved. `tests/test_tool_scripts.py`
+      has 15 tests that stub a fake executable (`jmeter`/`wlrun`/`curl`/
+      `jq`) on `PATH` and execute the real generated bash script end to
+      end via `subprocess`, not just static assertions on rendered text:
+      JMeter (4 — passing run, failing run with exit-code propagation,
+      control-character escaping through the full CLI path, rerun-with-
+      different-scenario directory isolation), LoadRunner (2 — passing
+      run, failing run with exit-code propagation), BlazeMeter (8 — the
+      most thorough, given it has the most complex remote-interaction
+      surface: `ENDED`, `ERROR` status, timeout, summary-fetch failure,
+      transient poll-network failure with retry, malformed/non-JSON API
+      response, the missing-master-id boundary, and the hostile-`base_url`
+      JSON-injection test), plus 1 cross-tool test driving all three
+      stubs at once to confirm they emit the same `run-summary.json` key
+      set. Built up incrementally across the BlazeMeter real-execution
+      work and the `normalize-runtime-output` plan.
 - [ ] 15. Publish an internal release candidate.
 
 ## Definition of Ready
@@ -922,9 +932,9 @@ considered ready for executing tests when:
   manage no remote credentials at all); BlazeMeter's
   `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET` are documented in the
   generated setup README.
-- The generated script's real-execution behavior is covered by automated
-  tests using mocks or test doubles (still open for all three — see
-  "Recommended Implementation Order" item 14).
+- [x] The generated script's real-execution behavior is covered by
+  automated tests using mocks or test doubles, for all three tools — see
+  "Recommended Implementation Order" item 14.
 
 ## Immediate Next Steps
 
