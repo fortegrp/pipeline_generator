@@ -1,7 +1,7 @@
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 from urllib.parse import parse_qsl, urlparse
 
 from converter_config import ConverterConfig, default_config
@@ -257,7 +257,7 @@ def generate_jmx_files(
     project: str,
     product: str,
     host_var_map: Dict[str, str],
-    out_dir: str | Path,
+    out_dir: Union[str, Path],
     verbose: bool = False,
     config: Optional[ConverterConfig] = None,
 ) -> int:

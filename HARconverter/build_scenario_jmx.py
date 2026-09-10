@@ -4,14 +4,14 @@ import json
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from converter_config import load_config
 from har_requests import process_har_entries
 from har_utils import load_har_entries
 
 
-def _sub(parent: ET.Element, tag: str, text: str | None = None, **attrs: str) -> ET.Element:
+def _sub(parent: ET.Element, tag: str, text: Optional[str] = None, **attrs: str) -> ET.Element:
     element = ET.SubElement(parent, tag, attrs)
     if text is not None:
         element.text = text
