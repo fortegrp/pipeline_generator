@@ -275,6 +275,8 @@ set -euo pipefail
 
 {_render_slug_resolvers(package)}
 
+{_render_json_escape_helper()}
+
 main() {{
 {_render_arg_parsing(include_timeout=True)}
   mkdir -p run-output
@@ -307,6 +309,12 @@ main() {{
     exit 1
   fi
 
+{_render_summary_capture_start()}
+  local run_id="$master_id"
+  local report_link="$base_url/app/#/masters/$master_id/summary"
+  local artifact_status="incomplete"
+  local run_status=0
+
   # NOTE: the exact status-string vocabulary below (ENDED/ERROR/ABORTED)
   # and the reports/main/summary endpoint used after the loop are our best
   # understanding of the BlazeMeter API v4 as of this writing -- verify
@@ -323,23 +331,35 @@ main() {{
       continue
     fi
     case "$status" in
-      ENDED) break ;;
-      ERROR|ABORTED)
-        echo "ERROR: BlazeMeter test ended with status $status (master $master_id)" >&2
-        exit 1
-        ;;
+      ENDED|ERROR|ABORTED) break ;;
     esac
     sleep 15
   done
-  if [ "$status" != "ENDED" ]; then
-    echo "ERROR: Timed out after $timeout_minutes minutes waiting for BlazeMeter test to finish (master $master_id, last status: $status)" >&2
-    exit 1
-  fi
 
-  curl -s -u "$BLAZEMETER_API_KEY_ID:$BLAZEMETER_API_KEY_SECRET" \\
-    "$base_url/api/v4/masters/$master_id/reports/main/summary" > "$results_dir/summary.json"
-  printf '{{"master_id": "%s", "report_url": "%s/app/#/masters/%s/summary"}}' \\
-    "$master_id" "$base_url" "$master_id" > "$results_dir/report_link.json"
+  local summary_status
+  case "$status" in
+    ENDED)
+      summary_status="passed"
+      curl -s -u "$BLAZEMETER_API_KEY_ID:$BLAZEMETER_API_KEY_SECRET" \\
+        "$base_url/api/v4/masters/$master_id/reports/main/summary" > "$results_dir/summary.json"
+      printf '{{"master_id": "%s", "report_url": "%s/app/#/masters/%s/summary"}}' \\
+        "$master_id" "$base_url" "$master_id" > "$results_dir/report_link.json"
+      artifact_status="complete"
+      ;;
+    ERROR|ABORTED)
+      echo "ERROR: BlazeMeter test ended with status $status (master $master_id)" >&2
+      summary_status="failed"
+      run_status=1
+      ;;
+    *)
+      echo "ERROR: Timed out after $timeout_minutes minutes waiting for BlazeMeter test to finish (master $master_id, last status: $status)" >&2
+      summary_status="error"
+      run_status=1
+      ;;
+  esac
+
+{_render_summary_write("blazemeter")}
+  exit "$run_status"
 }}
 
 if [ "${{BASH_SOURCE[0]:-$0}}" = "$0" ]; then
