@@ -4,75 +4,75 @@ from copy import deepcopy
 
 from pipeline_generator.config.placeholders import TODO_VALUE
 
-SUPPORTED_CICD = [
+SUPPORTED_CICD = (
     "github_actions",
     "azure_devops",
     "jenkins",
-]
+)
 
-SUPPORTED_TOOLS = [
+SUPPORTED_TOOLS = (
     "loadrunner_professional",
     "blazemeter",
     "jmeter",
-]
+)
 
-GENERATION_MODES = [
+GENERATION_MODES = (
     "manual_only",
     "automated_only",
     "both",
-]
+)
 
-AUTH_TYPES = [
+AUTH_TYPES = (
     "api_token",
     "username_password",
     "service_account",
     "network_vpn_manual_setup",
     "none",
-]
+)
 
-WORKING_LOCATIONS = [
+WORKING_LOCATIONS = (
     "central_repo",
     "customer_repo",
-]
+)
 
-PIPELINE_DESTINATIONS = [
+PIPELINE_DESTINATIONS = (
     "stay_in_central_repo",
     "copy_to_customer_repo",
-]
+)
 
-PRE_RUN_CHECKS = [
+PRE_RUN_CHECKS = (
     "verify_controller_access",
     "verify_scenario_exists",
     "verify_load_generators_connected",
     "verify_host_reachable",
     "verify_project_exists",
     "collect_results",
-]
+)
 
 PRE_RUN_CHECKS_BY_TOOL = {
-    "jmeter": ["verify_scenario_exists", "collect_results"],
-    "loadrunner_professional": [
+    "jmeter": ("verify_scenario_exists", "collect_results"),
+    "loadrunner_professional": (
         "verify_controller_access",
         "verify_scenario_exists",
         "verify_load_generators_connected",
         "collect_results",
-    ],
-    "blazemeter": [
+    ),
+    "blazemeter": (
         "verify_host_reachable",
         "verify_project_exists",
         "verify_scenario_exists",
         "collect_results",
-    ],
+    ),
 }
 
 
-REQUIRED_FIELD_PATHS = [
+REQUIRED_FIELD_PATHS = (
     "setup.id",
     "setup.target_repository",
     "cicd.type",
     "tool.type",
     "tool.auth.type",
-]
+)
 
 
 def required_field_values(config: dict) -> list[tuple[str, object]]:
