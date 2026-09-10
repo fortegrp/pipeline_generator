@@ -28,7 +28,10 @@ draft generation should remain available through explicit user intent.
 
 ## Current Project Status
 
-The project is a scaffolded v1 foundation.
+The project is at `1.0.0rc3`, its first internal release candidate — both
+milestones of this readiness plan are resolved except two explicitly
+deferred CLI nice-to-haves (see "Recommended Implementation Order" below).
+See `CHANGELOG.md` for version-by-version detail.
 
 Implemented:
 

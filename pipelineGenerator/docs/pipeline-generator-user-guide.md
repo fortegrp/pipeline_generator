@@ -624,6 +624,30 @@ errors, or (with `--strict`) any warnings at all. This never writes
 anything to disk — it's safe to run at any point, as often as you like, to
 check a config's current state.
 
+A missing or malformed `--config` file (not found, or not valid YAML) is
+reported as a clean one-line message and exit code `1`, not a traceback.
+
+Beyond the schema checks described in section 5 ("Understanding
+`customer.yaml`"), `validate` also catches:
+
+- **A structurally wrong section** — e.g. a blank `manual_pipeline:` key
+  (parses to `null`), or `catalog.environments` written as a list of plain
+  strings instead of mappings. Reported as an error naming the exact
+  section, and validation still continues to report other real problems
+  in the same pass rather than stopping at the first one.
+- **An unrecognized `pre_run_checks` value** — most often a typo (e.g.
+  `verify_scenario_exist` missing the `s`). Without this warning, the
+  check would be silently dropped at generation time with no trace at all
+  in the generated script, not even a `# TODO precheck: ...` comment.
+- **A duplicate `key` within `catalog.environments` or
+  `catalog.scenarios`** — two entries sharing a key make the second one's
+  identifier silently unreachable in the generated resolver function; a
+  user picking it from a CI/CD dropdown would silently get the first
+  entry's identifier instead.
+- **A setup where neither the manual pipeline nor any automated job is
+  enabled** — `generate` would otherwise happily produce a setup with zero
+  CI/CD pipeline files and no indication anything is wrong.
+
 ## 12. Full Walkthrough Example
 
 Onboarding a fictional customer, Acme Corp, who uses GitHub Actions and

@@ -78,7 +78,20 @@ Pipeline: **customer YAML → validate → generic pipeline model → CI/CD rend
   declares itself `incomplete: false` has that claim actually enforced by
   `generate` (the only action left that calls it — `_blocks_action` still
   takes an `action` label for its message, but `generate` is the only
-  caller now).
+  caller now). `validate_config()` also defends against a structurally
+  malformed config (a blank YAML key parsing to `null`, a list of plain
+  strings where a list of mappings was expected) via `_as_dict`/
+  `_as_list_of_dicts` coercion helpers used everywhere a section is read —
+  every mismatch becomes a clean error instead of an uncaught
+  `AttributeError`, and validation still continues past the malformed
+  section to report other real problems in the same pass. Beyond
+  structural shape, it also warns on a `pre_run_checks` value outside the
+  `PRE_RUN_CHECKS` enum (a likely typo, otherwise silently dropped at
+  generation time with no trace), a duplicate `key` within
+  `catalog.environments`/`catalog.scenarios` (the second entry's
+  identifier becomes silently unreachable in the generated resolver
+  function), and a setup with neither the manual pipeline nor any
+  automated job enabled (generates zero CI/CD pipeline files).
 - `wizard/` — interactive flow (`flow.py`) that builds/resumes a draft YAML
   using `merged_base_config`, so re-running the wizard against an existing
   file only fills in what's missing. `cli.py` refuses to touch an existing
@@ -189,8 +202,15 @@ passthrough) are unchanged and remain separate from `run-summary.json`.
 
 `generate` re-validates the config before doing anything (`cli.py` calls
 `validate_config`, then `_blocks_action()` — see the `config/` bullet above
-for the errors-vs-warnings rule). Only the `wizard` command has clean error
-handling (`EOFError`/`KeyboardInterrupt`) so far.
+for the errors-vs-warnings rule). All three commands now have clean error
+handling: `wizard` catches `EOFError`/`KeyboardInterrupt` (cancellation)
+and `OSError`/`yaml.YAMLError` (a malformed existing draft on `--resume`);
+`validate`/`generate` both route `load_config()` through
+`_load_config_or_none()`, which catches the same `OSError`/`yaml.YAMLError`
+pair for a missing or malformed `--config` file. Every case prints a clean
+one-line message and returns a stable exit code (`0` success, `1` your
+input was wrong, `2` a CLI usage error, `130` an interactively cancelled
+wizard) instead of an uncaught traceback.
 
 See `docs/current-state-and-readiness-plan.md` for the full known-gaps list
 and multi-milestone readiness plan (stricter validation profiles, YAML-safe
