@@ -11,6 +11,7 @@ from converter_config import load_config, merge_host_maps
 from har_requests import extract_last_segment, process_har_entries, slugify
 from har_utils import load_har_entries
 from jmx_generator import build_jmx_xml, generate_jmx_files
+from naming import render, required_fields, validate_vars
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -57,6 +58,59 @@ class HarLoadingTests(unittest.TestCase):
             path = Path(temp_dir) / "badshape.har"
             path.write_text(json.dumps({"log": {}}), encoding="utf-8")
             self.assertEqual(load_har_entries(path), [])
+
+
+class NamingTests(unittest.TestCase):
+    def test_required_fields_returns_placeholder_names(self):
+        self.assertEqual(
+            required_fields("{project}_{product}_{method}_{segment}"),
+            {"project", "product", "method", "segment"},
+        )
+
+    def test_required_fields_rejects_attribute_access(self):
+        with self.assertRaises(ValueError):
+            required_fields("{project.name}")
+
+    def test_required_fields_rejects_format_spec(self):
+        with self.assertRaises(ValueError):
+            required_fields("{project:>10}")
+
+    def test_required_fields_rejects_positional(self):
+        with self.assertRaises(ValueError):
+            required_fields("{0}")
+
+    def test_render_substitutes_all_fields(self):
+        self.assertEqual(
+            render(
+                "{project}_{product}_{method}_{segment}",
+                project="Abbot",
+                product="Merlin",
+                method="GET",
+                segment="users",
+            ),
+            "Abbot_Merlin_GET_users",
+        )
+
+    def test_validate_vars_raises_on_missing_field(self):
+        with self.assertRaises(ValueError) as ctx:
+            validate_vars(
+                "{project}_{product}_{method}_{segment}",
+                {"project": "Abbot"},
+                reserved={"method", "segment"},
+            )
+        self.assertIn("product", str(ctx.exception))
+
+    def test_validate_vars_raises_on_reserved_conflict(self):
+        with self.assertRaises(ValueError) as ctx:
+            validate_vars("{method}_{segment}", {"method": "GET"}, reserved={"method", "segment"})
+        self.assertIn("method", str(ctx.exception))
+
+    def test_validate_vars_passes_when_satisfied(self):
+        validate_vars(
+            "{project}_{product}_{method}_{segment}",
+            {"project": "Abbot", "product": "Merlin"},
+            reserved={"method", "segment"},
+        )
 
 
 class FilteringAndNamingTests(unittest.TestCase):
