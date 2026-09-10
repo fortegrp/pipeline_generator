@@ -16,6 +16,7 @@ The converter is designed for application and API traffic. By default, it filter
 | `har_to_jmx.py` | Main CLI entry point for converting a HAR file into individual JMeter fragment `.jmx` files. |
 | `jmx_generator.py` | Core generation logic. Filters HAR requests and builds JMeter XML. |
 | `build_scenario_jmx.py` | Builds a higher-level JMeter scenario `.jmx` that includes previously generated fragment files. |
+| `jmx_xml.py` | Shared JMeter XML element helpers and the TestPlan/TestFragmentController scaffold used by both `jmx_generator.py` and `build_scenario_jmx.py`. |
 | `converter_config.py` | Loads and merges optional JSON config for project-specific behavior. |
 | `har_requests.py` | Shared request filtering, normalization, de-duplication, and collision-safe filename generation. |
 | `har_utils.py` | Loads HAR entries from supported HAR JSON shapes. |
@@ -552,3 +553,7 @@ When changing accepted HAR input shapes, update:
 When changing host mapping CSV rules, update:
 
 - `host_mapping.py`
+
+When changing the shared JMeter TestPlan/TestFragmentController scaffold used by both fragment and scenario output, update:
+
+- `jmx_xml.py`
