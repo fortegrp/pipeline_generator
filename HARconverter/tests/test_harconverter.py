@@ -369,6 +369,25 @@ class JmxGenerationTests(unittest.TestCase):
         self.assertIn("${API_KEY}", props_text(root, "Header.value"))
         self.assertIn("https://${__P(csvHost)}/home", props_text(root, "Header.value"))
 
+    def test_default_jmeter_version_is_5_6_0(self):
+        xml = build_jmx_xml("Test_GET_users", "GET", "https://api.example.com/users", [], None, {})
+        root = ET.fromstring(xml)
+        self.assertEqual(root.get("jmeter"), "5.6.0")
+
+    def test_config_can_override_jmeter_version(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "config.json"
+            config_path.write_text(json.dumps({"jmeter": {"version": "5.5.0"}}), encoding="utf-8")
+            config = load_config(config_path)
+
+        xml = build_jmx_xml("Test_GET_users", "GET", "https://api.example.com/users", [], None, {}, config)
+        root = ET.fromstring(xml)
+        self.assertEqual(root.get("jmeter"), "5.5.0")
+
+        scenario_xml = build_scenario_jmx("Test_Scenario", [], config)
+        scenario_root = ET.fromstring(scenario_xml)
+        self.assertEqual(scenario_root.get("jmeter"), "5.5.0")
+
 
 class CliSmokeTests(unittest.TestCase):
     def test_fragment_and_scenario_commands_write_expected_files(self):

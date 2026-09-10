@@ -140,7 +140,7 @@ def build_jmx_xml(
         query_params = []
         path_for_sampler = path + (f"?{parsed.query}" if parsed.query else "")
 
-    root, fragment_tree = build_test_plan_scaffold(test_name)
+    root, fragment_tree = build_test_plan_scaffold(test_name, config.jmeter.version)
 
     if config.jmeter.http_defaults:
         _add_http_defaults(fragment_tree, config)
