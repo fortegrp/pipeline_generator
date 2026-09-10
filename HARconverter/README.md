@@ -17,6 +17,7 @@ The converter is designed for application and API traffic. By default, it filter
 | `jmx_generator.py` | Core generation logic. Filters HAR requests and builds JMeter XML. |
 | `build_scenario_jmx.py` | Builds a higher-level JMeter scenario `.jmx` that includes previously generated fragment files. |
 | `jmx_xml.py` | Shared JMeter XML element helpers and the TestPlan/TestFragmentController scaffold used by both `jmx_generator.py` and `build_scenario_jmx.py`. |
+| `naming.py` | Parses, validates, and renders the `naming.template`/`naming.scenario_template` format strings used for JMX filenames and test names. |
 | `converter_config.py` | Loads and merges optional JSON config for project-specific behavior. |
 | `har_requests.py` | Shared request filtering, normalization, de-duplication, and collision-safe filename generation. |
 | `har_utils.py` | Loads HAR entries from supported HAR JSON shapes. |
@@ -40,6 +41,8 @@ The generated JMX declares:
 ```xml
 <jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.0">
 ```
+
+`jmeter="5.6.0"` is the default; override it with `jmeter.version` in a JSON config file.
 
 The existing `jmeter.log` shows the files have been opened with Apache JMeter 5.6.3.
 
@@ -113,25 +116,25 @@ ${__P(hostName)}
 Run:
 
 ```bash
-python3 har_to_jmx.py path/to/file.har Project Product [host_mapping.csv] [--out-dir output] [--config config.json] [--verbose]
+python3 har_to_jmx.py path/to/file.har [host_mapping.csv] [--var key=value ...] [--out-dir output] [--config config.json] [--verbose]
 ```
 
 Examples:
 
 ```bash
-python3 har_to_jmx.py login.har Abbot Merlin
+python3 har_to_jmx.py login.har --var project=Abbot --var product=Merlin
 ```
 
 ```bash
-python3 har_to_jmx.py login.har Abbot Merlin hosts.csv
+python3 har_to_jmx.py login.har hosts.csv --var project=Abbot --var product=Merlin
 ```
 
 ```bash
-python3 har_to_jmx.py login.har Abbot Merlin hosts.csv --out-dir generated --verbose
+python3 har_to_jmx.py login.har hosts.csv --var project=Abbot --var product=Merlin --out-dir generated --verbose
 ```
 
 ```bash
-python3 har_to_jmx.py login.har Abbot Merlin --config merlin-config.json --out-dir generated
+python3 har_to_jmx.py login.har --var project=Abbot --var product=Merlin --config merlin-config.json --out-dir generated
 ```
 
 Arguments:
@@ -139,28 +142,34 @@ Arguments:
 | Argument | Required | Description |
 | --- | --- | --- |
 | `path/to/file.har` | Yes | HAR file to convert. |
-| `Project` | Yes | Project name used in generated JMX filenames and test names. |
-| `Product` | Yes | Product name used in generated JMX filenames and test names. |
 | `host_mapping.csv` | No | Optional CSV file for replacing host values in headers with JMeter properties. |
+| `--var key=value` | Depends on `naming.template` | Supplies a naming template variable, e.g. `--var project=Abbot`. Repeatable. The default `naming.template` needs `project` and `product`; a custom template may need different variables, or none. |
 | `--out-dir` | No | Output directory for generated JMX files. Defaults to the current directory. |
-| `--config` | No | Optional JSON config for project-specific filters, host mappings, header masks, and JMeter options. |
+| `--config` | No | Optional JSON config for project-specific filters, host mappings, header masks, naming, and JMeter options. |
 | `--verbose` | No | Prints skipped request details and reasons. |
 
-Generated files are written to the selected output directory.
+Generated files are written to the selected output directory. If `naming.template` references a variable that isn't supplied by `--var`, the converter exits with an error listing exactly which variable(s) are missing before touching any HAR entries.
 
 ### Fragment Filename Format
 
-Each request fragment is named:
+Each request fragment's base filename comes from `naming.template` in the config (see [Project-Specific Configuration](#project-specific-configuration)). The default is:
 
 ```text
-Project_Product_METHOD_lastPathSegment.jmx
+{project}_{product}_{method}_{segment}
 ```
 
-For example:
+`method` and `segment` (the sanitized last URL path segment) are computed per-request; every other placeholder must be supplied with `--var`. With the default template:
 
 ```text
 Abbot_Merlin_GET_recent.jmx
 Abbot_Merlin_POST_token.jmx
+```
+
+A project without a Project/Product taxonomy can configure a simpler template, e.g. `"naming": {"template": "{method}_{segment}"}`, and run without any `--var` flags:
+
+```text
+GET_recent.jmx
+POST_token.jmx
 ```
 
 If multiple valid requests produce the same base filename, the first keeps the original name and later files receive deterministic numeric suffixes:
@@ -181,7 +190,7 @@ The last path segment is taken from the request URL path:
 | `/api/v1/users` | `users` |
 | `/api/v1/users/` | `users` |
 
-The segment is sanitized for filesystem safety by replacing non-alphanumeric runs with `_`.
+The segment is sanitized for filesystem safety by replacing non-alphanumeric runs with `_`. Other template placeholders (like `project`/`product`) are used as supplied via `--var`, unsanitized.
 
 ### Request Filtering
 
@@ -332,24 +341,24 @@ For requests with `postData.text`:
 After generating request fragments, run:
 
 ```bash
-python3 build_scenario_jmx.py path/to/file.har Project Product ScenarioName [--out-dir output] [--config config.json] [--verbose]
+python3 build_scenario_jmx.py path/to/file.har ScenarioName [--var key=value ...] [--out-dir output] [--config config.json] [--verbose]
 ```
 
 Example:
 
 ```bash
-python3 build_scenario_jmx.py recent.har Abbot Merlin Recent_Transmittions
+python3 build_scenario_jmx.py recent.har Recent_Transmittions --var project=Abbot --var product=Merlin
 ```
 
 ```bash
-python3 build_scenario_jmx.py recent.har Abbot Merlin Recent_Transmittions --out-dir generated --verbose
+python3 build_scenario_jmx.py recent.har Recent_Transmittions --var project=Abbot --var product=Merlin --out-dir generated --verbose
 ```
 
 ```bash
-python3 build_scenario_jmx.py recent.har Abbot Merlin Recent_Transmittions --config merlin-config.json --out-dir generated
+python3 build_scenario_jmx.py recent.har Recent_Transmittions --var project=Abbot --var product=Merlin --config merlin-config.json --out-dir generated
 ```
 
-This creates:
+This creates a file named by `naming.scenario_template` (default `{project}_{product}_{scenario_name}`):
 
 ```text
 Project_Product_ScenarioName.jmx
@@ -373,7 +382,7 @@ Each include points to a generated fragment file, for example:
 Abbot_Merlin_GET_recent.jmx
 ```
 
-The scenario builder applies the same shared filtering and filename generation as `har_to_jmx.py`, then checks whether the expected fragment file exists in the selected output directory.
+The scenario builder applies the same shared filtering and filename generation as `har_to_jmx.py` (including `naming.template`, so it needs the same `--var` values used to generate the fragments), then checks whether the expected fragment file exists in the selected output directory.
 
 If an expected fragment file is missing, it prints a warning:
 
@@ -390,13 +399,13 @@ If no matching fragments are found, no scenario file is generated.
 3. Generate request fragments:
 
 ```bash
-python3 har_to_jmx.py recording.har Abbot Merlin hosts.csv
+python3 har_to_jmx.py recording.har hosts.csv --var project=Abbot --var product=Merlin
 ```
 
 4. Generate a scenario file:
 
 ```bash
-python3 build_scenario_jmx.py recording.har Abbot Merlin ScenarioName
+python3 build_scenario_jmx.py recording.har ScenarioName --var project=Abbot --var product=Merlin
 ```
 
 5. Open the scenario `.jmx` in Apache JMeter.
@@ -410,6 +419,10 @@ Example:
 
 ```json
 {
+  "naming": {
+    "template": "{project}_{product}_{method}_{segment}",
+    "scenario_template": "{project}_{product}_{scenario_name}"
+  },
   "filters": {
     "skip_methods": ["OPTIONS"],
     "skip_host_contains": ["google-analytics.com", "sentry.io"],
@@ -417,6 +430,7 @@ Example:
     "skip_extensions": [".js", ".css", ".png"],
     "skip_final_segments": ["static", "assets", "media"],
     "skip_url_contains": ["nrjs", "nr-data.net"],
+    "skip_header_value_contains": ["nrjs"],
     "keep_url_contains": ["/api/static-report.js"]
   },
   "hosts": {
@@ -438,6 +452,7 @@ Example:
     ]
   },
   "jmeter": {
+    "version": "5.6.0",
     "cookie_manager": true,
     "cache_manager": true,
     "http_defaults": true,
@@ -458,6 +473,8 @@ Config behavior:
 - `hosts.csv` remains supported and overrides config host mappings when both define the same host.
 - `headers.mask` can add custom header masking rules.
 - `jmeter` options are disabled by default and only appear in generated fragments when enabled.
+- `naming.template` controls fragment filenames/test names; `naming.scenario_template` controls the scenario filename. Both accept `{name}`-style placeholders; every placeholder besides the tool-computed ones (`method`/`segment` for `naming.template`, `scenario_name` for `naming.scenario_template`) must be supplied with `--var`.
+- `filters.skip_header_value_contains` extends the built-in defaults the same way as the other filter lists, and replaces what used to be a hardcoded "New Relic header" check.
 
 Minimal config for an app that needs static-looking API endpoints:
 
@@ -500,7 +517,7 @@ Minimal config for an app with custom auth and JMeter defaults:
 - HTTP Request Defaults, Cookie Manager, and Cache Manager can be enabled through JSON config, but advanced JMeter behavior still needs manual review.
 - Host mapping is currently applied only to header values, not to sampler domain fields.
 - Authorization Bearer masking is the default; other header masking rules can be added with JSON config.
-- Fragment filenames are based on method and last URL path segment, with deterministic suffixes added for collisions.
+- Fragment and scenario filenames are based on the configurable `naming.template`/`naming.scenario_template` (default: method and last URL path segment for fragments), with deterministic suffixes added for collisions on the fragment side.
 - Generated `.jmx` files are written into the selected output directory.
 - The project has automated regression tests, but it does not currently validate generated files by opening them in JMeter.
 
@@ -516,6 +533,8 @@ The tests cover:
 
 - supported HAR input shapes
 - request filtering
+- header-value filtering
+- naming template validation and rendering
 - project-specific config filtering
 - filename collision suffixes
 - parseable generated XML
@@ -523,6 +542,7 @@ The tests cover:
 - Authorization masking
 - custom header masking
 - host mapping substitution
+- configurable JMeter version
 - optional JMeter Cookie Manager, Cache Manager, and HTTP Request Defaults
 - CLI smoke behavior
 - invalid HAR error handling
@@ -559,3 +579,7 @@ When changing host mapping CSV rules, update:
 When changing the shared JMeter TestPlan/TestFragmentController scaffold used by both fragment and scenario output, update:
 
 - `jmx_xml.py`
+
+When changing naming template parsing, validation, or rendering, update:
+
+- `naming.py`
