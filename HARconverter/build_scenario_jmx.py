@@ -3,12 +3,13 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from converter_config import ConverterConfig, default_config, load_config
 from har_requests import process_har_entries
 from har_utils import load_har_entries
 from jmx_xml import build_test_plan_scaffold, jmx_to_string as _jmx_to_string, string_prop as _string_prop, sub as _sub
+from naming import render, validate_vars
 
 
 def build_scenario_jmx(plan_name: str, include_files: List[str], config: Optional[ConverterConfig] = None) -> str:
@@ -36,14 +37,27 @@ def build_scenario_jmx(plan_name: str, include_files: List[str], config: Optiona
     return _jmx_to_string(root)
 
 
+def _parse_var(value: str) -> Tuple[str, str]:
+    if "=" not in value:
+        raise argparse.ArgumentTypeError(f"--var must be KEY=VALUE, got: {value!r}")
+    key, _, val = value.partition("=")
+    return key, val
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Build a scenario JMX that includes generated HAR request fragments."
     )
     parser.add_argument("har_path", help="HAR file used to determine scenario order.")
-    parser.add_argument("project", help="Project name used in generated fragment names.")
-    parser.add_argument("product", help="Product name used in generated fragment names.")
     parser.add_argument("scenario_name", help="Scenario name used in the output JMX filename.")
+    parser.add_argument(
+        "--var",
+        action="append",
+        type=_parse_var,
+        default=[],
+        metavar="KEY=VALUE",
+        help="Naming template variable, e.g. --var project=Abbot. Repeatable.",
+    )
     parser.add_argument(
         "--out-dir",
         default=".",
@@ -69,6 +83,15 @@ def main() -> None:
         print(f"Failed to load config file {args.config}: {exc}", file=sys.stderr)
         sys.exit(1)
 
+    template_vars: Dict[str, str] = dict(args.var)
+
+    try:
+        validate_vars(config.naming.template, template_vars, reserved={"method", "segment"})
+        validate_vars(config.naming.scenario_template, template_vars, reserved={"scenario_name"})
+    except ValueError as exc:
+        print(f"Invalid --var arguments: {exc}", file=sys.stderr)
+        sys.exit(1)
+
     try:
         entries = load_har_entries(har_path)
     except (OSError, json.JSONDecodeError) as exc:
@@ -79,7 +102,7 @@ def main() -> None:
         print("No entries found in HAR.")
         sys.exit(0)
 
-    processed = process_har_entries(entries, {"project": args.project, "product": args.product}, config)
+    processed = process_har_entries(entries, template_vars, config)
 
     if args.verbose:
         for skipped in processed.skipped:
@@ -102,7 +125,7 @@ def main() -> None:
         print(f"  {include_file}")
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    plan_name = f"{args.project}_{args.product}_{args.scenario_name}"
+    plan_name = render(config.naming.scenario_template, **template_vars, scenario_name=args.scenario_name)
     output_path = out_dir / f"{plan_name}.jmx"
     output_path.write_text(build_scenario_jmx(plan_name, include_files, config), encoding="utf-8")
 

@@ -454,9 +454,11 @@ class CliSmokeTests(unittest.TestCase):
                     sys.executable,
                     str(ROOT / "build_scenario_jmx.py"),
                     str(har_path),
-                    "Project",
-                    "Product",
                     "Scenario",
+                    "--var",
+                    "project=Project",
+                    "--var",
+                    "product=Product",
                     "--out-dir",
                     str(out_dir),
                 ],
@@ -637,6 +639,25 @@ class CliSmokeTests(unittest.TestCase):
             )
             self.assertNotEqual(malformed_var.returncode, 0)
             self.assertIn("--var must be KEY=VALUE", malformed_var.stderr)
+
+    def test_scenario_cli_var_validation(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            har_path = temp_path / "recording.har"
+            har_path.write_text(
+                json.dumps([har_entry("https://example.com/api/users")]),
+                encoding="utf-8",
+            )
+
+            missing_var = subprocess.run(
+                [sys.executable, str(ROOT / "build_scenario_jmx.py"), str(har_path), "Scenario"],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(missing_var.returncode, 0)
+            self.assertIn("Invalid --var arguments", missing_var.stderr)
 
 
 class DirectGenerationTests(unittest.TestCase):
