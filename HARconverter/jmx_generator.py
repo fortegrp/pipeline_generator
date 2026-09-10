@@ -6,27 +6,13 @@ from urllib.parse import parse_qsl, urlparse
 
 from converter_config import ConverterConfig, default_config
 from har_requests import NormalizedRequest, extract_last_segment, process_har_entries, slugify
-
-
-def _sub(parent: ET.Element, tag: str, text: Optional[str] = None, **attrs: str) -> ET.Element:
-    element = ET.SubElement(parent, tag, attrs)
-    if text is not None:
-        element.text = text
-    return element
-
-
-def _string_prop(parent: ET.Element, name: str, value: str = "") -> ET.Element:
-    return _sub(parent, "stringProp", value, name=name)
-
-
-def _bool_prop(parent: ET.Element, name: str, value: bool) -> ET.Element:
-    return _sub(parent, "boolProp", "true" if value else "false", name=name)
-
-
-def _jmx_to_string(root: ET.Element) -> str:
-    ET.indent(root, space="  ")
-    xml = ET.tostring(root, encoding="unicode", short_empty_elements=True)
-    return f'<?xml version="1.0" encoding="UTF-8"?>\n{xml}\n'
+from jmx_xml import (
+    bool_prop as _bool_prop,
+    build_test_plan_scaffold,
+    jmx_to_string as _jmx_to_string,
+    string_prop as _string_prop,
+    sub as _sub,
+)
 
 
 def _build_arguments(parent: ET.Element, body: Optional[str], query_params: List[Tuple[str, str]]) -> None:
@@ -154,42 +140,7 @@ def build_jmx_xml(
         query_params = []
         path_for_sampler = path + (f"?{parsed.query}" if parsed.query else "")
 
-    root = ET.Element("jmeterTestPlan", version="1.2", properties="5.0", jmeter="5.6.0")
-    root_tree = _sub(root, "hashTree")
-
-    test_plan = _sub(
-        root_tree,
-        "TestPlan",
-        guiclass="TestPlanGui",
-        testclass="TestPlan",
-        testname=test_name,
-        enabled="true",
-    )
-    _string_prop(test_plan, "TestPlan.comments")
-    _bool_prop(test_plan, "TestPlan.functional_mode", False)
-    _bool_prop(test_plan, "TestPlan.serialize_threadgroups", False)
-    user_vars = _sub(
-        test_plan,
-        "elementProp",
-        name="TestPlan.user_defined_variables",
-        elementType="Arguments",
-        guiclass="ArgumentsPanel",
-        testclass="Arguments",
-        enabled="true",
-    )
-    _sub(user_vars, "collectionProp", name="Arguments.arguments")
-    _string_prop(test_plan, "TestPlan.user_define_classpath")
-
-    plan_tree = _sub(root_tree, "hashTree")
-    _sub(
-        plan_tree,
-        "TestFragmentController",
-        guiclass="TestFragmentControllerGui",
-        testclass="TestFragmentController",
-        testname=test_name,
-        enabled="false",
-    )
-    fragment_tree = _sub(plan_tree, "hashTree")
+    root, fragment_tree = build_test_plan_scaffold(test_name)
 
     if config.jmeter.http_defaults:
         _add_http_defaults(fragment_tree, config)

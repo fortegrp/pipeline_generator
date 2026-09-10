@@ -2,76 +2,20 @@
 import argparse
 import json
 import sys
-import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 from converter_config import load_config
 from har_requests import process_har_entries
 from har_utils import load_har_entries
-
-
-def _sub(parent: ET.Element, tag: str, text: Optional[str] = None, **attrs: str) -> ET.Element:
-    element = ET.SubElement(parent, tag, attrs)
-    if text is not None:
-        element.text = text
-    return element
-
-
-def _string_prop(parent: ET.Element, name: str, value: str = "") -> ET.Element:
-    return _sub(parent, "stringProp", value, name=name)
-
-
-def _bool_prop(parent: ET.Element, name: str, value: bool) -> ET.Element:
-    return _sub(parent, "boolProp", "true" if value else "false", name=name)
-
-
-def _jmx_to_string(root: ET.Element) -> str:
-    ET.indent(root, space="  ")
-    xml = ET.tostring(root, encoding="unicode", short_empty_elements=True)
-    return f'<?xml version="1.0" encoding="UTF-8"?>\n{xml}\n'
+from jmx_xml import build_test_plan_scaffold, jmx_to_string as _jmx_to_string, string_prop as _string_prop, sub as _sub
 
 
 def build_scenario_jmx(plan_name: str, include_files: List[str]) -> str:
     """
     Build a JMX with a Test Plan, disabled Test Fragment, and Include Controllers.
     """
-    root = ET.Element("jmeterTestPlan", version="1.2", properties="5.0", jmeter="5.6.0")
-    root_tree = _sub(root, "hashTree")
-
-    test_plan = _sub(
-        root_tree,
-        "TestPlan",
-        guiclass="TestPlanGui",
-        testclass="TestPlan",
-        testname=plan_name,
-        enabled="true",
-    )
-    _string_prop(test_plan, "TestPlan.comments")
-    _bool_prop(test_plan, "TestPlan.functional_mode", False)
-    _bool_prop(test_plan, "TestPlan.serialize_threadgroups", False)
-    user_vars = _sub(
-        test_plan,
-        "elementProp",
-        name="TestPlan.user_defined_variables",
-        elementType="Arguments",
-        guiclass="ArgumentsPanel",
-        testclass="Arguments",
-        enabled="true",
-    )
-    _sub(user_vars, "collectionProp", name="Arguments.arguments")
-    _string_prop(test_plan, "TestPlan.user_define_classpath")
-
-    plan_tree = _sub(root_tree, "hashTree")
-    _sub(
-        plan_tree,
-        "TestFragmentController",
-        guiclass="TestFragmentControllerGui",
-        testclass="TestFragmentController",
-        testname=plan_name,
-        enabled="false",
-    )
-    fragment_tree = _sub(plan_tree, "hashTree")
+    root, fragment_tree = build_test_plan_scaffold(plan_name)
 
     for jmx_file in include_files:
         base = Path(jmx_file).stem
