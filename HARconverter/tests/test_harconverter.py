@@ -93,6 +93,27 @@ class FilteringAndNamingTests(unittest.TestCase):
             ["Project_Product_GET_users.jmx", "Project_Product_GET_users_2.jmx"],
         )
 
+    def test_form_encoded_params_without_text_are_captured_as_body(self):
+        entry = {
+            "request": {
+                "url": "https://example.com/api/login",
+                "method": "POST",
+                "headers": [],
+                "postData": {
+                    "mimeType": "application/x-www-form-urlencoded",
+                    "params": [
+                        {"name": "username", "value": "alice"},
+                        {"name": "password", "value": "s3cr3t!"},
+                    ],
+                },
+            }
+        }
+
+        processed = process_har_entries([entry], "Project", "Product")
+
+        self.assertEqual(len(processed.requests), 1)
+        self.assertEqual(processed.requests[0].body, "username=alice&password=s3cr3t%21")
+
     def test_config_can_extend_filters_and_keep_urls(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = Path(temp_dir) / "config.json"
