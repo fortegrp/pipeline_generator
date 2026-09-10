@@ -50,13 +50,7 @@ def _section(step: int, title: str) -> None:
     print(f"\n[Step {step}/{TOTAL_STEPS}] {title}")
 
 
-def run_wizard(output_path: Path, resume: bool = False) -> dict:
-    existing = load_config(output_path) if resume and output_path.exists() else None
-    config = merged_base_config(existing)
-
-    print("Performance automation wizard")
-    print("Leave fields blank when you want to keep TODO placeholders and finish later.")
-
+def _step_setup_basics(config: dict, output_path: Path) -> None:
     _section(1, "Setup basics")
     config["setup"]["working_location"] = prompt_choice(
         "Working location",
@@ -87,6 +81,8 @@ def run_wizard(output_path: Path, resume: bool = False) -> dict:
     )
     save_config(output_path, config)
 
+
+def _step_cicd_and_tool(config: dict, output_path: Path) -> None:
     _section(2, "CI/CD platform and performance tool")
     config["cicd"]["type"] = prompt_choice(
         "CI/CD platform",
@@ -109,6 +105,8 @@ def run_wizard(output_path: Path, resume: bool = False) -> dict:
     )
     save_config(output_path, config)
 
+
+def _step_setup_identifier(config: dict, output_path: Path) -> None:
     _section(3, "Setup identifier")
     generated_id = build_setup_id(
         config["cicd"]["type"],
@@ -122,10 +120,14 @@ def run_wizard(output_path: Path, resume: bool = False) -> dict:
     )
     save_config(output_path, config)
 
+
+def _step_connection(config: dict, output_path: Path) -> None:
     _section(4, "Tool connection details")
     _prompt_connection(config)
     save_config(output_path, config)
 
+
+def _step_manual_pipeline(config: dict, output_path: Path) -> None:
     _section(5, "Manual pipeline")
     if config["setup"]["generation_mode"] in {"manual_only", "both"}:
         config["manual_pipeline"]["enabled"] = prompt_bool(
@@ -144,11 +146,15 @@ def run_wizard(output_path: Path, resume: bool = False) -> dict:
         config["manual_pipeline"]["enabled"] = False
     save_config(output_path, config)
 
+
+def _step_catalog(config: dict, output_path: Path) -> None:
     _section(6, "Environments and scenarios")
     config["catalog"]["environments"] = _prompt_catalog_section("environment", config["catalog"]["environments"])
     config["catalog"]["scenarios"] = _prompt_catalog_section("scenario", config["catalog"]["scenarios"])
     save_config(output_path, config)
 
+
+def _step_automated_jobs(config: dict, output_path: Path) -> None:
     _section(7, "Automated jobs")
     if config["setup"]["generation_mode"] in {"automated_only", "both"}:
         config["automated_jobs"] = _prompt_automated_jobs_section(config)
@@ -156,12 +162,31 @@ def run_wizard(output_path: Path, resume: bool = False) -> dict:
         config["automated_jobs"] = []
     save_config(output_path, config)
 
+
+def _step_checks_and_finalize(config: dict, output_path: Path) -> None:
     _section(8, "Pre-run checks")
     config["pre_run_checks"] = _prompt_checks(config.get("pre_run_checks", []), config["tool"]["type"])
     config["readme"]["include_manual_usage"] = config["manual_pipeline"]["enabled"]
     config["readme"]["include_automated_usage"] = bool(config["automated_jobs"])
     config["incomplete"] = _is_incomplete(config)
     save_config(output_path, config)
+
+
+def run_wizard(output_path: Path, resume: bool = False) -> dict:
+    existing = load_config(output_path) if resume and output_path.exists() else None
+    config = merged_base_config(existing)
+
+    print("Performance automation wizard")
+    print("Leave fields blank when you want to keep TODO placeholders and finish later.")
+
+    _step_setup_basics(config, output_path)
+    _step_cicd_and_tool(config, output_path)
+    _step_setup_identifier(config, output_path)
+    _step_connection(config, output_path)
+    _step_manual_pipeline(config, output_path)
+    _step_catalog(config, output_path)
+    _step_automated_jobs(config, output_path)
+    _step_checks_and_finalize(config, output_path)
 
     _print_summary(config)
     print("\n" + validate_config(config).to_console())
