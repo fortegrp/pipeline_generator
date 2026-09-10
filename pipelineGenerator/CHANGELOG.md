@@ -2,6 +2,46 @@
 
 All notable changes to `pipeline-generator` are documented here.
 
+## [1.0.0rc3] - 2026-09-10
+
+A code-quality pass over `1.0.0rc2`. No behavior change to generated
+output or CLI behavior -- confirmed byte-for-byte identical output for
+all 9 example configs, and end-to-end tests unchanged before/after.
+
+- `build_setup_id()` strips a trailing `.git` from `target_repository`
+  before slugifying, so `https://.../repo.git` doesn't produce an
+  auto-suggested setup ID ending in `-git`.
+- `validate_config()`'s required-fields check and the wizard's
+  `_is_incomplete()` now read from one shared `required_field_values()`
+  helper instead of two hand-maintained lists that could drift apart.
+- The wizard's "keep as-is / add more / start over" resume-list logic,
+  duplicated between catalog and automated-job prompting, is now one
+  shared helper (with new test coverage, since `wizard/flow.py` had none
+  before this pass).
+- The BlazeMeter `--timeout-minutes` flag computation, duplicated 6
+  times across the three CI/CD renderers, is now one shared helper.
+- `AutomatedJobSpec` type hint added to a previously-untyped parameter
+  in all three renderers.
+- Removed `slugify()`'s dead second regex.
+- The config schema's enum-like constants (`SUPPORTED_CICD`,
+  `SUPPORTED_TOOLS`, `GENERATION_MODES`, `AUTH_TYPES`,
+  `WORKING_LOCATIONS`, `PIPELINE_DESTINATIONS`, `PRE_RUN_CHECKS`, and
+  `PRE_RUN_CHECKS_BY_TOOL`'s values) are now `tuple` instead of `list`,
+  signaling and enforcing that they're never mutated. `base_config()`'s
+  own data fields (`catalog.environments`, `automated_jobs`, etc.)
+  remain `list`, since those are genuinely mutated.
+- `run_wizard()` was a 117-line linear function doing all 8 wizard steps
+  inline; decomposed into one function per step plus an 18-line
+  orchestrator. Added the first end-to-end test for the full wizard
+  flow to confirm the decomposition changed nothing observable.
+
+A `TypedDict` for the config model was considered and explicitly
+deferred: the customer-facing risk it would address (a malformed
+`customer.yaml` crashing the tool) is already closed by `1.0.0rc2`'s
+runtime validator hardening, and without a type-checker in CI its
+remaining value (catching developer typos) is speculative relative to
+the cost of touching nearly every file in the project.
+
 ## [1.0.0rc2] - 2026-09-10
 
 A QA, security, and code-quality pass over `1.0.0rc1`, before any external
