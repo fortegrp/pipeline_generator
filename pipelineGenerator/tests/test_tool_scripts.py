@@ -18,10 +18,10 @@ def _base_config(tool_type: str, connection: dict, checks: list[str] | None = No
         "pre_run_checks": checks or [],
         "catalog": {
             "environments": [
-                {"key": "qa", "name": "QA", "identifier": "env-qa"},
-                {"key": "staging", "name": "Staging", "identifier": "env-stg"},
+                {"key": "qa", "identifier": "env-qa"},
+                {"key": "staging", "identifier": "env-stg"},
             ],
-            "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "SC-1"}],
+            "scenarios": [{"key": "checkout_smoke", "identifier": "SC-1"}],
         },
         "manual_pipeline": {"enabled": True, "name": "Performance Manual Run", "timeout_minutes": 30},
         "automated_jobs": [],
@@ -69,8 +69,8 @@ def test_render_jmeter_script_without_precheck_flag(tmp_path: Path) -> None:
 def test_jmeter_resolver_uses_exact_match_not_glob(tmp_path: Path) -> None:
     config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": ""})
     config["catalog"]["environments"] = [
-        {"key": "*", "name": "Wildcard", "identifier": "should-not-match"},
-        {"key": "staging", "name": "Staging", "identifier": "env-stg"},
+        {"key": "*", "identifier": "should-not-match"},
+        {"key": "staging", "identifier": "env-stg"},
     ]
     package = build_generic_package(config)
 
@@ -96,7 +96,7 @@ def test_resolver_handles_adversarial_catalog_keys(tmp_path: Path) -> None:
     ]
     config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": ""})
     config["catalog"]["environments"] = [
-        {"key": key, "name": f"Env {i}", "identifier": f"env-{i}"} for i, key in enumerate(adversarial_keys)
+        {"key": key, "identifier": f"env-{i}"} for i, key in enumerate(adversarial_keys)
     ]
     package = build_generic_package(config)
 
@@ -267,11 +267,11 @@ def test_render_blazemeter_script_requires_timeout_minutes_flag(tmp_path: Path) 
     assert "Usage:" in result.stderr
 
 
-def test_render_blazemeter_script_todo_comments_for_unhandled_checks(tmp_path: Path) -> None:
+def test_render_blazemeter_script_no_todo_comments_for_its_checks(tmp_path: Path) -> None:
     config = _base_config(
         "blazemeter",
         {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"},
-        checks=["verify_host_reachable", "verify_project_exists", "verify_scenario_exists", "collect_results"],
+        checks=["verify_host_reachable", "verify_project_exists", "verify_scenario_exists"],
     )
     package = build_generic_package(config)
 
@@ -281,15 +281,14 @@ def test_render_blazemeter_script_todo_comments_for_unhandled_checks(tmp_path: P
     assert "# TODO precheck: verify_host_reachable" not in content
     assert "# TODO precheck: verify_project_exists" not in content
     assert "# TODO precheck: verify_scenario_exists" not in content
-    assert "# TODO precheck: collect_results" in content
 
 
 def test_render_blazemeter_script_sanitizes_results_dir_from_hostile_catalog_key(tmp_path: Path) -> None:
     config = _base_config(
         "blazemeter", {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"}
     )
-    config["catalog"]["environments"] = [{"key": "../../pwn", "name": "Hostile", "identifier": "Hostile"}]
-    config["catalog"]["scenarios"] = [{"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "1234567"}]
+    config["catalog"]["environments"] = [{"key": "../../pwn", "identifier": "Hostile"}]
+    config["catalog"]["scenarios"] = [{"key": "checkout_smoke", "identifier": "1234567"}]
     package = build_generic_package(config)
 
     render_tool_script(config, package, tmp_path)
@@ -568,9 +567,9 @@ def test_render_loadrunner_script_defaults_wlrun_path_when_blank(tmp_path: Path)
 
 def test_render_loadrunner_script_sanitizes_results_dir_from_hostile_catalog_key(tmp_path: Path) -> None:
     config = _base_config("loadrunner_professional", {"wlrun_path": "wlrun"})
-    config["catalog"]["environments"] = [{"key": "../../pwn", "name": "Hostile", "identifier": "Hostile"}]
+    config["catalog"]["environments"] = [{"key": "../../pwn", "identifier": "Hostile"}]
     config["catalog"]["scenarios"] = [
-        {"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "C:\\Scenarios\\checkout_smoke.lrs"}
+        {"key": "checkout_smoke", "identifier": "C:\\Scenarios\\checkout_smoke.lrs"}
     ]
     package = build_generic_package(config)
 
@@ -603,7 +602,7 @@ def test_render_loadrunner_script_todo_comments_for_unhandled_checks(tmp_path: P
     config = _base_config(
         "loadrunner_professional",
         {"wlrun_path": "wlrun"},
-        checks=["verify_controller_access", "verify_scenario_exists", "verify_load_generators_connected", "collect_results"],
+        checks=["verify_controller_access", "verify_scenario_exists", "verify_load_generators_connected"],
     )
     package = build_generic_package(config)
 
@@ -614,10 +613,9 @@ def test_render_loadrunner_script_todo_comments_for_unhandled_checks(tmp_path: P
     # The two implemented checks get real guards, not TODO comments.
     assert "# TODO precheck: verify_controller_access" not in content
     assert "# TODO precheck: verify_scenario_exists" not in content
-    # The two unimplemented checks get TODO comments instead of silently
+    # The unimplemented check gets a TODO comment instead of silently
     # vanishing.
     assert "# TODO precheck: verify_load_generators_connected" in content
-    assert "# TODO precheck: collect_results" in content
 
     syntax_check = subprocess.run(["bash", "-n", str(script_path)], capture_output=True, text=True)
     assert syntax_check.returncode == 0, syntax_check.stderr
@@ -804,8 +802,8 @@ exit 0
 
     config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": "jmeter"})
     config["catalog"]["scenarios"] = [
-        {"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "SC-1"},
-        {"key": "checkout_full", "name": "Checkout Full", "identifier": "SC-2"},
+        {"key": "checkout_smoke", "identifier": "SC-1"},
+        {"key": "checkout_full", "identifier": "SC-2"},
     ]
     package = build_generic_package(config)
     render_tool_script(config, package, tmp_path)
@@ -1264,7 +1262,7 @@ exit 0
     hostile_scenario_key = "smoke\ntest\tcase"
     config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": "jmeter"})
     config["catalog"]["scenarios"] = [
-        {"key": hostile_scenario_key, "name": "Checkout Smoke", "identifier": "SC-1"}
+        {"key": hostile_scenario_key, "identifier": "SC-1"}
     ]
     package = build_generic_package(config)
     render_tool_script(config, package, tmp_path)

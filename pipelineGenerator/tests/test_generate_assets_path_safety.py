@@ -7,11 +7,9 @@ from pipeline_generator.generator.service import generate_assets
 def _config(setup_id: str) -> dict:
     config = merged_base_config(None)
     config["setup"]["id"] = setup_id
-    config["setup"]["target_repository"] = "github.com/acme/storefront"
     config["setup"]["generation_mode"] = "manual_only"
     config["cicd"]["type"] = "github_actions"
     config["tool"]["type"] = "loadrunner_professional"
-    config["tool"]["auth"]["type"] = "username_password"
     return config
 
 

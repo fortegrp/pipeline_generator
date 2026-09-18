@@ -177,9 +177,12 @@ Pipeline: **customer YAML → validate → generic pipeline model → CI/CD rend
   status-string vocabulary and report endpoint are flagged in the script's
   own comments as best-understanding, pending verification against a live
   account. JMeter and LoadRunner Professional both run locally/on-agent (no
-  remote API credentials managed by this script), so their `tool.auth.type`
-  is `none`; BlazeMeter's stays `api_token` — see `AUTH_TYPES` in
-  `config/schema.py`.
+  remote API credentials managed by this script); BlazeMeter authenticates
+  via `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET` env vars, hardcoded
+  per `tool.type` in `scripts.py` rather than driven by any config field —
+  there used to be a `tool.auth.type` config field mirroring this, but it
+  was asked in the wizard and validated against an enum without ever
+  actually gating any behavior, so it was removed as dead config.
 
 All three tools now also write a normalized
 `run-output/<environment_slug>_<scenario_slug>/run-summary.json` after the

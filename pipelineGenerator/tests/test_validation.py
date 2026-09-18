@@ -12,13 +12,11 @@ def test_validation_warns_when_catalog_identifier_is_missing() -> None:
     config = base_config()
     config["incomplete"] = False
     config["setup"]["id"] = "example-setup"
-    config["setup"]["target_repository"] = "https://example.com/repo.git"
     config["cicd"]["type"] = "github_actions"
     config["tool"]["type"] = "jmeter"
-    config["tool"]["auth"]["type"] = "none"
     config["tool"]["connection"] = {"test_plan_path": "performance/checkout.jmx"}
-    config["catalog"]["environments"] = [{"key": "qa", "name": "QA"}]
-    config["catalog"]["scenarios"] = [{"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "SC-1"}]
+    config["catalog"]["environments"] = [{"key": "qa"}]
+    config["catalog"]["scenarios"] = [{"key": "checkout_smoke", "identifier": "SC-1"}]
 
     result = validate_config(config)
 
@@ -30,16 +28,13 @@ def test_validation_does_not_warn_about_optional_wlrun_path() -> None:
     config = base_config()
     config["incomplete"] = False
     config["setup"]["id"] = "example-loadrunner-setup"
-    config["setup"]["target_repository"] = "https://example.com/repo.git"
     config["cicd"]["type"] = "github_actions"
     config["tool"]["type"] = "loadrunner_professional"
-    config["tool"]["auth"]["type"] = "none"
     config["tool"]["connection"] = {}
-    config["catalog"]["environments"] = [{"key": "qa", "name": "QA", "identifier": "QA"}]
+    config["catalog"]["environments"] = [{"key": "qa", "identifier": "QA"}]
     config["catalog"]["scenarios"] = [
         {
             "key": "checkout_smoke_qa",
-            "name": "Checkout Smoke (QA)",
             "identifier": "C:\\Scenarios\\checkout_smoke_qa.lrs",
         }
     ]
@@ -54,17 +49,14 @@ def test_validation_errors_for_unsupported_enum_values() -> None:
     config = base_config()
     config["incomplete"] = False
     config["setup"]["id"] = "example-setup"
-    config["setup"]["target_repository"] = "https://example.com/repo.git"
     config["setup"]["generation_mode"] = "not_a_real_mode"
     config["cicd"]["type"] = "not_a_real_cicd_platform"
     config["tool"]["type"] = "not_a_real_tool"
-    config["tool"]["auth"]["type"] = "not_a_real_auth_type"
 
     result = validate_config(config)
 
     assert "Unsupported cicd.type: not_a_real_cicd_platform" in result.errors
     assert "Unsupported tool.type: not_a_real_tool" in result.errors
-    assert "Unsupported tool.auth.type: not_a_real_auth_type" in result.errors
     assert "Unsupported setup.generation_mode: not_a_real_mode" in result.errors
 
 
@@ -72,10 +64,8 @@ def test_validation_errors_when_required_field_missing_on_complete_config() -> N
     config = base_config()
     config["incomplete"] = False
     config["setup"]["id"] = ""
-    config["setup"]["target_repository"] = "https://example.com/repo.git"
     config["cicd"]["type"] = "github_actions"
     config["tool"]["type"] = "jmeter"
-    config["tool"]["auth"]["type"] = "none"
 
     result = validate_config(config)
 
@@ -87,13 +77,11 @@ def _complete_jmeter_config() -> dict:
     config = base_config()
     config["incomplete"] = False
     config["setup"]["id"] = "example-setup"
-    config["setup"]["target_repository"] = "https://example.com/repo.git"
     config["cicd"]["type"] = "github_actions"
     config["tool"]["type"] = "jmeter"
-    config["tool"]["auth"]["type"] = "none"
     config["tool"]["connection"] = {"test_plan_path": "performance/checkout.jmx"}
-    config["catalog"]["environments"] = [{"key": "qa", "name": "QA", "identifier": "env-qa"}]
-    config["catalog"]["scenarios"] = [{"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "SC-1"}]
+    config["catalog"]["environments"] = [{"key": "qa", "identifier": "env-qa"}]
+    config["catalog"]["scenarios"] = [{"key": "checkout_smoke", "identifier": "SC-1"}]
     return config
 
 
@@ -119,8 +107,8 @@ def test_validation_does_not_warn_about_recognized_pre_run_check() -> None:
 def test_validation_warns_about_duplicate_environment_key() -> None:
     config = _complete_jmeter_config()
     config["catalog"]["environments"] = [
-        {"key": "qa", "name": "QA East", "identifier": "env-qa-east"},
-        {"key": "qa", "name": "QA West", "identifier": "env-qa-west"},
+        {"key": "qa", "identifier": "env-qa-east"},
+        {"key": "qa", "identifier": "env-qa-west"},
     ]
 
     result = validate_config(config)
@@ -132,8 +120,8 @@ def test_validation_warns_about_duplicate_environment_key() -> None:
 def test_validation_warns_about_duplicate_scenario_key() -> None:
     config = _complete_jmeter_config()
     config["catalog"]["scenarios"] = [
-        {"key": "checkout_smoke", "name": "Checkout Smoke A", "identifier": "SC-1"},
-        {"key": "checkout_smoke", "name": "Checkout Smoke B", "identifier": "SC-2"},
+        {"key": "checkout_smoke", "identifier": "SC-1"},
+        {"key": "checkout_smoke", "identifier": "SC-2"},
     ]
 
     result = validate_config(config)
@@ -185,15 +173,6 @@ def test_validation_errors_instead_of_crashing_on_wrong_type_section() -> None:
     result = validate_config(config)
 
     assert any("tool" in error for error in result.errors)
-
-
-def test_validation_errors_instead_of_crashing_on_wrong_type_auth() -> None:
-    config = base_config()
-    config["tool"]["auth"] = "none"
-
-    result = validate_config(config)
-
-    assert any("tool.auth" in error for error in result.errors)
 
 
 def test_validation_errors_instead_of_crashing_on_environments_as_list_of_strings() -> None:

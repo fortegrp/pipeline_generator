@@ -7,7 +7,7 @@ def test_prompt_catalog_section_keep_as_is(monkeypatch: pytest.MonkeyPatch) -> N
     inputs = iter(["1"])  # "keep as-is" is option 1
     monkeypatch.setattr("builtins.input", lambda *_: next(inputs))
 
-    existing = [{"key": "qa", "name": "QA", "identifier": "env-qa"}]
+    existing = [{"key": "qa", "identifier": "env-qa"}]
     result = _prompt_catalog_section("environment", existing)
 
     assert result is existing
@@ -18,17 +18,16 @@ def test_prompt_catalog_section_start_over(monkeypatch: pytest.MonkeyPatch) -> N
         [
             "3",  # "start over"
             "staging",  # new key
-            "Staging",  # display name
             "env-staging",  # identifier
             "",  # blank key ends collection
         ]
     )
     monkeypatch.setattr("builtins.input", lambda *_: next(inputs))
 
-    existing = [{"key": "qa", "name": "QA", "identifier": "env-qa"}]
+    existing = [{"key": "qa", "identifier": "env-qa"}]
     result = _prompt_catalog_section("environment", existing)
 
-    assert result == [{"key": "staging", "name": "Staging", "identifier": "env-staging"}]
+    assert result == [{"key": "staging", "identifier": "env-staging"}]
 
 
 def test_prompt_catalog_section_add_more(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -36,19 +35,18 @@ def test_prompt_catalog_section_add_more(monkeypatch: pytest.MonkeyPatch) -> Non
         [
             "2",  # "add more"
             "staging",
-            "Staging",
             "env-staging",
             "",
         ]
     )
     monkeypatch.setattr("builtins.input", lambda *_: next(inputs))
 
-    existing = [{"key": "qa", "name": "QA", "identifier": "env-qa"}]
+    existing = [{"key": "qa", "identifier": "env-qa"}]
     result = _prompt_catalog_section("environment", existing)
 
     assert result == [
-        {"key": "qa", "name": "QA", "identifier": "env-qa"},
-        {"key": "staging", "name": "Staging", "identifier": "env-staging"},
+        {"key": "qa", "identifier": "env-qa"},
+        {"key": "staging", "identifier": "env-staging"},
     ]
 
 

@@ -6,14 +6,11 @@ from typing import Callable
 from pipeline_generator.config.loader import load_config, save_config
 from pipeline_generator.config.placeholders import TODO_VALUE
 from pipeline_generator.config.schema import (
-    AUTH_TYPES,
     GENERATION_MODES,
-    PIPELINE_DESTINATIONS,
     PRE_RUN_CHECKS,
     PRE_RUN_CHECKS_BY_TOOL,
     SUPPORTED_CICD,
     SUPPORTED_TOOLS,
-    WORKING_LOCATIONS,
     merged_base_config,
     required_field_values,
 )
@@ -29,20 +26,16 @@ from pipeline_generator.wizard.prompts import (
 
 TOTAL_STEPS = 8
 
-WORKING_LOCATION_HINTS = {
-    "central_repo": "Setup files are authored and maintained in this generator's own repo.",
-    "customer_repo": "Setup files are authored directly inside the customer's repository.",
-}
-
-PIPELINE_DESTINATION_HINTS = {
-    "stay_in_central_repo": "Generated pipeline files stay in this central repo; the customer repo references them from there.",
-    "copy_to_customer_repo": "Generated pipeline files are copied into the customer's own repository.",
-}
-
 GENERATION_MODE_HINTS = {
-    "manual_only": "Only generate the on-demand pipeline performance engineers trigger by hand.",
-    "automated_only": "Only generate the reusable automated job DevOps wires into their own pipelines.",
-    "both": "Generate both the manual pipeline and the automated job.",
+    "manual_only": (
+        "A human triggers this on demand (e.g. a button, GitHub's workflow_dispatch), "
+        "picking environment and scenario each time it runs."
+    ),
+    "automated_only": (
+        "No on-demand pipeline; instead generate reusable job(s) that someone else's "
+        "pipeline calls automatically, each with a fixed environment/scenario."
+    ),
+    "both": "Generate both: an on-demand manual pipeline, and automated job(s) for other pipelines to call.",
 }
 
 
@@ -51,28 +44,13 @@ def _section(step: int, title: str) -> None:
 
 
 def _step_setup_basics(config: dict, output_path: Path) -> None:
-    _section(1, "Setup basics")
-    config["setup"]["working_location"] = prompt_choice(
-        "Working location",
-        WORKING_LOCATIONS,
-        default=config["setup"]["working_location"],
-        descriptions=WORKING_LOCATION_HINTS,
+    _section(1, "What should this setup generate?")
+    print(
+        "A performance pipeline can be triggered two different ways: manually by a "
+        "person, or automatically as part of a pipeline someone else owns. Pick "
+        "which one(s) you want generated -- this also decides which later wizard "
+        "steps apply."
     )
-    config["setup"]["final_pipeline_destination"] = prompt_choice(
-        "Final pipeline destination",
-        PIPELINE_DESTINATIONS,
-        default=config["setup"]["final_pipeline_destination"],
-        descriptions=PIPELINE_DESTINATION_HINTS,
-    )
-    config["setup"]["ci_can_use_central_repo_directly"] = prompt_bool(
-        "Can the CI/CD system consume files directly from the central repo?",
-        default=bool(config["setup"]["ci_can_use_central_repo_directly"]),
-        hint="If yes, generated files can be referenced straight from the central repo without copying them anywhere.",
-    )
-    config["setup"]["target_repository"] = prompt_text(
-        "Target repository identity",
-        default=config["setup"]["target_repository"],
-    ) or TODO_VALUE
     config["setup"]["generation_mode"] = prompt_choice(
         "Generation mode",
         GENERATION_MODES,
@@ -94,15 +72,6 @@ def _step_cicd_and_tool(config: dict, output_path: Path) -> None:
         SUPPORTED_TOOLS,
         default=config["tool"]["type"] if config["tool"]["type"] in SUPPORTED_TOOLS else SUPPORTED_TOOLS[0],
     )
-    config["tool"]["auth"]["type"] = prompt_choice(
-        "Authentication option",
-        AUTH_TYPES,
-        default=(
-            config["tool"]["auth"]["type"]
-            if config["tool"]["auth"]["type"] in AUTH_TYPES
-            else AUTH_TYPES[0]
-        ),
-    )
     save_config(output_path, config)
 
 
@@ -111,7 +80,6 @@ def _step_setup_identifier(config: dict, output_path: Path) -> None:
     generated_id = build_setup_id(
         config["cicd"]["type"],
         config["tool"]["type"],
-        config["setup"]["target_repository"],
     )
     config["setup"]["id"] = prompt_text(
         "Suggested setup ID",
@@ -233,9 +201,8 @@ def _prompt_catalog_items(kind: str) -> list[dict]:
         key = prompt_text(f"{kind} key", allow_blank=True)
         if not key:
             break
-        name = prompt_text(f"{kind} display name", default=key)
         identifier = prompt_text(f"{kind} remote identifier", default=TODO_VALUE) or TODO_VALUE
-        items.append({"key": key, "name": name, "identifier": identifier})
+        items.append({"key": key, "identifier": identifier})
     return items
 
 
@@ -313,7 +280,6 @@ def _print_summary(config: dict) -> None:
     print(f"  ID: {setup['id']}")
     print(f"  CI/CD: {config['cicd']['type']}")
     print(f"  Tool: {config['tool']['type']}")
-    print(f"  Target repository: {setup['target_repository']}")
     print(f"  Manual pipeline: {'enabled' if config['manual_pipeline']['enabled'] else 'disabled'}")
     print(f"  Environments: {len(config['catalog']['environments'])}")
     print(f"  Scenarios: {len(config['catalog']['scenarios'])}")

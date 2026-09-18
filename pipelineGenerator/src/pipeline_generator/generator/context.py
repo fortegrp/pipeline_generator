@@ -9,11 +9,11 @@ def build_generic_package(config: dict) -> GenericPipelinePackage:
     cicd_type = config["cicd"]["type"]
     tool_type = config["tool"]["type"]
     environments = [
-        InputOption(value=item["key"], display_name=item["name"], identifier=item.get("identifier", TODO_VALUE))
+        InputOption(value=item["key"], identifier=item.get("identifier", TODO_VALUE))
         for item in config["catalog"]["environments"]
     ]
     scenarios = [
-        InputOption(value=item["key"], display_name=item["name"], identifier=item.get("identifier", TODO_VALUE))
+        InputOption(value=item["key"], identifier=item.get("identifier", TODO_VALUE))
         for item in config["catalog"]["scenarios"]
     ]
 

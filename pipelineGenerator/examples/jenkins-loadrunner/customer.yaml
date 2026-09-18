@@ -1,18 +1,11 @@
-version: 1
 incomplete: false
 setup:
   id: jenkins-loadrunner-professional-storefront
-  working_location: central_repo
-  final_pipeline_destination: copy_to_customer_repo
-  ci_can_use_central_repo_directly: false
-  target_repository: github.com/acme/storefront
   generation_mode: both
 cicd:
   type: jenkins
 tool:
   type: loadrunner_professional
-  auth:
-    type: none
   connection:
     wlrun_path: wlrun
 manual_pipeline:
@@ -20,40 +13,30 @@ manual_pipeline:
   name: Performance Manual Run
   timeout_minutes: 240
 automated_jobs:
-  - name: post-deploy-smoke
-    enabled: true
-    environment_ref: qa
-    scenario_ref: checkout_smoke_qa
-    timeout_minutes: 90
+- name: post-deploy-smoke
+  enabled: true
+  environment_ref: qa
+  scenario_ref: checkout_smoke_qa
+  timeout_minutes: 90
 catalog:
   environments:
-    - key: qa
-      name: QA
-      identifier: QA
-    - key: staging
-      name: Staging
-      identifier: Staging
+  - key: qa
+    identifier: QA
+  - key: staging
+    identifier: Staging
   scenarios:
-    - key: checkout_smoke_qa
-      name: Checkout Smoke (QA)
-      identifier: C:\Scenarios\checkout_smoke_qa.lrs
-    - key: checkout_smoke_staging
-      name: Checkout Smoke (Staging)
-      identifier: C:\Scenarios\checkout_smoke_staging.lrs
-    - key: browse_baseline_qa
-      name: Browse Baseline (QA)
-      identifier: C:\Scenarios\browse_baseline_qa.lrs
-    - key: browse_baseline_staging
-      name: Browse Baseline (Staging)
-      identifier: C:\Scenarios\browse_baseline_staging.lrs
+  - key: checkout_smoke_qa
+    identifier: C:\Scenarios\checkout_smoke_qa.lrs
+  - key: checkout_smoke_staging
+    identifier: C:\Scenarios\checkout_smoke_staging.lrs
+  - key: browse_baseline_qa
+    identifier: C:\Scenarios\browse_baseline_qa.lrs
+  - key: browse_baseline_staging
+    identifier: C:\Scenarios\browse_baseline_staging.lrs
 pre_run_checks:
-  - verify_controller_access
-  - verify_scenario_exists
-  - verify_load_generators_connected
-  - collect_results
-artifacts:
-  download_remote_results: true
-  fail_on_partial_download: false
+- verify_controller_access
+- verify_scenario_exists
+- verify_load_generators_connected
 readme:
   include_manual_usage: true
   include_automated_usage: true

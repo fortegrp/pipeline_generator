@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 
 from pipeline_generator.config.placeholders import is_placeholder
 from pipeline_generator.config.schema import (
-    AUTH_TYPES,
     GENERATION_MODES,
     PRE_RUN_CHECKS,
     SUPPORTED_CICD,
@@ -72,7 +71,6 @@ def validate_config(config: dict) -> ValidationResult:
     catalog = _as_dict(config.get("catalog", {}), "catalog", result)
     manual_pipeline = _as_dict(config.get("manual_pipeline", {}), "manual_pipeline", result)
     automated_jobs = _as_list_of_dicts(config.get("automated_jobs", []), "automated_jobs", result)
-    auth = _as_dict(tool.get("auth", {}), "tool.auth", result)
 
     for path, value in required_field_values(config):
         if is_placeholder(value):
@@ -86,10 +84,6 @@ def validate_config(config: dict) -> ValidationResult:
     tool_type = tool.get("type")
     if not is_placeholder(tool_type) and tool_type not in SUPPORTED_TOOLS:
         result.errors.append(f"Unsupported tool.type: {tool_type}")
-
-    auth_type = auth.get("type")
-    if not is_placeholder(auth_type) and auth_type not in AUTH_TYPES:
-        result.errors.append(f"Unsupported tool.auth.type: {auth_type}")
 
     generation_mode = setup.get("generation_mode")
     if generation_mode not in GENERATION_MODES:

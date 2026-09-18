@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 @dataclass
 class InputOption:
     value: str
-    display_name: str
     identifier: str
 
 

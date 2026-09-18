@@ -173,15 +173,13 @@ BlazeMeter.
 ## Interactive Wizard
 
 `pipeline-generator wizard` walks through the config in eight numbered
-sections (setup basics, CI/CD + tool selection, setup ID, tool connection
+sections (what to generate, CI/CD + tool selection, setup ID, tool connection
 details, manual pipeline, environments/scenarios, automated jobs, pre-run
 checks), saving progress to `--output` after each section. A few things
 about how it behaves:
 
-- **Inline hints.** Choices with non-obvious implications (`working_location`,
-  `final_pipeline_destination`, `generation_mode`, and whether the CI/CD
-  system can use the central repo directly) show a one-line explanation of
-  what each option means.
+- **Inline hints.** Choices with non-obvious implications (`generation_mode`)
+  show a one-line explanation of what each option means.
 - **Resuming never discards existing entries.** If you `--resume` a draft
   that already has environments, scenarios, or automated jobs, the wizard
   shows what's already there and asks whether to keep it as-is, add more on
@@ -204,7 +202,7 @@ it automatically based on whether required fields are still filled with
 `TODO`, and it can also be set by hand.
 
 - **`incomplete: true` (a draft):** `generate` only ever blocks on hard
-  **errors** (an unsupported `cicd.type`, `tool.type`, or `auth.type`).
+  **errors** (an unsupported `cicd.type` or `tool.type`).
   Warnings — missing catalog entries, an automated job pointing at an
   environment/scenario that doesn't exist yet, missing connection details —
   are reported but never block anything. This is what lets onboarding start
@@ -247,31 +245,22 @@ the same way (`./scripts/run-<tool_type>.sh --environment "$ENVIRONMENT"
 Example:
 
 ```yaml
-version: 1
 incomplete: false
 setup:
   id: acme-github-actions-loadrunner-professional-storefront
-  working_location: central_repo
-  final_pipeline_destination: copy_to_customer_repo
-  ci_can_use_central_repo_directly: false
-  target_repository: github.com/acme/storefront
   generation_mode: both
 cicd:
   type: github_actions
 tool:
   type: loadrunner_professional
-  auth:
-    type: none
   connection:
     wlrun_path: wlrun
 catalog:
   environments:
     - key: qa
-      name: QA
       identifier: QA
   scenarios:
     - key: checkout_smoke_qa
-      name: Checkout Smoke (QA)
       identifier: C:\Scenarios\checkout_smoke_qa.lrs
 manual_pipeline:
   enabled: true
@@ -287,18 +276,14 @@ pre_run_checks:
   - verify_controller_access
   - verify_scenario_exists
   - verify_load_generators_connected
-  - collect_results
-artifacts:
-  download_remote_results: true
-  fail_on_partial_download: false
 ```
 
 `cicd.type` supports `github_actions`, `azure_devops`, and `jenkins`.
 `tool.type` supports `loadrunner_professional`, `blazemeter`, and `jmeter`.
 JMeter is local/self-hosted rather than a remote SaaS tool, so its
-`tool.auth.type` is typically `none`, and its `tool.connection` only needs a
-`test_plan_path` (and optionally `jmeter_bin` if the executable isn't on
-`PATH`). Ready-made examples for every CI/CD × tool combination are under
+`tool.connection` only needs a `test_plan_path` (and optionally
+`jmeter_bin` if the executable isn't on `PATH`). Ready-made examples for
+every CI/CD × tool combination are under
 [`examples/`](examples/).
 
 ## Recommended Next Work

@@ -1,49 +1,36 @@
-version: 1
 incomplete: false
 setup:
   id: github-actions-blazemeter-storefront
-  working_location: central_repo
-  final_pipeline_destination: stay_in_central_repo
-  ci_can_use_central_repo_directly: true
-  target_repository: github.com/acme/storefront
   generation_mode: both
 cicd:
   type: github_actions
 tool:
   type: blazemeter
-  auth:
-    type: api_token
   connection:
     base_url: https://a.blazemeter.com
-    workspace_id: "12345"
-    project_id: "67890"
+    workspace_id: '12345'
+    project_id: '67890'
 manual_pipeline:
   enabled: true
   name: BlazeMeter Manual Run
   timeout_minutes: 180
 automated_jobs:
-  - name: pre-prod-baseline
-    enabled: true
-    environment_ref: staging
-    scenario_ref: checkout_baseline_staging
-    timeout_minutes: 120
+- name: pre-prod-baseline
+  enabled: true
+  environment_ref: staging
+  scenario_ref: checkout_baseline_staging
+  timeout_minutes: 120
 catalog:
   environments:
-    - key: staging
-      name: Staging
-      identifier: Staging
+  - key: staging
+    identifier: Staging
   scenarios:
-    - key: checkout_baseline_staging
-      name: Checkout Baseline (Staging)
-      identifier: "2233445"
+  - key: checkout_baseline_staging
+    identifier: '2233445'
 pre_run_checks:
-  - verify_host_reachable
-  - verify_project_exists
-  - verify_scenario_exists
-  - collect_results
-artifacts:
-  download_remote_results: true
-  fail_on_partial_download: false
+- verify_host_reachable
+- verify_project_exists
+- verify_scenario_exists
 readme:
   include_manual_usage: true
   include_automated_usage: true

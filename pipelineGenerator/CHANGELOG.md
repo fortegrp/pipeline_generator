@@ -2,6 +2,44 @@
 
 All notable changes to `pipeline-generator` are documented here.
 
+## [Unreleased]
+
+- Removed four more dead config fields, found by tracing every `base_config()`
+  field to confirm something actually reads it: `version` (top-level,
+  never read anywhere), `artifacts.download_remote_results` and
+  `artifacts.fail_on_partial_download` (never read, not even wizard-asked),
+  `catalog.environments[].name`/`catalog.scenarios[].name` (the wizard's
+  "environment/scenario display name" prompt — captured, stored, even
+  threaded into `InputOption.display_name`, but never rendered into any
+  generated pipeline file or the README; `InputOption.display_name` is
+  removed accordingly), and `tool.auth.type` (asked in wizard Step 2 and
+  validated against `AUTH_TYPES` as a required field, but nothing branched
+  on its value — real credential handling is hardcoded per `tool.type`
+  directly in `scripts.py`). Wizard Step 2 no longer asks for an
+  authentication option, and catalog entries are now just `key` +
+  `identifier`. `AUTH_TYPES` is removed from the schema.
+- Removed the `collect_results` pre-run check from `PRE_RUN_CHECKS` and
+  every tool's `PRE_RUN_CHECKS_BY_TOOL` entry. It was never implemented
+  for any tool (JMeter, LoadRunner Professional, and BlazeMeter all only
+  ever rendered it as a dead `# TODO precheck: collect_results` comment),
+  and conceptually it never belonged in a *pre-run* check list —
+  collecting results is something you do after a run finishes, not
+  before it starts. Existing `customer.yaml` files listing it now get a
+  validation warning ("Unrecognized pre_run_checks value") instead of
+  silently no-oping; remove it from `pre_run_checks` to clear the
+  warning.
+- Removed `setup.working_location`, `setup.final_pipeline_destination`,
+  `setup.ci_can_use_central_repo_directly`, and `setup.target_repository`
+  from the config schema. The first three were purely descriptive (echoed
+  into the generated README, in one case not even that) and never
+  affected what got generated; `target_repository` only fed an
+  auto-suggested setup ID. Wizard Step 1 now asks a single question
+  (`generation_mode`) instead of five, with a plain-language explanation
+  of manual vs. automated pipelines up front. `build_setup_id()` now
+  slugifies `<cicd_type>-<tool_type>` only (no repo name component).
+  Existing `customer.yaml` files with the removed fields still load fine
+  (they're just ignored) but should have them removed.
+
 ## [1.0.0rc3] - 2026-09-10
 
 A code-quality pass over `1.0.0rc2`. No behavior change to generated

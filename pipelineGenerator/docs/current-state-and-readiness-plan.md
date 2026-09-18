@@ -74,8 +74,10 @@ Not implemented yet:
   — every other configured check, for every tool, is currently only a
   `# TODO precheck: ...` comment (LoadRunner's
   `verify_load_generators_connected` needs Controller-side load-generator
-  host-status querying with no local CLI equivalent; `collect_results`'
-  meaning is still an open question — see below).
+  host-status querying with no local CLI equivalent). The `collect_results`
+  check was removed from the schema entirely — it was never implemented for
+  any tool and, as a pre-*run* check, was miscategorized from the start
+  (collecting results is a post-run action).
 - Strong schema enforcement.
 
 ## Supported Platforms and Tools
@@ -100,8 +102,8 @@ The config model currently supports:
 
 - `blazemeter`
 - `loadrunner_professional`
-- `jmeter` — local/self-hosted rather than a remote SaaS tool; typically
-  paired with `tool.auth.type: none` and a `test_plan_path` connection field.
+- `jmeter` — local/self-hosted rather than a remote SaaS tool; just a
+  `test_plan_path` connection field.
 
 `generate` writes a `scripts/run-<tool_type>.sh` for every setup, and all
 three tools are now equally real, working execution. JMeter resolves the
@@ -119,18 +121,17 @@ flag), and downloads a summary report (see
 for the design, including which parts of the API surface are flagged as
 best-understanding pending verification against a live account).
 
-### Authentication Types
+### Authentication
 
-Supported auth type values are:
-
-- `api_token`
-- `username_password`
-- `service_account`
-- `network_vpn_manual_setup`
-- `none` — for tools like JMeter that run locally and need no remote auth.
-
-The current project validates these values but does not yet implement secret
-resolution, credential injection, or remote authentication behavior.
+There is no `tool.auth.type` config field. One used to exist (`api_token`,
+`username_password`, `service_account`, `network_vpn_manual_setup`, `none`),
+asked by the wizard and validated against that enum, but nothing ever read
+its value to gate behavior — the actual credential handling is hardcoded per
+`tool.type` directly in `scripts.py` (BlazeMeter always uses
+`BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET`; JMeter and LoadRunner
+Professional never reference any credential at all, since both run
+locally/on-agent). The field was removed as dead config rather than kept as
+a label with no effect.
 
 ## Repository Structure
 
@@ -175,9 +176,9 @@ placeholder handling, and validation logic.
 
 `src/pipeline_generator/wizard/`
 
-Contains the interactive onboarding flow. The wizard asks for setup location,
-target repository, CI/CD platform, performance tool, authentication type,
-connection details, environments, scenarios, automated jobs, and pre-run checks.
+Contains the interactive onboarding flow. The wizard asks what to generate
+(generation mode), CI/CD platform, performance tool, connection details,
+environments, scenarios, automated jobs, and pre-run checks.
 
 `src/pipeline_generator/generator/`
 
@@ -308,16 +309,14 @@ The YAML config is the source of truth for a customer setup.
 
 Major sections:
 
-- `version`: config version.
 - `incomplete`: whether TODO placeholders are still expected.
-- `setup`: setup identity, repository location, destination, and generation mode.
+- `setup`: setup identity and generation mode.
 - `cicd`: selected CI/CD platform.
-- `tool`: selected performance testing tool, auth type, and connection details.
+- `tool`: selected performance testing tool and connection details.
 - `manual_pipeline`: manual pipeline settings.
 - `automated_jobs`: reusable automated job definitions.
 - `catalog`: available environments and scenarios.
 - `pre_run_checks`: checks requested before execution.
-- `artifacts`: artifact download behavior.
 - `readme`: generated documentation options.
 
 Supported generation modes:
@@ -600,8 +599,6 @@ Goals:
 
 Tasks:
 
-- Validate `setup.final_pipeline_destination` against supported values.
-- Validate `setup.working_location` against supported values.
 - Validate automated job references as errors for complete configs.
 - Validate manual pipeline catalog requirements as errors when manual generation
   is enabled.
@@ -805,9 +802,10 @@ Tasks:
   Professional script (currently a `# TODO precheck: ...` comment only —
   needs Controller-side load-generator host-status querying with no local
   CLI equivalent available to `wlrun`).
-- Preserve compatibility for the existing `collect_results` value, but clarify
-  whether it represents a pre-run artifact readiness check or migrate it into a
-  future `post_run_steps` section.
+- [x] Resolved by removal: `collect_results` was never implemented for any
+  tool and, as a pre-*run* check, was miscategorized (collecting results
+  happens after the run). Dropped from `PRE_RUN_CHECKS` and every tool's
+  `PRE_RUN_CHECKS_BY_TOOL` entry rather than kept as permanent dead weight.
 - Have each check produce a clear pass/fail message and exit code from the
   script, rather than only a `# TODO` comment.
 

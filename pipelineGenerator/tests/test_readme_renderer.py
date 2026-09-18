@@ -7,9 +7,6 @@ def _base_config(tool_type: str, connection: dict) -> dict:
         "setup": {
             "id": "readme-test-setup",
             "generation_mode": "both",
-            "target_repository": "https://example.com/repo.git",
-            "working_location": "central_repo",
-            "final_pipeline_destination": "copy_to_customer_repo",
         },
         "cicd": {"type": "github_actions"},
         "tool": {"type": tool_type, "connection": connection},

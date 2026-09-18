@@ -61,11 +61,11 @@ def _render_resolvers(package: GenericPipelinePackage) -> str:
 
 def _render_slug_resolvers(package: GenericPipelinePackage) -> str:
     environment_slugs = [
-        InputOption(value=item.value, display_name=item.display_name, identifier=safe_filename_component(item.value))
+        InputOption(value=item.value, identifier=safe_filename_component(item.value))
         for item in package.environments
     ]
     scenario_slugs = [
-        InputOption(value=item.value, display_name=item.display_name, identifier=safe_filename_component(item.value))
+        InputOption(value=item.value, identifier=safe_filename_component(item.value))
         for item in package.scenarios
     ]
     environment_slug_resolver = _render_resolver_function(

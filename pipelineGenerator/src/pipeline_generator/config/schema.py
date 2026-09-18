@@ -22,56 +22,33 @@ GENERATION_MODES = (
     "both",
 )
 
-AUTH_TYPES = (
-    "api_token",
-    "username_password",
-    "service_account",
-    "network_vpn_manual_setup",
-    "none",
-)
-
-WORKING_LOCATIONS = (
-    "central_repo",
-    "customer_repo",
-)
-
-PIPELINE_DESTINATIONS = (
-    "stay_in_central_repo",
-    "copy_to_customer_repo",
-)
-
 PRE_RUN_CHECKS = (
     "verify_controller_access",
     "verify_scenario_exists",
     "verify_load_generators_connected",
     "verify_host_reachable",
     "verify_project_exists",
-    "collect_results",
 )
 
 PRE_RUN_CHECKS_BY_TOOL = {
-    "jmeter": ("verify_scenario_exists", "collect_results"),
+    "jmeter": ("verify_scenario_exists",),
     "loadrunner_professional": (
         "verify_controller_access",
         "verify_scenario_exists",
         "verify_load_generators_connected",
-        "collect_results",
     ),
     "blazemeter": (
         "verify_host_reachable",
         "verify_project_exists",
         "verify_scenario_exists",
-        "collect_results",
     ),
 }
 
 
 REQUIRED_FIELD_PATHS = (
     "setup.id",
-    "setup.target_repository",
     "cicd.type",
     "tool.type",
-    "tool.auth.type",
 )
 
 
@@ -94,14 +71,9 @@ def required_field_values(config: dict) -> list[tuple[str, object]]:
 
 def base_config() -> dict:
     return {
-        "version": 1,
         "incomplete": True,
         "setup": {
             "id": TODO_VALUE,
-            "working_location": "central_repo",
-            "final_pipeline_destination": "copy_to_customer_repo",
-            "ci_can_use_central_repo_directly": False,
-            "target_repository": TODO_VALUE,
             "generation_mode": "both",
         },
         "cicd": {
@@ -109,9 +81,6 @@ def base_config() -> dict:
         },
         "tool": {
             "type": TODO_VALUE,
-            "auth": {
-                "type": TODO_VALUE,
-            },
             "connection": {},
         },
         "manual_pipeline": {
@@ -125,10 +94,6 @@ def base_config() -> dict:
             "scenarios": [],
         },
         "pre_run_checks": [],
-        "artifacts": {
-            "download_remote_results": True,
-            "fail_on_partial_download": False,
-        },
         "readme": {
             "include_manual_usage": True,
             "include_automated_usage": True,

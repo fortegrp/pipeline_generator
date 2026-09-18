@@ -121,32 +121,24 @@ finishes by showing you a summary plus the same check `validate` would run.
   cleanly with a message telling you whether any progress was saved — never
   a raw crash.
 
-### Step 1 — Setup basics
+### Step 1 — What should this setup generate?
 
 | Prompt | What it means |
 |---|---|
-| `Working location` (`central_repo` / `customer_repo`) | Where the *setup files themselves* (this YAML, eventually the generated pipeline files) are authored: in this generator's own central repo, or directly inside the customer's repository. |
-| `Final pipeline destination` (`stay_in_central_repo` / `copy_to_customer_repo`) | Where the *generated* pipeline files end up living long-term. |
-| `Can the CI/CD system consume files directly from the central repo?` | If yes, the customer's CI/CD can reference the generated files in place, without them being copied anywhere. |
-| `Target repository identity` | Free text identifying the customer's repo, e.g. `github.com/acme/storefront`. Used later to auto-suggest a setup ID. |
-| `Generation mode` (`manual_only` / `automated_only` / `both`) | Whether to generate the on-demand manual pipeline, the reusable automated job, or both. |
+| `Generation mode` (`manual_only` / `automated_only` / `both`) | Whether to generate the on-demand manual pipeline (a human triggers it, picking environment/scenario each run), the reusable automated job(s) (no human involved — another pipeline calls it with a fixed environment/scenario), or both. This also decides whether Step 5 (manual pipeline) and Step 7 (automated jobs) run at all. |
 
 ### Step 2 — CI/CD platform and performance tool
 
-Three prompts, each a numbered menu:
+Two prompts, each a numbered menu:
 
 - **CI/CD platform**: `github_actions`, `azure_devops`, or `jenkins`.
 - **Performance tool**: `loadrunner_professional`, `blazemeter`, or `jmeter`.
-- **Authentication option**: `api_token`, `username_password`,
-  `service_account`, `network_vpn_manual_setup`, or `none`. (`none` is
-  meant for JMeter, which runs locally and needs no remote credentials —
-  see section 10.)
 
 ### Step 3 — Setup identifier
 
 The wizard suggests a setup ID by slugifying
-`<cicd-platform>-<tool>-<repo-name>` (e.g.
-`github-actions-loadrunner-professional-storefront`). This ID becomes the
+`<cicd-platform>-<tool>` (e.g.
+`github-actions-loadrunner-professional`). This ID becomes the
 name of the folder `generate` creates, so accepting the suggestion (just
 press Enter) is usually the right move. You can type your own instead — it
 will be automatically made filesystem-safe when `generate` runs, regardless
@@ -213,11 +205,11 @@ What do you want to do with environments?
 versions of this flow made "yes, edit this" silently wipe the existing list,
 which was a real problem for any catalog with more than a couple of entries.
 
-Each environment/scenario entry has three fields: a `key` (used
+Each environment/scenario entry has two fields: a `key` (used
 programmatically, e.g. as a dropdown value and in automated job
-references), a `name` (display label), and a `remote identifier` (the
-tool-side name/ID, e.g. a LoadRunner scenario ID or a JMeter thread group
-name — defaults to a `TODO` placeholder if you don't have it yet).
+references) and a `remote identifier` (the tool-side name/ID, e.g. a
+LoadRunner scenario ID or a JMeter thread group name — defaults to a
+`TODO` placeholder if you don't have it yet).
 
 ### Step 7 — Automated jobs
 
@@ -235,23 +227,22 @@ resuming. For each new job you enter:
 ### Step 8 — Pre-run checks
 
 One screen listing the checks applicable to whichever tool you picked in
-Step 2 — JMeter sees 2 (`verify_scenario_exists`, `collect_results`);
-LoadRunner Professional sees 4 (`verify_controller_access`,
-`verify_scenario_exists`, `verify_load_generators_connected`,
-`collect_results`); BlazeMeter sees 4 different ones
-(`verify_host_reachable`, `verify_project_exists`, `verify_scenario_exists`,
-`collect_results`) — BlazeMeter's real failure modes don't match
-LoadRunner's controller-flavored vocabulary, so it gets its own. Type
-comma-separated numbers to select specific ones, `all`, `none`, or just
-press Enter to keep whatever was already enabled (useful when resuming).
+Step 2 — JMeter sees 1 (`verify_scenario_exists`); LoadRunner Professional
+sees 3 (`verify_controller_access`, `verify_scenario_exists`,
+`verify_load_generators_connected`); BlazeMeter sees 3 different ones
+(`verify_host_reachable`, `verify_project_exists`, `verify_scenario_exists`)
+— BlazeMeter's real failure modes don't match LoadRunner's
+controller-flavored vocabulary, so it gets its own. Type comma-separated
+numbers to select specific ones, `all`, `none`, or just press Enter to keep
+whatever was already enabled (useful when resuming).
 
 ### After Step 8
 
-The wizard prints a plain-language summary (setup ID, CI/CD, tool, target
-repo, whether the manual pipeline is enabled, and counts of environments/
-scenarios/automated jobs), then runs the same check `validate` would and
-prints the result — so you see any outstanding warnings immediately, in the
-same terminal session, without a separate command.
+The wizard prints a plain-language summary (setup ID, CI/CD, tool, whether
+the manual pipeline is enabled, and counts of environments/scenarios/
+automated jobs), then runs the same check `validate` would and prints the
+result — so you see any outstanding warnings immediately, in the same
+terminal session, without a separate command.
 
 ## 5. Understanding `customer.yaml`
 
@@ -259,15 +250,10 @@ Full annotated example (`incomplete: false`, i.e. a finished, ready-to-hand-off
 setup):
 
 ```yaml
-version: 1
 incomplete: false                 # false = "this is done"; see section 6
 
 setup:
   id: acme-github-actions-loadrunner-professional-storefront
-  working_location: central_repo               # central_repo | customer_repo
-  final_pipeline_destination: copy_to_customer_repo  # stay_in_central_repo | copy_to_customer_repo
-  ci_can_use_central_repo_directly: false
-  target_repository: github.com/acme/storefront
   generation_mode: both                          # manual_only | automated_only | both
 
 cicd:
@@ -275,9 +261,6 @@ cicd:
 
 tool:
   type: loadrunner_professional   # loadrunner_professional | blazemeter | jmeter
-  auth:
-    type: none                    # api_token | username_password | service_account
-                                   # | network_vpn_manual_setup | none
   connection:
     wlrun_path: wlrun              # optional; blank/absent defaults to "wlrun" on PATH
 
@@ -296,22 +279,15 @@ automated_jobs:
 catalog:
   environments:
     - key: qa
-      name: QA
       identifier: QA
   scenarios:
     - key: checkout_smoke_qa
-      name: Checkout Smoke (QA)
       identifier: C:\Scenarios\checkout_smoke_qa.lrs
 
 pre_run_checks:
   - verify_controller_access
   - verify_scenario_exists
   - verify_load_generators_connected
-  - collect_results
-
-artifacts:
-  download_remote_results: true
-  fail_on_partial_download: false
 
 readme:
   include_manual_usage: true
@@ -337,8 +313,8 @@ changes what `generate` will let you do.
 problem it finds as either an **error** or a **warning**:
 
 - **Errors** are things that are simply invalid regardless of context — an
-  unsupported `cicd.type`, `tool.type`, or `auth.type` value. These always
-  block `generate`, no matter what.
+  unsupported `cicd.type` or `tool.type` value. These always block
+  `generate`, no matter what.
 - **Warnings** are things that are fine for a draft but would be a problem
   for a finished setup — a missing connection field, an empty catalog, an
   automated job pointing at an environment/scenario that doesn't exist yet.
@@ -608,9 +584,9 @@ all three tools, and `generate` writes a real, working
 
 | Tool | Auth model | Connection fields | Precheck vocabulary | Generated script |
 |---|---|---|---|---|
-| **LoadRunner Professional** | `none` (runs on a controller-adjacent agent) | optional `wlrun_path` | `verify_controller_access`, `verify_scenario_exists`, `verify_load_generators_connected` (TODO comment only), `collect_results` | Real and complete — runs `wlrun` locally; no remote credentials managed by this script; needs a self-hosted runner (see above). |
-| **BlazeMeter** | Remote (`api_token`) | `base_url`, `workspace_id`, `project_id` | `verify_host_reachable`, `verify_project_exists`, `verify_scenario_exists`, `collect_results` (TODO comment only) | Real and complete — drives BlazeMeter's REST API; needs `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET` set; two API-surface details need live-account verification (see above). |
-| **JMeter** | `none` (runs locally) | `test_plan_path`, optional `jmeter_bin` | `verify_scenario_exists`, `collect_results` (TODO comment only) | Real and complete — no remote API or credentials needed, just a local `jmeter` subprocess call. |
+| **LoadRunner Professional** | `none` (runs on a controller-adjacent agent) | optional `wlrun_path` | `verify_controller_access`, `verify_scenario_exists`, `verify_load_generators_connected` (TODO comment only) | Real and complete — runs `wlrun` locally; no remote credentials managed by this script; needs a self-hosted runner (see above). |
+| **BlazeMeter** | Remote (`api_token`) | `base_url`, `workspace_id`, `project_id` | `verify_host_reachable`, `verify_project_exists`, `verify_scenario_exists` | Real and complete — drives BlazeMeter's REST API; needs `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET` set; two API-surface details need live-account verification (see above). |
+| **JMeter** | `none` (runs locally) | `test_plan_path`, optional `jmeter_bin` | `verify_scenario_exists` | Real and complete — no remote API or credentials needed, just a local `jmeter` subprocess call. |
 
 ## 11. Validating Configs
 
@@ -656,10 +632,8 @@ BlazeMeter, from scratch:
 ```bash
 # 1. Run the wizard
 pipeline-generator wizard --output setups/acme-bm.yaml
-#    Step 1: working_location=central_repo, final_pipeline_destination=
-#            copy_to_customer_repo, target_repository=github.com/acme/storefront,
-#            generation_mode=both
-#    Step 2: cicd=github_actions, tool=blazemeter, auth=api_token
+#    Step 1: generation_mode=both
+#    Step 2: cicd=github_actions, tool=blazemeter
 #    Step 3: accept the suggested setup ID
 #    Step 4: base_url=https://a.blazemeter.com, workspace_id=12345,
 #            project_id=67890
@@ -669,7 +643,7 @@ pipeline-generator wizard --output setups/acme-bm.yaml
 #    Step 7: add one automated job: post-deploy-smoke, env=qa,
 #            scenario=checkout_smoke_qa, timeout=60
 #    Step 8: enable verify_host_reachable, verify_project_exists,
-#            verify_scenario_exists, collect_results
+#            verify_scenario_exists
 #    -> wizard prints a summary and validation result, then exits
 
 # 2. Check it's actually ready to hand off
@@ -680,13 +654,13 @@ pipeline-generator validate --config setups/acme-bm.yaml
 
 # 3. Generate the real pipeline files
 pipeline-generator generate --config setups/acme-bm.yaml --output-dir generated
-# -> generated/github-actions-blazemeter-storefront/ now contains
+# -> generated/github-actions-blazemeter/ now contains
 #    customer.yaml, README.md, scripts/run-blazemeter.sh, and
 #    .github/workflows/*.yml (the workflow already passes --timeout-minutes
 #    60 automatically for the automated job, 180 for the manual pipeline)
 
 # 4. Sanity-check the generated script locally before handing off
-cd generated/github-actions-blazemeter-storefront
+cd generated/github-actions-blazemeter
 export BLAZEMETER_API_KEY_ID=... BLAZEMETER_API_KEY_SECRET=...
 ./scripts/run-blazemeter.sh --environment qa --scenario checkout_smoke_qa --timeout-minutes 60
 # -> resolves qa/checkout_smoke_qa to their catalog identifiers, checks jq
@@ -696,9 +670,8 @@ export BLAZEMETER_API_KEY_ID=... BLAZEMETER_API_KEY_SECRET=...
 #    unreachable, project/test not found, or timeout) rather than the old
 #    "not implemented yet" message.
 
-# 5. Hand off generated/github-actions-blazemeter-storefront/ to Acme,
-#    or commit it into their repo directly, per whatever
-#    final_pipeline_destination you chose in Step 1.
+# 5. Hand off generated/github-actions-blazemeter/ to Acme, or commit
+#    it into their repo directly -- however you want to distribute it.
 ```
 
 ## 13. Troubleshooting
