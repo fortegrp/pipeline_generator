@@ -4,6 +4,29 @@ All notable changes to `pipeline-generator` are documented here.
 
 ## [Unreleased]
 
+- Wizard's environment/scenario identifier prompt no longer says "remote
+  identifier" for every tool — that was only accurate for BlazeMeter (a
+  real Test ID on BlazeMeter's servers). It's now tool-specific:
+  JMeter's is a `-J` property value your `.jmx` reads, LoadRunner's
+  scenario identifier is a `.lrs` file path, and BlazeMeter's stays a Test
+  ID. Also documented (in the user guide and the prompt label itself) that
+  the *environment* identifier specifically is never actually used by the
+  generated script for LoadRunner or BlazeMeter — only its `key` affects
+  the results-folder name; it's still asked for consistency across tools,
+  but the wording no longer implies it does something it doesn't.
+- JMeter execution moved fully to Docker. `scripts/run-jmeter.sh` now runs
+  `docker run --rm -v "$(pwd):/workspace" -w /workspace <docker_image> -n
+  -t ...` instead of a local `jmeter` binary — the whole working directory
+  is bind-mounted (not just the test plan file) so CSV data sets/fragments
+  referenced by relative path still resolve, and results land directly on
+  the host filesystem. `tool.connection.jmeter_bin` is replaced by
+  `docker_image` (optional, defaults to `justb4/jmeter:5.6.3` via
+  `DEFAULT_JMETER_DOCKER_IMAGE` in `config/schema.py`). Added a new
+  `verify_docker_available` pre-run check (checks `docker` is on `PATH`),
+  mirroring LoadRunner's `verify_controller_access`. Existing `customer.yaml`
+  files with `jmeter_bin` still load fine (it's just ignored) but should be
+  updated to `docker_image`; the agent/runner now needs Docker installed
+  instead of a local JMeter install.
 - Wizard no longer asks for a setup ID. The "Setup identifier" step is
   gone; `setup.id` is now assigned silently right after CI/CD platform and
   tool are chosen, as `<cicd_type>-<tool_type>` plus a short random hex

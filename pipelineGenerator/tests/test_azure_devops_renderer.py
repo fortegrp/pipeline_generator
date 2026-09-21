@@ -12,7 +12,7 @@ def _config() -> dict:
     return {
         "setup": {"id": "azure-test-setup", "generation_mode": "both"},
         "cicd": {"type": "azure_devops"},
-        "tool": {"type": "jmeter", "connection": {"test_plan_path": "plan.jmx", "jmeter_bin": ""}},
+        "tool": {"type": "jmeter", "connection": {"test_plan_path": "plan.jmx", "docker_image": ""}},
         "pre_run_checks": [],
         "catalog": {
             "environments": [{"key": "qa", "name": "QA", "identifier": "env-qa"}],
@@ -77,7 +77,7 @@ def test_render_azure_devops_escapes_adversarial_values(tmp_path: Path) -> None:
     config = {
         "setup": {"id": "azure-adversarial", "generation_mode": "both"},
         "cicd": {"type": "azure_devops"},
-        "tool": {"type": "jmeter", "connection": {"test_plan_path": "plan.jmx", "jmeter_bin": ""}},
+        "tool": {"type": "jmeter", "connection": {"test_plan_path": "plan.jmx", "docker_image": ""}},
         "pre_run_checks": [],
         "catalog": {
             "environments": [{"key": nasty_env_value, "name": "QA", "identifier": "env-nasty"}],

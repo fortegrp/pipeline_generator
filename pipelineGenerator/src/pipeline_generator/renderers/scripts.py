@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from pipeline_generator.config.placeholders import TODO_VALUE
-from pipeline_generator.config.schema import PRE_RUN_CHECKS
+from pipeline_generator.config.schema import DEFAULT_JMETER_DOCKER_IMAGE, PRE_RUN_CHECKS
 from pipeline_generator.generator.generic_model import GenericPipelinePackage, InputOption
 from pipeline_generator.renderers.quoting import safe_filename_component, shell_quote
 
@@ -161,19 +161,30 @@ def _render_arg_parsing(include_timeout: bool = False) -> str:
 def _render_jmeter_script(config: dict, package: GenericPipelinePackage) -> str:
     connection = config.get("tool", {}).get("connection", {})
     test_plan_path = connection.get("test_plan_path") or TODO_VALUE
-    jmeter_bin = connection.get("jmeter_bin") or "jmeter"
+    docker_image = connection.get("docker_image") or DEFAULT_JMETER_DOCKER_IMAGE
     checks = _allowed_pre_run_checks(config)
 
-    precheck = ""
+    scenario_check = ""
     if "verify_scenario_exists" in checks:
-        precheck = """
+        scenario_check = """
   if [ ! -f "$test_plan_path" ]; then
     echo "Test plan not found: $test_plan_path" >&2
     exit 1
   fi
 """
 
-    remaining_checks = [check for check in checks if check != "verify_scenario_exists"]
+    docker_check = ""
+    if "verify_docker_available" in checks:
+        docker_check = """
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "ERROR: docker not found -- JMeter now runs inside a container" >&2
+    exit 1
+  fi
+"""
+
+    remaining_checks = [
+        check for check in checks if check not in {"verify_scenario_exists", "verify_docker_available"}
+    ]
     precheck_comments = "\n".join(f"  # TODO precheck: {check}" for check in remaining_checks)
     if precheck_comments:
         precheck_comments = f"\n{precheck_comments}\n"
@@ -192,8 +203,8 @@ main() {{
   mkdir -p run-output
 
   local test_plan_path={shell_quote(test_plan_path)}
-  local jmeter_bin={shell_quote(jmeter_bin)}
-{precheck}{precheck_comments}
+  local docker_image={shell_quote(docker_image)}
+{scenario_check}{docker_check}{precheck_comments}
   local environment_slug
   local scenario_slug
   environment_slug="$(resolve_environment_slug "$environment_key")"
@@ -205,8 +216,14 @@ main() {{
   local run_id="${{environment_slug}}_${{scenario_slug}}_${{started_at_compact}}"
   local report_link="$results_dir/report/index.html"
 
+  # JMeter runs inside "$docker_image" rather than a local install. The
+  # whole working directory is mounted read-write at /workspace (not just
+  # the test plan file) so a .jmx that references CSV data sets or included
+  # fragments by relative path still resolves, and results written under
+  # results_dir land directly on the host filesystem.
   local run_status=0
-  if ! "$jmeter_bin" -n -t "$test_plan_path" -l "$results_dir/results.jtl" -e -o "$results_dir/report" \\
+  if ! docker run --rm -v "$(pwd):/workspace" -w /workspace "$docker_image" \\
+    -n -t "$test_plan_path" -l "$results_dir/results.jtl" -e -o "$results_dir/report" \\
     -Jenvironment="$environment_identifier" -Jscenario="$scenario_identifier"; then
     run_status=1
   fi

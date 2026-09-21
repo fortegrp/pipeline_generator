@@ -6,6 +6,7 @@ from typing import Callable
 from pipeline_generator.config.loader import load_config, save_config
 from pipeline_generator.config.placeholders import TODO_VALUE
 from pipeline_generator.config.schema import (
+    DEFAULT_JMETER_DOCKER_IMAGE,
     GENERATION_MODES,
     PRE_RUN_CHECKS,
     PRE_RUN_CHECKS_BY_TOOL,
@@ -25,6 +26,27 @@ from pipeline_generator.wizard.prompts import (
 )
 
 TOTAL_STEPS = 7
+
+CATALOG_IDENTIFIER_PROMPTS = {
+    "jmeter": {
+        "environment": "Environment property value your .jmx reads via ${__P(environment)}",
+        "scenario": "Scenario property value your .jmx reads via ${__P(scenario)}",
+    },
+    "loadrunner_professional": {
+        "environment": (
+            "Environment identifier (not used by the generated script for LoadRunner -- "
+            "only the key names the results folder)"
+        ),
+        "scenario": "Path to the .lrs scenario file LoadRunner should run",
+    },
+    "blazemeter": {
+        "environment": (
+            "Environment identifier (not used by the generated script for BlazeMeter -- "
+            "only the key names the results folder)"
+        ),
+        "scenario": "BlazeMeter Test ID to start",
+    },
+}
 
 GENERATION_MODE_HINTS = {
     "manual_only": (
@@ -102,8 +124,13 @@ def _step_manual_pipeline(config: dict, output_path: Path) -> None:
 
 def _step_catalog(config: dict, output_path: Path) -> None:
     _section(5, "Environments and scenarios")
-    config["catalog"]["environments"] = _prompt_catalog_section("environment", config["catalog"]["environments"])
-    config["catalog"]["scenarios"] = _prompt_catalog_section("scenario", config["catalog"]["scenarios"])
+    tool_type = config["tool"]["type"]
+    config["catalog"]["environments"] = _prompt_catalog_section(
+        "environment", config["catalog"]["environments"], tool_type
+    )
+    config["catalog"]["scenarios"] = _prompt_catalog_section(
+        "scenario", config["catalog"]["scenarios"], tool_type
+    )
     save_config(output_path, config)
 
 
@@ -172,20 +199,21 @@ def _prompt_connection(config: dict) -> None:
             "Path to the JMeter test plan (.jmx), relative to your repository root",
             default=connection.get("test_plan_path", TODO_VALUE),
         ) or TODO_VALUE
-        connection["jmeter_bin"] = prompt_text(
-            "Optional path to the jmeter executable (blank uses PATH)",
-            default=connection.get("jmeter_bin", ""),
+        connection["docker_image"] = prompt_text(
+            f"Docker image to run JMeter in (blank uses {DEFAULT_JMETER_DOCKER_IMAGE})",
+            default=connection.get("docker_image", ""),
         )
 
 
-def _prompt_catalog_items(kind: str) -> list[dict]:
+def _prompt_catalog_items(kind: str, tool_type: str) -> list[dict]:
     items: list[dict] = []
+    identifier_label = CATALOG_IDENTIFIER_PROMPTS.get(tool_type, {}).get(kind, f"{kind} remote identifier")
     print(f"Enter {kind}s. Leave key blank to finish.")
     while True:
         key = prompt_text(f"{kind} key", allow_blank=True)
         if not key:
             break
-        identifier = prompt_text(f"{kind} remote identifier", default=TODO_VALUE) or TODO_VALUE
+        identifier = prompt_text(identifier_label, default=TODO_VALUE) or TODO_VALUE
         items.append({"key": key, "identifier": identifier})
     return items
 
@@ -210,9 +238,9 @@ def _prompt_resumable_list(
     return existing
 
 
-def _prompt_catalog_section(kind: str, existing: list[dict]) -> list[dict]:
+def _prompt_catalog_section(kind: str, existing: list[dict], tool_type: str) -> list[dict]:
     return _prompt_resumable_list(
-        f"{kind}s", existing, [item["key"] for item in existing], lambda: _prompt_catalog_items(kind)
+        f"{kind}s", existing, [item["key"] for item in existing], lambda: _prompt_catalog_items(kind, tool_type)
     )
 
 

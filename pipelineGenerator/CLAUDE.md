@@ -149,12 +149,23 @@ Pipeline: **customer YAML → validate → generic pipeline model → CI/CD rend
   it wasn't meant to. For `jmeter`, the rendered script is real: it resolves
   the passed `--environment`/`--scenario` to their identifiers, optionally
   checks the test plan file exists first (only if `verify_scenario_exists`
-  is in `pre_run_checks`), then creates
-  `run-output/<environment_slug>_<scenario_slug>/` and runs
-  `jmeter -n -t <test_plan_path> -l
-  run-output/<environment_slug>_<scenario_slug>/results.jtl -e -o
+  is in `pre_run_checks`) and that `docker` is on `PATH` (if
+  `verify_docker_available` is in `pre_run_checks`, mirroring
+  `loadrunner_professional`'s `verify_controller_access`), then creates
+  `run-output/<environment_slug>_<scenario_slug>/` and runs JMeter inside a
+  container rather than a local install: `docker run --rm -v
+  "$(pwd):/workspace" -w /workspace <docker_image> -n -t <test_plan_path>
+  -l run-output/<environment_slug>_<scenario_slug>/results.jtl -e -o
   run-output/<environment_slug>_<scenario_slug>/report
-  -Jenvironment=... -Jscenario=...` for real.
+  -Jenvironment=... -Jscenario=...` for real. The whole working directory is
+  bind-mounted at `/workspace` (not just the test plan file) so a `.jmx`
+  referencing CSV data sets or included fragments by relative path still
+  resolves, and results written under `results_dir` land directly on the
+  host filesystem since it's inside the same mount. `docker_image` is a
+  `tool.connection` field (default `justb4/jmeter:5.6.3` from
+  `DEFAULT_JMETER_DOCKER_IMAGE` in `config/schema.py`, used whenever it's
+  blank) — there used to be a `jmeter_bin` field for a local install path,
+  removed when this moved to Docker.
   `loadrunner_professional` is also real: it assumes the CI job runs on a
   dedicated agent co-located with the LoadRunner Controller (so
   `wlrun.exe` is already on the box) and runs `wlrun -Run -TestPath

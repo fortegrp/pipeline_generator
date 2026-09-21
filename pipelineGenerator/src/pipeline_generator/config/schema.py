@@ -4,6 +4,8 @@ from copy import deepcopy
 
 from pipeline_generator.config.placeholders import TODO_VALUE
 
+DEFAULT_JMETER_DOCKER_IMAGE = "justb4/jmeter:5.6.3"
+
 SUPPORTED_CICD = (
     "github_actions",
     "azure_devops",
@@ -28,10 +30,11 @@ PRE_RUN_CHECKS = (
     "verify_load_generators_connected",
     "verify_host_reachable",
     "verify_project_exists",
+    "verify_docker_available",
 )
 
 PRE_RUN_CHECKS_BY_TOOL = {
-    "jmeter": ("verify_scenario_exists",),
+    "jmeter": ("verify_scenario_exists", "verify_docker_available"),
     "loadrunner_professional": (
         "verify_controller_access",
         "verify_scenario_exists",

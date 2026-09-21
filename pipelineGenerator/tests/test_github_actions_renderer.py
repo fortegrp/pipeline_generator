@@ -12,7 +12,7 @@ def _config() -> dict:
     return {
         "setup": {"id": "gha-test-setup", "generation_mode": "both"},
         "cicd": {"type": "github_actions"},
-        "tool": {"type": "jmeter", "connection": {"test_plan_path": "plan.jmx", "jmeter_bin": ""}},
+        "tool": {"type": "jmeter", "connection": {"test_plan_path": "plan.jmx", "docker_image": ""}},
         "pre_run_checks": [],
         "catalog": {
             "environments": [{"key": "qa", "name": "QA", "identifier": "env-qa"}],
@@ -78,7 +78,7 @@ def test_render_github_actions_escapes_adversarial_values(tmp_path: Path) -> Non
     config = {
         "setup": {"id": "gha-adversarial", "generation_mode": "both"},
         "cicd": {"type": "github_actions"},
-        "tool": {"type": "jmeter", "connection": {"test_plan_path": "plan.jmx", "jmeter_bin": ""}},
+        "tool": {"type": "jmeter", "connection": {"test_plan_path": "plan.jmx", "docker_image": ""}},
         "pre_run_checks": [],
         "catalog": {
             "environments": [{"key": nasty_env_value, "name": "QA", "identifier": "env-nasty"}],

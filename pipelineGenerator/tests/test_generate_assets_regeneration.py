@@ -21,7 +21,7 @@ def test_regenerating_after_switching_tool_type_removes_stale_script(tmp_path: P
     setup_dir = output_dir / "regen-setup"
     assert (setup_dir / "scripts" / "run-loadrunner_professional.sh").exists()
 
-    generate_assets(_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": "jmeter"}), output_dir)
+    generate_assets(_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""}), output_dir)
 
     assert (setup_dir / "scripts" / "run-jmeter.sh").exists()
     assert not (setup_dir / "scripts" / "run-loadrunner_professional.sh").exists()
@@ -30,7 +30,7 @@ def test_regenerating_after_switching_tool_type_removes_stale_script(tmp_path: P
 def test_regenerating_after_removing_automated_job_removes_stale_workflow(tmp_path: Path) -> None:
     output_dir = tmp_path / "generated"
 
-    config = _config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": "jmeter"})
+    config = _config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
     config["setup"]["generation_mode"] = "automated_only"
     config["catalog"]["environments"] = [{"key": "qa", "identifier": "env-qa"}]
     config["catalog"]["scenarios"] = [{"key": "checkout_smoke", "identifier": "SC-1"}]

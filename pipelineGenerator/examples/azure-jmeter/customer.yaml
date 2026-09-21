@@ -8,7 +8,7 @@ tool:
   type: jmeter
   connection:
     test_plan_path: performance/checkout.jmx
-    jmeter_bin: ''
+    docker_image: ''
 manual_pipeline:
   enabled: true
   name: Azure JMeter Manual Run
@@ -28,6 +28,7 @@ catalog:
     identifier: checkout-smoke
 pre_run_checks:
 - verify_scenario_exists
+- verify_docker_available
 readme:
   include_manual_usage: true
   include_automated_usage: true

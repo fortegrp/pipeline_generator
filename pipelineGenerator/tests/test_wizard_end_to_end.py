@@ -14,7 +14,7 @@ def test_run_wizard_full_flow_produces_expected_config(tmp_path: Path, monkeypat
             "",  # cicd platform -> default github_actions
             "3",  # performance tool -> jmeter
             "performance/checkout.jmx",  # jmeter test plan path
-            "",  # jmeter bin -> blank (uses PATH)
+            "",  # docker image -> blank (uses default)
             "",  # manual pipeline name -> default
             "",  # manual pipeline timeout -> default 240
             "y",  # add environments now?
@@ -43,7 +43,7 @@ def test_run_wizard_full_flow_produces_expected_config(tmp_path: Path, monkeypat
     assert len(config["setup"]["id"]) == len("github-actions-jmeter-") + 6
     assert config["cicd"]["type"] == "github_actions"
     assert config["tool"]["type"] == "jmeter"
-    assert config["tool"]["connection"] == {"test_plan_path": "performance/checkout.jmx", "jmeter_bin": ""}
+    assert config["tool"]["connection"] == {"test_plan_path": "performance/checkout.jmx", "docker_image": ""}
     assert config["manual_pipeline"] == {
         "enabled": True,
         "name": "Performance Manual Run",

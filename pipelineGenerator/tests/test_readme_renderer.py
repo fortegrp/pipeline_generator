@@ -12,8 +12,8 @@ def _base_config(tool_type: str, connection: dict) -> dict:
         "tool": {"type": tool_type, "connection": connection},
         "pre_run_checks": [],
         "catalog": {
-            "environments": [{"key": "qa", "name": "QA", "identifier": "env-qa"}],
-            "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "SC-1"}],
+            "environments": [{"key": "qa", "identifier": "env-qa"}],
+            "scenarios": [{"key": "checkout_smoke", "identifier": "SC-1"}],
         },
         "manual_pipeline": {"enabled": True, "name": "Performance Manual Run", "timeout_minutes": 30},
         "automated_jobs": [],
@@ -48,12 +48,24 @@ def test_readme_mentions_blazemeter_secrets_and_verification_caveat() -> None:
 
 
 def test_readme_mentions_jmeter_script_in_files_section() -> None:
-    config = _base_config("jmeter", {"test_plan_path": "performance/checkout.jmx", "jmeter_bin": ""})
+    config = _base_config("jmeter", {"test_plan_path": "performance/checkout.jmx", "docker_image": ""})
     package = build_generic_package(config)
 
     readme = render_setup_readme(config, package)
 
     assert "scripts/run-jmeter.sh" in readme
+
+
+def test_readme_mentions_jmeter_docker_requirement_in_todos_and_troubleshooting() -> None:
+    config = _base_config("jmeter", {"test_plan_path": "performance/checkout.jmx", "docker_image": ""})
+    package = build_generic_package(config)
+
+    readme = render_setup_readme(config, package)
+    todos = _section(readme, "Remaining TODOs")
+    troubleshooting = _section(readme, "Troubleshooting")
+
+    assert "Ensure Docker is installed and running" in todos
+    assert "docker` on the agent/runner's" in troubleshooting
 
 
 def test_readme_mentions_loadrunner_script_without_todo_api_call() -> None:
@@ -78,7 +90,7 @@ def test_readme_mentions_loadrunner_agent_caveat() -> None:
 
 def test_readme_mentions_run_summary_json_for_every_tool() -> None:
     for tool_type, connection in (
-        ("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": ""}),
+        ("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""}),
         ("loadrunner_professional", {"wlrun_path": "wlrun"}),
         ("blazemeter", {"base_url": "https://a.blazemeter.com", "workspace_id": "1", "project_id": "2"}),
     ):
@@ -134,7 +146,7 @@ def test_readme_troubleshooting_section_has_moved_caveats() -> None:
 
 def test_readme_troubleshooting_has_generic_guidance_for_every_tool() -> None:
     for tool_type, connection in (
-        ("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": ""}),
+        ("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""}),
         ("loadrunner_professional", {"wlrun_path": "wlrun"}),
         ("blazemeter", {"base_url": "https://a.blazemeter.com", "workspace_id": "1", "project_id": "2"}),
     ):
@@ -147,14 +159,24 @@ def test_readme_troubleshooting_has_generic_guidance_for_every_tool() -> None:
 
 
 def test_readme_connection_details_jmeter() -> None:
-    config = _base_config("jmeter", {"test_plan_path": "performance/checkout.jmx", "jmeter_bin": "jmeter"})
+    config = _base_config("jmeter", {"test_plan_path": "performance/checkout.jmx", "docker_image": ""})
     package = build_generic_package(config)
 
     readme = render_setup_readme(config, package)
     details = _section(readme, "Connection Details")
 
     assert "performance/checkout.jmx" in details
-    assert "jmeter" in details
+    assert "justb4/jmeter:5.6.3" in details
+
+
+def test_readme_connection_details_jmeter_custom_docker_image() -> None:
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": "myorg/jmeter:custom"})
+    package = build_generic_package(config)
+
+    readme = render_setup_readme(config, package)
+    details = _section(readme, "Connection Details")
+
+    assert "myorg/jmeter:custom" in details
 
 
 def test_readme_connection_details_loadrunner() -> None:
@@ -183,7 +205,7 @@ def test_readme_connection_details_blazemeter() -> None:
 
 
 def test_readme_manual_usage_is_cicd_specific() -> None:
-    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": ""})
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
 
     config["cicd"]["type"] = "github_actions"
     readme = render_setup_readme(config, build_generic_package(config))
@@ -199,7 +221,7 @@ def test_readme_manual_usage_is_cicd_specific() -> None:
 
 
 def test_readme_automated_job_instructions_are_cicd_specific_and_named() -> None:
-    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": ""})
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
     config["automated_jobs"] = [
         {"name": "Nightly Load", "environment_ref": "qa", "scenario_ref": "checkout_smoke", "enabled": True}
     ]
@@ -218,7 +240,7 @@ def test_readme_automated_job_instructions_are_cicd_specific_and_named() -> None
 
 
 def test_readme_artifacts_section_per_tool() -> None:
-    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": ""})
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
     readme = render_setup_readme(config, build_generic_package(config))
     section = _section(readme, "Artifacts & Output")
     assert "results.jtl" in section

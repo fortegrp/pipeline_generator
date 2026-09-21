@@ -102,13 +102,15 @@ The config model currently supports:
 
 - `blazemeter`
 - `loadrunner_professional`
-- `jmeter` — local/self-hosted rather than a remote SaaS tool; just a
-  `test_plan_path` connection field.
+- `jmeter` — runs inside a Docker container rather than a remote SaaS tool
+  or a local install; `test_plan_path` and optional `docker_image`
+  (default `justb4/jmeter:5.6.3`) connection fields.
 
 `generate` writes a `scripts/run-<tool_type>.sh` for every setup, and all
 three tools are now equally real, working execution. JMeter resolves the
-environment/scenario to their catalog identifiers and runs a real
-`jmeter -n -t ...` subprocess (no remote API or credentials needed).
+environment/scenario to their catalog identifiers and runs JMeter via a
+real `docker run ... -n -t ...` invocation (no remote API or credentials
+needed, but the agent/runner needs Docker installed).
 LoadRunner Professional does the same resolution and runs a real
 `wlrun -Run -TestPath ...` subprocess, assuming the CI job runs on an agent
 co-located with the LoadRunner Controller (see
@@ -279,12 +281,16 @@ from a checkout of the generated setup.
 
 - For **JMeter**, it's real and complete: it resolves `--environment`/
   `--scenario` to their catalog identifiers, optionally checks the test plan
-  file exists first (if `verify_scenario_exists` is in `pre_run_checks`),
-  then creates `run-output/<environment_slug>_<scenario_slug>/` and runs
-  `jmeter -n -t <test_plan_path> -l
-  run-output/<environment_slug>_<scenario_slug>/results.jtl -e -o
+  file exists first (if `verify_scenario_exists` is in `pre_run_checks`)
+  and that `docker` is on `PATH` (if `verify_docker_available` is
+  configured), then creates `run-output/<environment_slug>_<scenario_slug>/`
+  and runs JMeter inside a container: `docker run --rm -v
+  "$(pwd):/workspace" -w /workspace <docker_image> -n -t <test_plan_path>
+  -l run-output/<environment_slug>_<scenario_slug>/results.jtl -e -o
   run-output/<environment_slug>_<scenario_slug>/report
-  -Jenvironment=... -Jscenario=...` for real.
+  -Jenvironment=... -Jscenario=...` for real. The whole working directory is
+  bind-mounted at `/workspace` so relative-path CSV data sets/fragments
+  still resolve, and results land directly on the host filesystem.
 - For **LoadRunner Professional**, it's also real and complete: it resolves
   `--environment`/`--scenario` the same way (a scenario's identifier is a
   full `.lrs` file path), optionally checks `wlrun_path` resolves to a
@@ -388,10 +394,12 @@ whatever machine the CI/CD job executes on:
 3. Create `run-output/`.
 4. Run the tool:
    - **JMeter**: optionally verify the test plan file exists (if
-     `verify_scenario_exists` is configured), then create
+     `verify_scenario_exists` is configured) and that `docker` is available
+     (if `verify_docker_available` is configured), then create
      `run-output/<environment_slug>_<scenario_slug>/` and run
-     `jmeter -n -t ...` for real, writing `results.jtl`/`report/` into
-     that per-run folder.
+     `docker run ... -n -t ...` for real, writing `results.jtl`/`report/`
+     into that per-run folder (bind-mounted from the container back to the
+     host).
    - **LoadRunner Professional**: optionally verify `wlrun_path` is
      runnable and/or the resolved `.lrs` scenario file exists (if
      `verify_controller_access`/`verify_scenario_exists` are configured),
@@ -529,8 +537,9 @@ execution layer at all. In its place, `generate` writes a
 `scripts/run-<tool_type>.sh` per setup, and all three are now real:
 
 - **JMeter is real, working execution** — resolved. The generated script
-  resolves the environment/scenario and runs a real `jmeter -n -t <plan> -l
-  <results> -e -o <report>` subprocess. Nothing left to do here.
+  resolves the environment/scenario and runs a real `docker run ...
+  -n -t <plan> -l <results> -e -o <report>` invocation (JMeter runs inside a
+  container now rather than as a local install). Nothing left to do here.
 - **LoadRunner Professional is also real, working execution** — resolved
   (see `docs/superpowers/specs/
   2026-09-09-loadrunner-local-agent-execution-design.md` for the design).

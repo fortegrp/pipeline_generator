@@ -31,7 +31,7 @@ def _base_config(tool_type: str, connection: dict, checks: list[str] | None = No
 def test_render_jmeter_script_with_precheck(tmp_path: Path) -> None:
     config = _base_config(
         "jmeter",
-        {"test_plan_path": "performance/checkout.jmx", "jmeter_bin": ""},
+        {"test_plan_path": "performance/checkout.jmx", "docker_image": ""},
         checks=["verify_scenario_exists"],
     )
     package = build_generic_package(config)
@@ -48,8 +48,9 @@ def test_render_jmeter_script_with_precheck(tmp_path: Path) -> None:
     assert "resolve_scenario_identifier() {" in content
     assert 'if [ ! -f "$test_plan_path" ]; then' in content
     assert "local test_plan_path=performance/checkout.jmx" in content
-    assert "local jmeter_bin=jmeter" in content
-    assert '"$jmeter_bin" -n -t "$test_plan_path"' in content
+    assert "local docker_image=justb4/jmeter:5.6.3" in content
+    assert 'docker run --rm -v "$(pwd):/workspace" -w /workspace "$docker_image" \\' in content
+    assert '-n -t "$test_plan_path"' in content
     assert 'if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then' in content
 
     syntax_check = subprocess.run(["bash", "-n", str(script_path)], capture_output=True, text=True)
@@ -57,7 +58,7 @@ def test_render_jmeter_script_with_precheck(tmp_path: Path) -> None:
 
 
 def test_render_jmeter_script_without_precheck_flag(tmp_path: Path) -> None:
-    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": ""}, checks=[])
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""}, checks=[])
     package = build_generic_package(config)
 
     render_tool_script(config, package, tmp_path)
@@ -67,7 +68,7 @@ def test_render_jmeter_script_without_precheck_flag(tmp_path: Path) -> None:
 
 
 def test_jmeter_resolver_uses_exact_match_not_glob(tmp_path: Path) -> None:
-    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": ""})
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
     config["catalog"]["environments"] = [
         {"key": "*", "identifier": "should-not-match"},
         {"key": "staging", "identifier": "env-stg"},
@@ -94,7 +95,7 @@ def test_resolver_handles_adversarial_catalog_keys(tmp_path: Path) -> None:
         f"$(touch {marker})",
         f"`touch {marker}`",
     ]
-    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": ""})
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
     config["catalog"]["environments"] = [
         {"key": key, "identifier": f"env-{i}"} for i, key in enumerate(adversarial_keys)
     ]
@@ -624,7 +625,7 @@ def test_render_loadrunner_script_todo_comments_for_unhandled_checks(tmp_path: P
 def test_render_jmeter_script_todo_comments_for_unhandled_checks(tmp_path: Path) -> None:
     config = _base_config(
         "jmeter",
-        {"test_plan_path": "plan.jmx", "jmeter_bin": ""},
+        {"test_plan_path": "plan.jmx", "docker_image": ""},
         checks=["verify_scenario_exists", "verify_controller_access", "verify_load_generators_connected"],
     )
     package = build_generic_package(config)
@@ -642,7 +643,7 @@ def test_render_jmeter_script_todo_comments_for_unhandled_checks(tmp_path: Path)
 
 
 def test_json_escape_helper_produces_valid_json_string(tmp_path: Path) -> None:
-    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": ""})
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
     package = build_generic_package(config)
     render_tool_script(config, package, tmp_path)
     script_path = tmp_path / "scripts" / "run-jmeter.sh"
@@ -659,7 +660,7 @@ def test_json_escape_helper_produces_valid_json_string(tmp_path: Path) -> None:
 
 
 def test_render_jmeter_script_uses_results_dir_and_slug_resolvers(tmp_path: Path) -> None:
-    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": ""})
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
     package = build_generic_package(config)
     render_tool_script(config, package, tmp_path)
     script_path = tmp_path / "scripts" / "run-jmeter.sh"
@@ -680,7 +681,7 @@ def test_render_jmeter_script_uses_results_dir_and_slug_resolvers(tmp_path: Path
 def test_render_jmeter_script_writes_passing_run_summary(tmp_path: Path) -> None:
     stub_bin = tmp_path / "stub-bin"
     stub_bin.mkdir()
-    (stub_bin / "jmeter").write_text("""#!/usr/bin/env bash
+    (stub_bin / "docker").write_text("""#!/usr/bin/env bash
 logfile=""
 outdir=""
 prev=""
@@ -694,9 +695,9 @@ echo "<html></html>" > "$outdir/index.html"
 touch "$logfile"
 exit 0
 """)
-    (stub_bin / "jmeter").chmod(0o755)
+    (stub_bin / "docker").chmod(0o755)
 
-    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": "jmeter"})
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
     package = build_generic_package(config)
     render_tool_script(config, package, tmp_path)
     script_path = tmp_path / "scripts" / "run-jmeter.sh"
@@ -732,10 +733,10 @@ exit 0
 def test_render_jmeter_script_writes_failing_run_summary_and_propagates_exit_code(tmp_path: Path) -> None:
     stub_bin = tmp_path / "stub-bin"
     stub_bin.mkdir()
-    (stub_bin / "jmeter").write_text("#!/usr/bin/env bash\nexit 2\n")
-    (stub_bin / "jmeter").chmod(0o755)
+    (stub_bin / "docker").write_text("#!/usr/bin/env bash\nexit 2\n")
+    (stub_bin / "docker").chmod(0o755)
 
-    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": "jmeter"})
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
     package = build_generic_package(config)
     render_tool_script(config, package, tmp_path)
     script_path = tmp_path / "scripts" / "run-jmeter.sh"
@@ -762,7 +763,7 @@ def test_render_jmeter_script_writes_failing_run_summary_and_propagates_exit_cod
 def test_render_jmeter_script_no_run_summary_on_precheck_failure(tmp_path: Path) -> None:
     config = _base_config(
         "jmeter",
-        {"test_plan_path": "nonexistent-plan.jmx", "jmeter_bin": "jmeter"},
+        {"test_plan_path": "nonexistent-plan.jmx", "docker_image": ""},
         checks=["verify_scenario_exists"],
     )
     package = build_generic_package(config)
@@ -784,7 +785,7 @@ def test_render_jmeter_script_no_run_summary_on_precheck_failure(tmp_path: Path)
 def test_render_jmeter_script_rerun_with_different_scenario_uses_separate_dirs(tmp_path: Path) -> None:
     stub_bin = tmp_path / "stub-bin"
     stub_bin.mkdir()
-    (stub_bin / "jmeter").write_text("""#!/usr/bin/env bash
+    (stub_bin / "docker").write_text("""#!/usr/bin/env bash
 logfile=""
 outdir=""
 prev=""
@@ -798,9 +799,9 @@ echo "<html></html>" > "$outdir/index.html"
 touch "$logfile"
 exit 0
 """)
-    (stub_bin / "jmeter").chmod(0o755)
+    (stub_bin / "docker").chmod(0o755)
 
-    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": "jmeter"})
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
     config["catalog"]["scenarios"] = [
         {"key": "checkout_smoke", "identifier": "SC-1"},
         {"key": "checkout_full", "identifier": "SC-2"},
@@ -1243,7 +1244,7 @@ esac
 def test_render_jmeter_script_escapes_embedded_control_characters_in_run_summary(tmp_path: Path) -> None:
     stub_bin = tmp_path / "stub-bin"
     stub_bin.mkdir()
-    (stub_bin / "jmeter").write_text("""#!/usr/bin/env bash
+    (stub_bin / "docker").write_text("""#!/usr/bin/env bash
 logfile=""
 outdir=""
 prev=""
@@ -1257,10 +1258,10 @@ echo "<html></html>" > "$outdir/index.html"
 touch "$logfile"
 exit 0
 """)
-    (stub_bin / "jmeter").chmod(0o755)
+    (stub_bin / "docker").chmod(0o755)
 
     hostile_scenario_key = "smoke\ntest\tcase"
-    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": "jmeter"})
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
     config["catalog"]["scenarios"] = [
         {"key": hostile_scenario_key, "identifier": "SC-1"}
     ]
@@ -1292,7 +1293,7 @@ def test_all_three_tools_run_summary_share_same_key_set(tmp_path: Path) -> None:
     jmeter_dir = tmp_path / "jmeter-setup"
     jmeter_stub_bin = tmp_path / "jmeter-stub-bin"
     jmeter_stub_bin.mkdir()
-    (jmeter_stub_bin / "jmeter").write_text("""#!/usr/bin/env bash
+    (jmeter_stub_bin / "docker").write_text("""#!/usr/bin/env bash
 logfile=""
 outdir=""
 prev=""
@@ -1306,8 +1307,8 @@ echo "<html></html>" > "$outdir/index.html"
 touch "$logfile"
 exit 0
 """)
-    (jmeter_stub_bin / "jmeter").chmod(0o755)
-    jmeter_config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "jmeter_bin": "jmeter"})
+    (jmeter_stub_bin / "docker").chmod(0o755)
+    jmeter_config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
     jmeter_package = build_generic_package(jmeter_config)
     render_tool_script(jmeter_config, jmeter_package, jmeter_dir)
     jmeter_env = dict(os.environ)

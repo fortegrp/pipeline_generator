@@ -16,8 +16,10 @@ A Python scaffold for onboarding customer-specific performance testing setups an
 - Writes a `scripts/run-<tool>.sh` alongside each generated setup, which is
   what the generated pipeline's "Run performance wrapper" step calls
   directly:
-  - JMeter — a real, working script that runs `jmeter -n -t ...` against the
-    configured test plan.
+  - JMeter — a real, working script that runs JMeter inside a Docker
+    container (`docker run ... -n -t ...`) against the configured test plan;
+    the whole working directory is bind-mounted in, so fragments/CSV data
+    sets referenced by relative path still resolve.
   - LoadRunner Professional — a real, working script that runs `wlrun -Run
     -TestPath ...` locally, assuming the CI job runs on an agent co-located
     with the LoadRunner Controller.
@@ -151,7 +153,10 @@ performance test itself. Alongside the CI/CD files and `customer.yaml`,
 that the generated pipeline's "Run performance wrapper" step calls directly
 (e.g. `./scripts/run-jmeter.sh --environment "$ENVIRONMENT" --scenario
 "$SCENARIO"`). For JMeter this script actually resolves the environment/
-scenario to their catalog identifiers and runs `jmeter -n -t ...` for real.
+scenario to their catalog identifiers and runs JMeter inside a Docker
+container (`docker run --rm -v "$(pwd):/workspace" -w /workspace
+<docker_image> -n -t ...`) — the agent/runner needs Docker installed and
+available, but not a local JMeter install.
 LoadRunner Professional is also real: it assumes the CI job runs on a
 dedicated agent co-located with the LoadRunner Controller, resolves
 `--environment`/`--scenario` the same way, and runs `wlrun -Run -TestPath
@@ -280,11 +285,11 @@ pre_run_checks:
 
 `cicd.type` supports `github_actions`, `azure_devops`, and `jenkins`.
 `tool.type` supports `loadrunner_professional`, `blazemeter`, and `jmeter`.
-JMeter is local/self-hosted rather than a remote SaaS tool, so its
-`tool.connection` only needs a `test_plan_path` (and optionally
-`jmeter_bin` if the executable isn't on `PATH`). Ready-made examples for
-every CI/CD × tool combination are under
-[`examples/`](examples/).
+JMeter runs inside a Docker container rather than as a local install, so
+its `tool.connection` needs a `test_plan_path` and optionally a
+`docker_image` (blank uses `justb4/jmeter:5.6.3`) — the agent/runner needs
+Docker installed. Ready-made examples for every CI/CD × tool combination
+are under [`examples/`](examples/).
 
 ## Recommended Next Work
 

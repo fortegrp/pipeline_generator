@@ -9,7 +9,7 @@ def _config() -> dict:
     return {
         "setup": {"id": "jenkins-test-setup", "generation_mode": "both"},
         "cicd": {"type": "jenkins"},
-        "tool": {"type": "jmeter", "connection": {"test_plan_path": "plan.jmx", "jmeter_bin": ""}},
+        "tool": {"type": "jmeter", "connection": {"test_plan_path": "plan.jmx", "docker_image": ""}},
         "pre_run_checks": [],
         "catalog": {
             "environments": [{"key": "qa", "name": "QA", "identifier": "env-qa"}],
@@ -61,7 +61,7 @@ def test_render_jenkins_escapes_adversarial_values(tmp_path: Path) -> None:
     config = {
         "setup": {"id": "jenkins-adversarial", "generation_mode": "both"},
         "cicd": {"type": "jenkins"},
-        "tool": {"type": "jmeter", "connection": {"test_plan_path": "plan.jmx", "jmeter_bin": ""}},
+        "tool": {"type": "jmeter", "connection": {"test_plan_path": "plan.jmx", "docker_image": ""}},
         "pre_run_checks": [],
         "catalog": {
             "environments": [{"key": nasty_env_value, "name": "QA", "identifier": "env-nasty"}],

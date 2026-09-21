@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pipeline_generator.config.schema import DEFAULT_JMETER_DOCKER_IMAGE
 from pipeline_generator.generator.generic_model import AutomatedJobSpec, GenericPipelinePackage
 from pipeline_generator.renderers.quoting import safe_filename_component
 
@@ -14,7 +15,9 @@ def _todo_lines(tool_type: str, script_name: str) -> list[str]:
             "- Set `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET` as secrets for the generated pipeline."
         )
         lines.append(f"- Ensure `jq` is installed on whatever agent/runner executes `{script_name}`.")
-    elif tool_type not in {"jmeter", "loadrunner_professional"}:
+    elif tool_type == "jmeter":
+        lines.append(f"- Ensure Docker is installed and running on whatever agent/runner executes `{script_name}`.")
+    elif tool_type != "loadrunner_professional":
         lines.append("- Implement remote tool connectivity details required by the target customer.")
     return lines
 
@@ -25,7 +28,7 @@ def _connection_details_lines(config: dict) -> list[str]:
     if tool_type == "jmeter":
         return [
             f"- Test plan: `{connection.get('test_plan_path', '')}`",
-            f"- JMeter binary: `{connection.get('jmeter_bin') or 'jmeter'}`",
+            f"- Docker image: `{connection.get('docker_image') or DEFAULT_JMETER_DOCKER_IMAGE}`",
         ]
     if tool_type == "loadrunner_professional":
         return [f"- `wlrun` path: `{connection.get('wlrun_path') or 'wlrun'}`"]
@@ -134,6 +137,13 @@ def _troubleshooting_lines(tool_type: str, script_name: str) -> list[str]:
             f"- The status-string vocabulary and report endpoint in `{script_name}` are our best "
             "understanding of the BlazeMeter API v4 — verify against a live account before relying on "
             "this in production."
+        )
+    elif tool_type == "jmeter":
+        lines.append(
+            f"- JMeter now runs inside a Docker container, so `{script_name}` needs `docker` on the "
+            "agent/runner's `PATH` and permission to run it. The whole working directory is bind-mounted "
+            "into the container, so a test plan referencing CSV data sets or fragments by relative path "
+            "still works the same as a local install."
         )
     elif tool_type == "loadrunner_professional":
         lines.append(

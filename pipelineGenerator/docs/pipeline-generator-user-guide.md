@@ -173,7 +173,7 @@ scenario combination), rather than a remote name — see section 10 for why.
 | Field | Notes |
 |---|---|
 | `test_plan_path` | Required — path to the `.jmx` test plan, relative to your repository root, e.g. `performance/checkout.jmx`. |
-| `jmeter_bin` | Optional — path to the `jmeter` executable if it isn't on `PATH`. |
+| `docker_image` | Optional — Docker image JMeter runs in; blank uses `justb4/jmeter:5.6.3`. The agent/runner needs Docker installed, not a local JMeter install. |
 
 ### Step 4 — Manual pipeline
 
@@ -210,9 +210,22 @@ which was a real problem for any catalog with more than a couple of entries.
 
 Each environment/scenario entry has two fields: a `key` (used
 programmatically, e.g. as a dropdown value and in automated job
-references) and a `remote identifier` (the tool-side name/ID, e.g. a
-LoadRunner scenario ID or a JMeter thread group name — defaults to a
-`TODO` placeholder if you don't have it yet).
+references) and an `identifier` whose meaning depends on the tool picked in
+Step 2 — the wizard's prompt label changes to match (defaults to a `TODO`
+placeholder if you don't have it yet):
+
+- **JMeter**: a `-J` property value your `.jmx` reads via
+  `${__P(environment)}`/`${__P(scenario)}` — not an ID on any external
+  system.
+- **LoadRunner**: the **scenario** identifier is the full path to the
+  `.lrs` file to run. The **environment** identifier isn't actually used by
+  the generated script for LoadRunner — only the environment `key` affects
+  the results-folder name — but the wizard still asks for it today for
+  consistency with the other two tools.
+- **BlazeMeter**: the **scenario** identifier is the real BlazeMeter Test
+  ID to start. Same as LoadRunner, the **environment** identifier isn't
+  used by the generated script; only the `key` affects the results-folder
+  name.
 
 ### Step 6 — Automated jobs
 
@@ -410,16 +423,27 @@ What the script does:
 
 Step 4 is where the three tools currently differ:
 
-- **JMeter** — real, working execution. If `verify_scenario_exists` is in
-  `pre_run_checks`, it first checks the configured `test_plan_path` exists
-  (`Test plan not found: ...` and exit 1 if not), then runs:
+- **JMeter** — real, working execution, inside a Docker container rather
+  than a local install. If `verify_scenario_exists` is in `pre_run_checks`,
+  it first checks the configured `test_plan_path` exists on the host
+  (`Test plan not found: ...` and exit 1 if not); if
+  `verify_docker_available` is configured, it checks `docker` is on `PATH`.
+  Then it runs:
 
   ```bash
-  jmeter -n -t <test_plan_path> \
+  docker run --rm -v "$(pwd):/workspace" -w /workspace <docker_image> \
+    -n -t <test_plan_path> \
     -l run-output/<environment_slug>_<scenario_slug>/results.jtl \
     -e -o run-output/<environment_slug>_<scenario_slug>/report \
     -Jenvironment=<resolved environment identifier> -Jscenario=<resolved scenario identifier>
   ```
+
+  The whole working directory is bind-mounted at `/workspace` (not just the
+  test plan file), so a `.jmx` referencing CSV data sets or included
+  fragments by relative path still resolves the same as a local install
+  would, and results written into `run-output/...` land directly on the
+  host filesystem since that path is inside the mount. `docker_image`
+  defaults to `justb4/jmeter:5.6.3` if left blank.
 
   Note that JMeter parameterizes a single `.jmx` test plan via `-J`
   properties rather than selecting between multiple plan files, so a
@@ -555,9 +579,10 @@ all three tools, and `generate` writes a real, working
 `scripts/run-<tool_type>.sh` for each:
 
 - **JMeter and LoadRunner Professional.** The generated script resolves
-  the environment/scenario and runs `jmeter -n -t <test_plan_path> ...` or
-  `wlrun -Run -TestPath <scenario_identifier> ...` for real, with no
-  further work needed. LoadRunner Professional assumes the CI job runs on
+  the environment/scenario and runs `docker run ... <docker_image> -n -t
+  <test_plan_path> ...` or `wlrun -Run -TestPath <scenario_identifier> ...`
+  for real, with no further work needed beyond Docker being available for
+  JMeter. LoadRunner Professional assumes the CI job runs on
   an agent co-located with the LoadRunner Controller — see
   `docs/superpowers/specs/
   2026-09-09-loadrunner-local-agent-execution-design.md` for the full
@@ -589,7 +614,7 @@ all three tools, and `generate` writes a real, working
 |---|---|---|---|---|
 | **LoadRunner Professional** | `none` (runs on a controller-adjacent agent) | optional `wlrun_path` | `verify_controller_access`, `verify_scenario_exists`, `verify_load_generators_connected` (TODO comment only) | Real and complete — runs `wlrun` locally; no remote credentials managed by this script; needs a self-hosted runner (see above). |
 | **BlazeMeter** | Remote (`api_token`) | `base_url`, `workspace_id`, `project_id` | `verify_host_reachable`, `verify_project_exists`, `verify_scenario_exists` | Real and complete — drives BlazeMeter's REST API; needs `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET` set; two API-surface details need live-account verification (see above). |
-| **JMeter** | `none` (runs locally) | `test_plan_path`, optional `jmeter_bin` | `verify_scenario_exists` | Real and complete — no remote API or credentials needed, just a local `jmeter` subprocess call. |
+| **JMeter** | `none` (runs in a container on the agent/runner) | `test_plan_path`, optional `docker_image` (default `justb4/jmeter:5.6.3`) | `verify_scenario_exists`, `verify_docker_available` | Real and complete — no remote API or credentials needed, runs via `docker run`; needs Docker installed on the agent/runner (not a local JMeter install). |
 
 ## 11. Validating Configs
 
