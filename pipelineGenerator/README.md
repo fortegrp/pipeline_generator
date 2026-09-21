@@ -172,8 +172,8 @@ BlazeMeter.
 
 ## Interactive Wizard
 
-`pipeline-generator wizard` walks through the config in eight numbered
-sections (what to generate, CI/CD + tool selection, setup ID, tool connection
+`pipeline-generator wizard` walks through the config in seven numbered
+sections (what to generate, CI/CD + tool selection, tool connection
 details, manual pipeline, environments/scenarios, automated jobs, pre-run
 checks), saving progress to `--output` after each section. A few things
 about how it behaves:

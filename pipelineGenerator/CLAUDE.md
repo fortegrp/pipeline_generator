@@ -98,8 +98,13 @@ Pipeline: **customer YAML → validate → generic pipeline model → CI/CD rend
   `--output` file unless `--resume` is passed (no silent overwrite), and
   resuming a draft with existing environments/scenarios/automated jobs offers
   keep-as-is/add-more/start-over rather than discarding the list.
-  `id_builder.py` slugifies `cicd_type + tool_type + repo_name` into the
-  setup ID used as the generated folder name.
+  `id_builder.py` builds the setup ID from `cicd_type + tool_type`, and the
+  wizard assigns it silently the moment both are chosen (no separate
+  prompt) via `generate_unique_setup_id()`, which appends a short random
+  suffix so two setups sharing the same CI/CD+tool combo don't suggest the
+  same ID and silently overwrite each other's generated folder. Once
+  assigned, resuming a draft never regenerates it, even if CI/CD or tool
+  changes on that resume.
 - `generator/` — `context.py` reads validated config and builds a
   `GenericPipelinePackage` (`generic_model.py`): a CI/CD-agnostic
   representation of the manual pipeline (inputs, timeout, run command) and

@@ -107,7 +107,7 @@ what gets written for each CI/CD platform.
 ## 4. The Interactive Wizard
 
 `pipeline-generator wizard --output <path>` is the recommended way to create
-or edit a `customer.yaml`. It's organized into eight numbered sections,
+or edit a `customer.yaml`. It's organized into seven numbered sections,
 prints one-line hints on the choices whose implications aren't obvious, and
 finishes by showing you a summary plus the same check `validate` would run.
 
@@ -125,7 +125,7 @@ finishes by showing you a summary plus the same check `validate` would run.
 
 | Prompt | What it means |
 |---|---|
-| `Generation mode` (`manual_only` / `automated_only` / `both`) | Whether to generate the on-demand manual pipeline (a human triggers it, picking environment/scenario each run), the reusable automated job(s) (no human involved — another pipeline calls it with a fixed environment/scenario), or both. This also decides whether Step 5 (manual pipeline) and Step 7 (automated jobs) run at all. |
+| `Generation mode` (`manual_only` / `automated_only` / `both`) | Whether to generate the on-demand manual pipeline (a human triggers it, picking environment/scenario each run), the reusable automated job(s) (no human involved — another pipeline calls it with a fixed environment/scenario), or both. This also decides whether Step 4 (manual pipeline) and Step 6 (automated jobs) run at all. |
 
 ### Step 2 — CI/CD platform and performance tool
 
@@ -134,17 +134,19 @@ Two prompts, each a numbered menu:
 - **CI/CD platform**: `github_actions`, `azure_devops`, or `jenkins`.
 - **Performance tool**: `loadrunner_professional`, `blazemeter`, or `jmeter`.
 
-### Step 3 — Setup identifier
+Right after these two answers, the wizard silently assigns `setup.id` —
+there's no prompt for it. It's `<cicd-platform>-<tool>` plus a short random
+suffix (e.g. `github-actions-loadrunner-professional-4f2a9c`): the suffix
+exists so two setups that happen to share the same CI/CD+tool combo don't
+suggest the same id and silently overwrite each other's output folder (this
+becomes the name of the folder `generate` creates). It's generated once —
+resuming a draft that already has an id never changes it, even if you
+switch CI/CD platform or tool on that resume. You can still hand-edit
+`setup.id` directly in the YAML afterward if you want something more
+readable; it's made filesystem-safe automatically when `generate` runs
+regardless of what it's set to.
 
-The wizard suggests a setup ID by slugifying
-`<cicd-platform>-<tool>` (e.g.
-`github-actions-loadrunner-professional`). This ID becomes the
-name of the folder `generate` creates, so accepting the suggestion (just
-press Enter) is usually the right move. You can type your own instead — it
-will be automatically made filesystem-safe when `generate` runs, regardless
-of what you type here.
-
-### Step 4 — Tool connection details
+### Step 3 — Tool connection details
 
 Depends on which tool you picked in Step 2:
 
@@ -170,20 +172,21 @@ scenario combination), rather than a remote name — see section 10 for why.
 
 | Field | Notes |
 |---|---|
-| `test_plan_path` | Required — path to the `.jmx` test plan inside the target repository, e.g. `performance/checkout.jmx`. |
+| `test_plan_path` | Required — path to the `.jmx` test plan, relative to your repository root, e.g. `performance/checkout.jmx`. |
 | `jmeter_bin` | Optional — path to the `jmeter` executable if it isn't on `PATH`. |
 
-### Step 5 — Manual pipeline
+### Step 4 — Manual pipeline
 
 Only asked if Step 1's generation mode included the manual pipeline
-(`manual_only` or `both`):
+(`manual_only` or `both`) — choosing that mode already means you want a
+manual pipeline, so this step just fills in its details rather than
+asking again:
 
-- `Generate manual pipeline?` (yes/no)
 - `Manual pipeline name` — becomes the pipeline's display name.
 - `Manual pipeline timeout minutes` — must be a positive whole number;
   invalid input re-prompts rather than silently falling back to a default.
 
-### Step 6 — Environments and scenarios
+### Step 5 — Environments and scenarios
 
 For a brand-new config, you're asked "Add environments now?" / "Add
 scenarios now?" (yes/no); saying no leaves the catalog empty for now (fine
@@ -211,20 +214,20 @@ references) and a `remote identifier` (the tool-side name/ID, e.g. a
 LoadRunner scenario ID or a JMeter thread group name — defaults to a
 `TODO` placeholder if you don't have it yet).
 
-### Step 7 — Automated jobs
+### Step 6 — Automated jobs
 
 Only asked if generation mode included automated jobs (`automated_only` or
-`both`). Same keep-as-is/add-more/start-over pattern as Step 6 when
+`both`). Same keep-as-is/add-more/start-over pattern as Step 5 when
 resuming. For each new job you enter:
 
 - **Job name** (blank to stop adding jobs)
 - **Environment key** and **Scenario key** — if you already have catalog
-  entries from Step 6, these are presented as a numbered choice from that
+  entries from Step 5, these are presented as a numbered choice from that
   catalog (not free text), so a job can't accidentally reference an
   environment/scenario that doesn't exist.
-- **Timeout minutes** — same positive-integer prompt as Step 5.
+- **Timeout minutes** — same positive-integer prompt as Step 4.
 
-### Step 8 — Pre-run checks
+### Step 7 — Pre-run checks
 
 One screen listing the checks applicable to whichever tool you picked in
 Step 2 — JMeter sees 1 (`verify_scenario_exists`); LoadRunner Professional
@@ -236,7 +239,7 @@ controller-flavored vocabulary, so it gets its own. Type comma-separated
 numbers to select specific ones, `all`, `none`, or just press Enter to keep
 whatever was already enabled (useful when resuming).
 
-### After Step 8
+### After Step 7
 
 The wizard prints a plain-language summary (setup ID, CI/CD, tool, whether
 the manual pipeline is enabled, and counts of environments/scenarios/
@@ -634,15 +637,16 @@ BlazeMeter, from scratch:
 pipeline-generator wizard --output setups/acme-bm.yaml
 #    Step 1: generation_mode=both
 #    Step 2: cicd=github_actions, tool=blazemeter
-#    Step 3: accept the suggested setup ID
-#    Step 4: base_url=https://a.blazemeter.com, workspace_id=12345,
+#            (setup.id is assigned silently here, e.g.
+#            github-actions-blazemeter-4f2a9c)
+#    Step 3: base_url=https://a.blazemeter.com, workspace_id=12345,
 #            project_id=67890
-#    Step 5: enabled=yes, name="Acme BlazeMeter Manual Run", timeout=180
-#    Step 6: add environments (qa), add scenarios (checkout_smoke_qa,
+#    Step 4: name="Acme BlazeMeter Manual Run", timeout=180
+#    Step 5: add environments (qa), add scenarios (checkout_smoke_qa,
 #            identifier = the real BlazeMeter Test ID, e.g. 1234567)
-#    Step 7: add one automated job: post-deploy-smoke, env=qa,
+#    Step 6: add one automated job: post-deploy-smoke, env=qa,
 #            scenario=checkout_smoke_qa, timeout=60
-#    Step 8: enable verify_host_reachable, verify_project_exists,
+#    Step 7: enable verify_host_reachable, verify_project_exists,
 #            verify_scenario_exists
 #    -> wizard prints a summary and validation result, then exits
 
@@ -654,13 +658,13 @@ pipeline-generator validate --config setups/acme-bm.yaml
 
 # 3. Generate the real pipeline files
 pipeline-generator generate --config setups/acme-bm.yaml --output-dir generated
-# -> generated/github-actions-blazemeter/ now contains
+# -> generated/github-actions-blazemeter-4f2a9c/ now contains
 #    customer.yaml, README.md, scripts/run-blazemeter.sh, and
 #    .github/workflows/*.yml (the workflow already passes --timeout-minutes
 #    60 automatically for the automated job, 180 for the manual pipeline)
 
 # 4. Sanity-check the generated script locally before handing off
-cd generated/github-actions-blazemeter
+cd generated/github-actions-blazemeter-4f2a9c
 export BLAZEMETER_API_KEY_ID=... BLAZEMETER_API_KEY_SECRET=...
 ./scripts/run-blazemeter.sh --environment qa --scenario checkout_smoke_qa --timeout-minutes 60
 # -> resolves qa/checkout_smoke_qa to their catalog identifiers, checks jq
@@ -670,7 +674,7 @@ export BLAZEMETER_API_KEY_ID=... BLAZEMETER_API_KEY_SECRET=...
 #    unreachable, project/test not found, or timeout) rather than the old
 #    "not implemented yet" message.
 
-# 5. Hand off generated/github-actions-blazemeter/ to Acme, or commit
+# 5. Hand off generated/github-actions-blazemeter-4f2a9c/ to Acme, or commit
 #    it into their repo directly -- however you want to distribute it.
 ```
 

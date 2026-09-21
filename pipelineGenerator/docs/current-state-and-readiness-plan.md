@@ -218,7 +218,7 @@ Running the wizard against an `--output` path that already exists without
 `--resume` refuses up front instead of overwriting the file. Resuming a
 draft that already has environments, scenarios, or automated jobs offers
 keep-as-is/add-more/start-over instead of silently discarding the existing
-list. The flow is broken into eight numbered sections with inline hints on
+list. The flow is broken into seven numbered sections with inline hints on
 the less obvious choices, pre-run checks are chosen from a single
 multi-select screen, and it ends by printing a summary and running the same
 checks `validate` would.

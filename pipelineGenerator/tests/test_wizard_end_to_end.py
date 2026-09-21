@@ -2,7 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from pipeline_generator.wizard.flow import run_wizard
+from pipeline_generator.config.schema import merged_base_config
+from pipeline_generator.wizard.flow import _step_cicd_and_tool, run_wizard
 
 
 def test_run_wizard_full_flow_produces_expected_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -12,10 +13,8 @@ def test_run_wizard_full_flow_produces_expected_config(tmp_path: Path, monkeypat
             "",  # generation mode -> default both
             "",  # cicd platform -> default github_actions
             "3",  # performance tool -> jmeter
-            "",  # setup id -> accept suggested
             "performance/checkout.jmx",  # jmeter test plan path
             "",  # jmeter bin -> blank (uses PATH)
-            "",  # generate manual pipeline? -> default True
             "",  # manual pipeline name -> default
             "",  # manual pipeline timeout -> default 240
             "y",  # add environments now?
@@ -40,7 +39,8 @@ def test_run_wizard_full_flow_produces_expected_config(tmp_path: Path, monkeypat
     config = run_wizard(output_path, resume=False)
 
     assert config["setup"]["generation_mode"] == "both"
-    assert config["setup"]["id"] == "github-actions-jmeter"
+    assert config["setup"]["id"].startswith("github-actions-jmeter-")
+    assert len(config["setup"]["id"]) == len("github-actions-jmeter-") + 6
     assert config["cicd"]["type"] == "github_actions"
     assert config["tool"]["type"] == "jmeter"
     assert config["tool"]["connection"] == {"test_plan_path": "performance/checkout.jmx", "jmeter_bin": ""}
@@ -66,3 +66,19 @@ def test_run_wizard_full_flow_produces_expected_config(tmp_path: Path, monkeypat
     assert config["incomplete"] is False
 
     assert output_path.exists()
+
+
+def test_step_cicd_and_tool_preserves_existing_setup_id_on_resume(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = merged_base_config(None)
+    config["setup"]["id"] = "already-assigned-id"
+    config["cicd"]["type"] = "github_actions"
+    config["tool"]["type"] = "jmeter"
+    responses = iter(["", "2"])  # cicd -> keep default, tool -> switch to blazemeter
+    monkeypatch.setattr("builtins.input", lambda *_: next(responses))
+
+    _step_cicd_and_tool(config, tmp_path / "draft.yaml")
+
+    assert config["tool"]["type"] == "blazemeter"
+    assert config["setup"]["id"] == "already-assigned-id"

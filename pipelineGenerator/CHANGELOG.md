@@ -4,6 +4,23 @@ All notable changes to `pipeline-generator` are documented here.
 
 ## [Unreleased]
 
+- Wizard no longer asks for a setup ID. The "Setup identifier" step is
+  gone; `setup.id` is now assigned silently right after CI/CD platform and
+  tool are chosen, as `<cicd_type>-<tool_type>` plus a short random hex
+  suffix (`generate_unique_setup_id()` in `id_builder.py`) so two setups
+  sharing the same CI/CD+tool combo can't suggest the same ID and silently
+  overwrite each other's generated output folder. Once assigned it's never
+  regenerated on a later `--resume`, even if CI/CD or tool changes. The
+  wizard is now 7 steps instead of 8. You can still hand-edit `setup.id`
+  directly in the YAML for a more readable name.
+- Wizard Step 5 no longer asks "Generate manual pipeline?" as its own
+  yes/no question — choosing `manual_only`/`both` back in Step 1 already
+  means you want one, so asking again just read as a duplicate question.
+  `manual_pipeline.enabled` is now set automatically to match
+  `generation_mode` instead of being independently wizard-toggleable.
+  Also fixed the JMeter connection prompt (and matching doc line), which
+  referenced "the target repository" — a concept removed from this
+  project's config model in the prior cleanup pass.
 - Removed four more dead config fields, found by tracing every `base_config()`
   field to confirm something actually reads it: `version` (top-level,
   never read anywhere), `artifacts.download_remote_results` and

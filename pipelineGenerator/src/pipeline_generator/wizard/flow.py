@@ -15,7 +15,7 @@ from pipeline_generator.config.schema import (
     required_field_values,
 )
 from pipeline_generator.config.validator import validate_config
-from pipeline_generator.wizard.id_builder import build_setup_id
+from pipeline_generator.wizard.id_builder import generate_unique_setup_id
 from pipeline_generator.wizard.prompts import (
     prompt_bool,
     prompt_choice,
@@ -24,7 +24,7 @@ from pipeline_generator.wizard.prompts import (
     prompt_text,
 )
 
-TOTAL_STEPS = 8
+TOTAL_STEPS = 7
 
 GENERATION_MODE_HINTS = {
     "manual_only": (
@@ -72,36 +72,21 @@ def _step_cicd_and_tool(config: dict, output_path: Path) -> None:
         SUPPORTED_TOOLS,
         default=config["tool"]["type"] if config["tool"]["type"] in SUPPORTED_TOOLS else SUPPORTED_TOOLS[0],
     )
-    save_config(output_path, config)
-
-
-def _step_setup_identifier(config: dict, output_path: Path) -> None:
-    _section(3, "Setup identifier")
-    generated_id = build_setup_id(
-        config["cicd"]["type"],
-        config["tool"]["type"],
-    )
-    config["setup"]["id"] = prompt_text(
-        "Suggested setup ID",
-        default=generated_id,
-        allow_blank=False,
-    )
+    if config["setup"]["id"] == TODO_VALUE:
+        config["setup"]["id"] = generate_unique_setup_id(config["cicd"]["type"], config["tool"]["type"])
     save_config(output_path, config)
 
 
 def _step_connection(config: dict, output_path: Path) -> None:
-    _section(4, "Tool connection details")
+    _section(3, "Tool connection details")
     _prompt_connection(config)
     save_config(output_path, config)
 
 
 def _step_manual_pipeline(config: dict, output_path: Path) -> None:
-    _section(5, "Manual pipeline")
+    _section(4, "Manual pipeline")
     if config["setup"]["generation_mode"] in {"manual_only", "both"}:
-        config["manual_pipeline"]["enabled"] = prompt_bool(
-            "Generate manual pipeline?",
-            default=bool(config["manual_pipeline"]["enabled"]),
-        )
+        config["manual_pipeline"]["enabled"] = True
         config["manual_pipeline"]["name"] = prompt_text(
             "Manual pipeline name",
             default=config["manual_pipeline"]["name"],
@@ -116,14 +101,14 @@ def _step_manual_pipeline(config: dict, output_path: Path) -> None:
 
 
 def _step_catalog(config: dict, output_path: Path) -> None:
-    _section(6, "Environments and scenarios")
+    _section(5, "Environments and scenarios")
     config["catalog"]["environments"] = _prompt_catalog_section("environment", config["catalog"]["environments"])
     config["catalog"]["scenarios"] = _prompt_catalog_section("scenario", config["catalog"]["scenarios"])
     save_config(output_path, config)
 
 
 def _step_automated_jobs(config: dict, output_path: Path) -> None:
-    _section(7, "Automated jobs")
+    _section(6, "Automated jobs")
     if config["setup"]["generation_mode"] in {"automated_only", "both"}:
         config["automated_jobs"] = _prompt_automated_jobs_section(config)
     elif config["setup"]["generation_mode"] == "manual_only":
@@ -132,7 +117,7 @@ def _step_automated_jobs(config: dict, output_path: Path) -> None:
 
 
 def _step_checks_and_finalize(config: dict, output_path: Path) -> None:
-    _section(8, "Pre-run checks")
+    _section(7, "Pre-run checks")
     config["pre_run_checks"] = _prompt_checks(config.get("pre_run_checks", []), config["tool"]["type"])
     config["readme"]["include_manual_usage"] = config["manual_pipeline"]["enabled"]
     config["readme"]["include_automated_usage"] = bool(config["automated_jobs"])
@@ -149,7 +134,6 @@ def run_wizard(output_path: Path, resume: bool = False) -> dict:
 
     _step_setup_basics(config, output_path)
     _step_cicd_and_tool(config, output_path)
-    _step_setup_identifier(config, output_path)
     _step_connection(config, output_path)
     _step_manual_pipeline(config, output_path)
     _step_catalog(config, output_path)
@@ -185,7 +169,7 @@ def _prompt_connection(config: dict) -> None:
         ) or TODO_VALUE
     elif tool_type == "jmeter":
         connection["test_plan_path"] = prompt_text(
-            "Path to the JMeter test plan (.jmx) in the target repository",
+            "Path to the JMeter test plan (.jmx), relative to your repository root",
             default=connection.get("test_plan_path", TODO_VALUE),
         ) or TODO_VALUE
         connection["jmeter_bin"] = prompt_text(
