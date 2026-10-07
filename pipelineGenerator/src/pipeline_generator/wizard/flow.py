@@ -151,6 +151,8 @@ def _step_load_profile(config: dict, output_path: Path) -> None:
     profile["test_type"] = prompt_text(LOAD_PROFILE_LABELS["test_type"], default=profile.get("test_type") or "load")
     if config["tool"]["type"] not in LOAD_PROFILE_TOOLS:
         print("Users, ramp-up, duration and throughput come from the LoadRunner scenario (.lrs) itself.")
+        for name in LOAD_PROFILE_FIELDS:
+            profile.pop(name, None)  # never used for LoadRunner; don't leave TODOs in the YAML
     else:
         print("Type TODO (or leave a TODO default) for anything you don't know yet.")
         for name in LOAD_PROFILE_FIELDS:
@@ -322,7 +324,7 @@ def _prompt_automated_jobs(config: dict) -> list[dict]:
             environment_ref = prompt_text("Environment key", default=TODO_VALUE) or TODO_VALUE
         # Only offer the chosen environment's scenarios: any other pair doesn't exist.
         environment = next((item for item in environments if item["key"] == environment_ref), {})
-        scenario_keys = [item["key"] for item in environment.get("scenarios", [])]
+        scenario_keys = [item["key"] for item in environment.get("scenarios") or []]
         if scenario_keys:
             scenario_ref = prompt_choice("Scenario key", scenario_keys, default=scenario_keys[0])
         else:
@@ -360,7 +362,7 @@ def _print_summary(config: dict) -> None:
     print(f"  Tool: {config['tool']['type']}")
     print(f"  Manual pipeline: {'enabled' if config['manual_pipeline']['enabled'] else 'disabled'}")
     print(f"  Environments: {len(config['catalog']['environments'])}")
-    print(f"  Scenarios: {sum(len(env.get('scenarios', [])) for env in config['catalog']['environments'])}")
+    print(f"  Scenarios: {sum(len(env.get('scenarios') or []) for env in config['catalog']['environments'])}")
     print(f"  Automated jobs: {len(config['automated_jobs'])}")
 
 

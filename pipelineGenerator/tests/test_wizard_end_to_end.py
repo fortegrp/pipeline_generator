@@ -132,7 +132,7 @@ def test_step_load_profile_asks_only_test_type_for_loadrunner(
     _step_load_profile(config, tmp_path / "draft.yaml")
 
     assert config["load_profile"]["test_type"] == "stress"
-    assert config["load_profile"]["users"] == "TODO"  # untouched, never asked
+    assert "users" not in config["load_profile"]  # never asked, and not left behind as TODO
 
 
 def test_step_load_profile_resume_keeps_existing_values(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -239,3 +239,41 @@ def test_step_cicd_and_tool_drops_todo_runner_when_switching_away_from_loadrunne
     _step_cicd_and_tool(config, tmp_path / "draft.yaml")
 
     assert config["cicd"]["runner"] == ""
+
+
+def test_step_load_profile_drops_unused_numbers_for_loadrunner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = merged_base_config(None)
+    config["tool"]["type"] = "loadrunner_professional"
+    monkeypatch.setattr("builtins.input", lambda *_: "")
+
+    _step_load_profile(config, tmp_path / "draft.yaml")
+
+    assert config["load_profile"] == {"test_type": "load"}
+
+
+def test_number_prompts_reject_non_ascii_digits(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pipeline_generator.wizard.prompts import prompt_int_or_todo, prompt_positive_int
+
+    responses = iter(["²", "5", "²", "7"])
+    monkeypatch.setattr("builtins.input", lambda *_: next(responses))
+
+    assert prompt_int_or_todo("Users", "TODO", 1) == 5
+    assert prompt_positive_int("Timeout", 240) == 7
+
+
+def test_wizard_tolerates_null_scenarios_in_resumed_draft(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from pipeline_generator.wizard.flow import _print_summary, _prompt_automated_jobs
+
+    config = merged_base_config(None)
+    config["catalog"]["environments"] = [{"key": "qa", "identifier": "QA", "scenarios": None}]
+    responses = iter(["nightly", "", "", "", ""])
+    monkeypatch.setattr("builtins.input", lambda *_: next(responses))
+
+    _print_summary(config)
+    jobs = _prompt_automated_jobs(config)
+
+    assert jobs[0]["scenario_ref"] == "TODO"

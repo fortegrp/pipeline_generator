@@ -18,14 +18,14 @@ automated_jobs:
 - name: post-deploy-smoke
   enabled: true
   environment_ref: qa
-  scenario_ref: qa_smoke_qa
+  scenario_ref: smoke
   timeout_minutes: 60
 catalog:
   environments:
   - key: qa
     identifier: QA
     scenarios:
-    - key: qa_smoke_qa
+    - key: smoke
       identifier: '3344556'
 pre_run_checks:
 - verify_host_reachable

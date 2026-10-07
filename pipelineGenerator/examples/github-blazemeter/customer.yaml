@@ -18,14 +18,14 @@ automated_jobs:
 - name: pre-prod-baseline
   enabled: true
   environment_ref: staging
-  scenario_ref: checkout_baseline_staging
+  scenario_ref: checkout_baseline
   timeout_minutes: 120
 catalog:
   environments:
   - key: staging
     identifier: Staging
     scenarios:
-    - key: checkout_baseline_staging
+    - key: checkout_baseline
       identifier: '2233445'
 pre_run_checks:
 - verify_host_reachable

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pipeline_generator.config.placeholders import TODO_VALUE
+from pipeline_generator.config.placeholders import TODO_VALUE, is_placeholder
 from pipeline_generator.config.schema import DEFAULT_JMETER_DOCKER_IMAGE, LOAD_PROFILE_FIELDS, PRE_RUN_CHECKS
 from pipeline_generator.generator.generic_model import GenericPipelinePackage, LoadInput
 from pipeline_generator.renderers.quoting import safe_filename_component, shell_quote
@@ -17,6 +17,12 @@ def _allowed_pre_run_checks(config: dict) -> list[str]:
     prevent shell injection via crafted strings (e.g. embedded newlines).
     """
     return [check for check in config.get("pre_run_checks", []) if check in PRE_RUN_CHECKS]
+
+
+def _connection_value(connection: dict, key: str, default: str) -> str:
+    """An optional connection field: blank or a leftover TODO means the default."""
+    value = connection.get(key)
+    return default if is_placeholder(value) else value
 
 
 def render_tool_script(config: dict, package: GenericPipelinePackage, setup_dir: Path) -> list[str]:
@@ -103,8 +109,9 @@ require_number() {
   require_value "$1" "$2"
   # Leading zeros are rejected: bash arithmetic reads 08/09 as octal, and
   # "08" isn't valid in run-summary.json or the BlazeMeter request body.
+  # More than 9 digits would overflow $((...)) silently.
   case "$2" in
-    *[!0-9]*|0[0-9]*) echo "ERROR: $1 must be a whole number, got: $2" >&2; exit 1 ;;
+    *[!0-9]*|0[0-9]*|??????????*) echo "ERROR: $1 must be a whole number (up to 9 digits), got: $2" >&2; exit 1 ;;
   esac
 }"""
 
@@ -161,7 +168,11 @@ def _render_arg_parsing(load_inputs: list[LoadInput], include_timeout: bool = Fa
     # Load values default to customer.yaml's load_profile, baked in at
     # generation time; the manual pipeline's trigger inputs override them.
     load_locals = "".join(f"  local {item.name}={shell_quote(item.default)}\n" for item in load_inputs)
-    load_cases = "".join(f'      {item.flag}) {item.name}="$2"; shift 2 ;;\n' for item in load_inputs)
+    # "${2:-$name}": a trigger input the user cleared arrives as "" and keeps
+    # the baked customer.yaml value instead of failing as TODO.
+    load_cases = "".join(
+        f'      {item.flag}) {item.name}="${{2:-${item.name}}}"; shift 2 ;;\n' for item in load_inputs
+    )
     load_usage = "".join(
         f" [{item.flag} {'LABEL' if item.name == 'test_type' else 'N'}]" for item in load_inputs
     )
@@ -193,7 +204,7 @@ def _render_arg_parsing(load_inputs: list[LoadInput], include_timeout: bool = Fa
 def _render_jmeter_script(config: dict, package: GenericPipelinePackage) -> str:
     connection = config.get("tool", {}).get("connection", {})
     test_plan_path = connection.get("test_plan_path") or TODO_VALUE
-    docker_image = connection.get("docker_image") or DEFAULT_JMETER_DOCKER_IMAGE
+    docker_image = _connection_value(connection, "docker_image", DEFAULT_JMETER_DOCKER_IMAGE)
     checks = _allowed_pre_run_checks(config)
 
     scenario_check = ""
@@ -463,7 +474,7 @@ fi
 
 def _render_loadrunner_script(config: dict, package: GenericPipelinePackage) -> str:
     connection = config.get("tool", {}).get("connection", {})
-    wlrun_path = connection.get("wlrun_path") or "wlrun"
+    wlrun_path = _connection_value(connection, "wlrun_path", "wlrun")
     checks = _allowed_pre_run_checks(config)
 
     controller_check = ""

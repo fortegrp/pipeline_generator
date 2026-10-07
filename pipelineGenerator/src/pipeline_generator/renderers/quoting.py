@@ -28,9 +28,10 @@ def groovy_squote(value: str) -> str:
 
     Groovy single-quoted strings do not interpolate (`$var`/`${...}` are
     left literal), so escaping just backslashes and single quotes is
-    sufficient to make this safe to embed in a Jenkinsfile.
+    sufficient to make this safe to embed in a Jenkinsfile -- plus newlines,
+    since a raw line break inside a single-quoted literal is a compile error.
     """
-    escaped = value.replace("\\", "\\\\").replace("'", "\\'")
+    escaped = value.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r")
     return f"'{escaped}'"
 
 

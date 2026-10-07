@@ -79,7 +79,7 @@ def prompt_positive_int(label: str, default: int) -> int:
         value = input(f"{label} [{default}]: ").strip()
         if not value:
             return default
-        if value.isdigit() and int(value) > 0:
+        if value.isascii() and value.isdigit() and int(value) > 0:
             return int(value)
         print("Please enter a positive whole number.")
 
@@ -91,6 +91,6 @@ def prompt_int_or_todo(label: str, default: object, minimum: int) -> int | str:
             return default
         if value.upper() == TODO_VALUE:
             return TODO_VALUE
-        if value.isdigit() and int(value) >= minimum:
+        if value.isascii() and value.isdigit() and int(value) >= minimum:
             return int(value)
         print(f"Enter a whole number >= {minimum}, or TODO if you don't know yet.")

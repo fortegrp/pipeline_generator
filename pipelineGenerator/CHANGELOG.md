@@ -4,6 +4,18 @@ All notable changes to `pipeline-generator` are documented here.
 
 ## [Unreleased]
 
+- Polish from review follow-ups:
+  - A load-profile trigger input left blank now uses the `customer.yaml`
+    value instead of failing as TODO; numeric values over 9 digits are
+    rejected instead of silently overflowing.
+  - A leftover `TODO` in `wlrun_path`/`docker_image` falls back to the
+    default instead of being baked into the script.
+  - Groovy strings now escape newlines (a raw one broke the Jenkinsfile).
+  - LoadRunner wizard configs no longer carry four unused TODO load fields.
+  - Wizard number prompts reject non-ASCII digits like `²` instead of
+    crashing; resuming a draft with `scenarios: null` no longer crashes.
+  - BlazeMeter examples drop their environment-suffixed scenario keys.
+
 - New `cicd.runner` picks where generated pipelines run: GitHub Actions
   `runs-on` labels (comma-separated), an Azure DevOps self-hosted agent
   pool, or a Jenkins agent label; blank keeps the hosted default

@@ -1777,3 +1777,34 @@ def test_loadrunner_passes_absolute_result_path_to_wlrun(tmp_path: Path) -> None
     result_name = args[args.index("-ResultName") + 1]
     assert result_name.startswith("/")  # absolute: wlrun may resolve relative paths elsewhere
     assert result_name.endswith("/run-output/qa_checkout-smoke")
+
+
+def test_cleared_load_input_falls_back_to_baked_default(tmp_path: Path) -> None:
+    # A CI trigger input the user blanked arrives as "" -- use customer.yaml's value.
+    script_path = _render(tmp_path, _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""}))
+    env = _stub_bin_with(tmp_path, docker=_logging_docker(tmp_path))
+
+    result = _run(script_path, [*_QA, "--users", "", "--test-type", ""], env, tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    args = (tmp_path / "docker-args").read_text().split()
+    assert "-Jusers=10" in args
+    assert "-Jtest_type=load" in args
+
+
+def test_load_value_with_too_many_digits_is_rejected(tmp_path: Path) -> None:
+    script_path = _render(tmp_path, _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""}))
+    env = _stub_bin_with(tmp_path, docker=_logging_docker(tmp_path))
+
+    result = _run(script_path, [*_QA, "--duration-minutes", "99999999999999999999"], env, tmp_path)
+
+    assert result.returncode == 1
+    assert "load_profile.duration_minutes must be a whole number" in result.stderr
+
+
+def test_todo_wlrun_path_and_docker_image_fall_back_to_defaults(tmp_path: Path) -> None:
+    lr = _render(tmp_path / "lr", _base_config("loadrunner_professional", {"wlrun_path": "TODO"}))
+    jm = _render(tmp_path / "jm", _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": "TODO"}))
+
+    assert "local wlrun_path=wlrun" in lr.read_text()
+    assert "local docker_image=justb4/jmeter:5.6.3" in jm.read_text()
