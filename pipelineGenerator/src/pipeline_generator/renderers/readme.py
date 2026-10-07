@@ -1,19 +1,35 @@
 from __future__ import annotations
 
 from pipeline_generator.config.placeholders import TODO_VALUE
-from pipeline_generator.config.schema import DEFAULT_JMETER_DOCKER_IMAGE
+from pipeline_generator.config.schema import DEFAULT_JMETER_DOCKER_IMAGE, JENKINS_BLAZEMETER_CREDENTIALS_ID
 from pipeline_generator.generator.generic_model import AutomatedJobSpec, GenericPipelinePackage
 from pipeline_generator.renderers.quoting import safe_filename_component
 
 
-def _todo_lines(tool_type: str, script_name: str) -> list[str]:
-    lines = [
-        "- Fill secret variable names in the generated pipeline files.",
-        "- Replace TODO placeholders in `customer.yaml`.",
-    ]
+_BLAZEMETER_SECRET_LINES = {
+    "github_actions": (
+        "- Create repository secrets `BLAZEMETER_API_KEY_ID` and `BLAZEMETER_API_KEY_SECRET` "
+        "(Settings → Secrets and variables → Actions); the generated workflows map them into the run step."
+    ),
+    "azure_devops": (
+        "- Create secret pipeline variables `BLAZEMETER_API_KEY_ID` and `BLAZEMETER_API_KEY_SECRET` "
+        "(or link a variable group with them); the generated pipelines map them into the run step."
+    ),
+    "jenkins": (
+        f"- Create a Jenkins **Username with password** credential with ID `{JENKINS_BLAZEMETER_CREDENTIALS_ID}` "
+        "(username = BlazeMeter API key ID, password = API key secret); the generated Jenkinsfiles read it "
+        "with `withCredentials`."
+    ),
+}
+
+
+def _todo_lines(tool_type: str, cicd_type: str, script_name: str) -> list[str]:
+    lines = ["- Replace TODO placeholders in `customer.yaml`."]
     if tool_type == "blazemeter":
         lines.append(
-            "- Set `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET` as secrets for the generated pipeline."
+            _BLAZEMETER_SECRET_LINES.get(
+                cicd_type, "- Expose `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET` to the run step as env vars."
+            )
         )
         lines.append(f"- Ensure `jq` is installed on whatever agent/runner executes `{script_name}`.")
     elif tool_type == "jmeter":
@@ -114,14 +130,20 @@ def _manual_usage_lines(cicd_type: str, script_name: str) -> list[str]:
     ]
 
 
-def _automated_job_lines(cicd_type: str, job: AutomatedJobSpec) -> list[str]:
+def _automated_job_lines(cicd_type: str, tool_type: str, job: AutomatedJobSpec) -> list[str]:
     job_slug = safe_filename_component(job.name)
     if cicd_type == "github_actions":
+        secrets_note = (
+            " Add `secrets: inherit` (or pass `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET` "
+            "explicitly) — a reusable workflow only sees the secrets its caller passes."
+            if tool_type == "blazemeter"
+            else ""
+        )
         return [
             f"- **{job.name}**: reference the reusable workflow "
             f"`.github/workflows/performance-automated-{job_slug}.yml` from your deployment workflow "
             f"with `uses: ./.github/workflows/performance-automated-{job_slug}.yml` (or the full "
-            "`owner/repo/.github/workflows/...@ref` path if calling it from another repository).",
+            f"`owner/repo/.github/workflows/...@ref` path if calling it from another repository).{secrets_note}",
         ]
     if cicd_type == "azure_devops":
         return [
@@ -222,7 +244,7 @@ def render_setup_readme(config: dict, package: GenericPipelinePackage) -> str:
         "",
         "## Remaining TODOs",
         "",
-        *_todo_lines(tool_type, script_name),
+        *_todo_lines(tool_type, cicd_type, script_name),
         *_load_todo_lines(package),
         "",
         "## Connection Details",
@@ -248,7 +270,7 @@ def render_setup_readme(config: dict, package: GenericPipelinePackage) -> str:
     if package.automated_jobs and config["readme"]["include_automated_usage"]:
         job_lines: list[str] = []
         for job in package.automated_jobs:
-            job_lines.extend(_automated_job_lines(cicd_type, job))
+            job_lines.extend(_automated_job_lines(cicd_type, tool_type, job))
         lines.extend(
             [
                 "## Automated Job Integration",

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shlex
 
+from pipeline_generator.config.schema import BLAZEMETER_SECRET_NAMES
 from pipeline_generator.generator.generic_model import LoadInput
 from pipeline_generator.text_utils import slugify
 
@@ -48,6 +49,12 @@ def load_flags(load_inputs: list[LoadInput], separator: str = " ") -> str:
     mapping -- never spliced into the command text.
     """
     return "".join(f'{separator}{item.flag} "${item.env_var}"' for item in load_inputs)
+
+
+def secret_names(tool_type: str) -> tuple[str, ...]:
+    """Secrets the generated script reads from its environment -- only
+    BlazeMeter has any (JMeter and LoadRunner run locally/on-agent)."""
+    return BLAZEMETER_SECRET_NAMES if tool_type == "blazemeter" else ()
 
 
 def blazemeter_timeout_flag(tool_type: str, timeout_minutes: int, separator: str = " ") -> str:

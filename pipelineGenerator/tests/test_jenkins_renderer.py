@@ -159,3 +159,31 @@ def test_render_jenkins_automated_job_passes_no_load_flags(tmp_path: Path) -> No
     assert automated
     for path in automated:
         assert "--users" not in path.read_text(encoding="utf-8")
+
+
+_WITH_CREDENTIALS = (
+    "withCredentials([usernamePassword(credentialsId: 'blazemeter-api-key', "
+    "usernameVariable: 'BLAZEMETER_API_KEY_ID', passwordVariable: 'BLAZEMETER_API_KEY_SECRET')])"
+)
+
+
+def test_render_jenkins_wraps_blazemeter_call_in_credentials(tmp_path: Path) -> None:
+    config = _config()
+    config["tool"] = {
+        "type": "blazemeter",
+        "connection": {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"},
+    }
+    render_jenkins(config, build_generic_package(config), tmp_path)
+
+    for path in (tmp_path / "jenkins").iterdir():
+        text = path.read_text()
+        assert _WITH_CREDENTIALS in text, path.name
+        assert text.index(_WITH_CREDENTIALS) < text.index("./scripts/run-blazemeter.sh"), path.name
+
+
+def test_render_jenkins_jmeter_has_no_credentials_block(tmp_path: Path) -> None:
+    config = _config()
+    render_jenkins(config, build_generic_package(config), tmp_path)
+
+    for path in (tmp_path / "jenkins").iterdir():
+        assert "withCredentials" not in path.read_text()

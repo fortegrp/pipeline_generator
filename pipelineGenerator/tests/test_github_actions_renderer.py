@@ -207,3 +207,46 @@ def test_render_github_actions_dropdown_lists_only_defined_pairs(tmp_path: Path)
     manual_doc = yaml.safe_load((tmp_path / ".github" / "workflows" / "performance-manual.yml").read_text())
     options = manual_doc[True]["workflow_dispatch"]["inputs"]["test_case"]["options"]
     assert options == ["qa: checkout", "qa: browse", "staging: checkout"]  # no "staging: browse"
+
+
+def _blazemeter_config() -> dict:
+    config = _config()
+    config["tool"] = {
+        "type": "blazemeter",
+        "connection": {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"},
+    }
+    return config
+
+
+def test_render_github_actions_maps_blazemeter_secrets_into_manual_step(tmp_path: Path) -> None:
+    config = _blazemeter_config()
+    render_github_actions(config, build_generic_package(config), tmp_path)
+
+    doc = yaml.safe_load((tmp_path / ".github" / "workflows" / "performance-manual.yml").read_text())
+    env = doc["jobs"]["run-performance-test"]["steps"][1]["env"]
+    assert env["BLAZEMETER_API_KEY_ID"] == "${{ secrets.BLAZEMETER_API_KEY_ID }}"
+    assert env["BLAZEMETER_API_KEY_SECRET"] == "${{ secrets.BLAZEMETER_API_KEY_SECRET }}"
+
+
+def test_render_github_actions_automated_workflow_declares_and_maps_blazemeter_secrets(tmp_path: Path) -> None:
+    config = _blazemeter_config()
+    render_github_actions(config, build_generic_package(config), tmp_path)
+
+    doc = yaml.safe_load(
+        (tmp_path / ".github" / "workflows" / "performance-automated-post-deploy-smoke.yml").read_text()
+    )
+    # A reusable workflow only sees secrets its caller passes, so it must declare them.
+    declared = doc[True]["workflow_call"]["secrets"]
+    assert declared["BLAZEMETER_API_KEY_ID"]["required"] is True
+    assert declared["BLAZEMETER_API_KEY_SECRET"]["required"] is True
+    env = doc["jobs"]["post-deploy-smoke"]["steps"][1]["env"]
+    assert env["BLAZEMETER_API_KEY_ID"] == "${{ secrets.BLAZEMETER_API_KEY_ID }}"
+    assert env["BLAZEMETER_API_KEY_SECRET"] == "${{ secrets.BLAZEMETER_API_KEY_SECRET }}"
+
+
+def test_render_github_actions_jmeter_has_no_blazemeter_secrets(tmp_path: Path) -> None:
+    config = _config()
+    render_github_actions(config, build_generic_package(config), tmp_path)
+
+    for path in (tmp_path / ".github" / "workflows").iterdir():
+        assert "BLAZEMETER" not in path.read_text()

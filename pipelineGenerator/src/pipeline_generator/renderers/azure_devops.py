@@ -8,6 +8,7 @@ from pipeline_generator.config.schema import LOAD_PROFILE_LABELS
 from pipeline_generator.renderers.quoting import (
     blazemeter_timeout_flag,
     load_flags,
+    secret_names,
     safe_filename_component,
     shell_quote,
     yaml_dquote,
@@ -83,7 +84,7 @@ jobs:
           ./scripts/run-{package.tool_type}.sh
           --test-case "$TEST_CASE"{load_flag_text}{timeout_flag}
         env:
-          TEST_CASE: ${{{{ parameters.test_case }}}}{load_env}
+          TEST_CASE: ${{{{ parameters.test_case }}}}{load_env}{_secret_env(package.tool_type)}
         displayName: Run performance wrapper
       - task: PublishPipelineArtifact@1
         condition: always()
@@ -91,6 +92,17 @@ jobs:
           targetPath: run-output
           artifact: performance-results
 """
+
+
+def _secret_env(tool_type: str) -> str:
+    # Azure never exposes secret variables to scripts on its own -- each one
+    # has to be mapped into the step's env explicitly.
+    return "".join(f"\n          {name}: $({name})" for name in secret_names(tool_type))
+
+
+def _secret_env_block(tool_type: str) -> str:
+    secret_env = _secret_env(tool_type)
+    return f"\n        env:{secret_env}" if secret_env else ""
 
 
 def _render_automated_job(job: AutomatedJobSpec, tool_type: str) -> str:
@@ -107,7 +119,7 @@ jobs:
       - checkout: self
       - script: >
           ./scripts/run-{tool_type}.sh
-          --test-case {shell_quote(job.test_case)}{timeout_flag}
+          --test-case {shell_quote(job.test_case)}{timeout_flag}{_secret_env_block(tool_type)}
         displayName: Run performance wrapper
       - task: PublishPipelineArtifact@1
         condition: always()

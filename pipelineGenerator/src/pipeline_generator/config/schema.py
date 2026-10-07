@@ -45,6 +45,12 @@ PRE_RUN_CHECKS_BY_TOOL = {
     ),
 }
 
+# BlazeMeter's generated script authenticates with these env vars; every
+# CI/CD renderer maps secrets of the same names into the step (Jenkins via
+# one "Username with password" credential: username = key ID).
+BLAZEMETER_SECRET_NAMES = ("BLAZEMETER_API_KEY_ID", "BLAZEMETER_API_KEY_SECRET")
+JENKINS_BLAZEMETER_CREDENTIALS_ID = "blazemeter-api-key"
+
 LOAD_PROFILE_FIELDS = ("users", "ramp_up_seconds", "duration_minutes", "throughput_rps")
 LOAD_PROFILE_MINIMUMS = {"users": 1, "ramp_up_seconds": 0, "duration_minutes": 1, "throughput_rps": 0}
 # LoadRunner Professional is deliberately absent: wlrun has no CLI for

@@ -4,6 +4,18 @@ All notable changes to `pipeline-generator` are documented here.
 
 ## [Unreleased]
 
+- BlazeMeter credentials are now wired into every generated pipeline.
+  Previously no pipeline passed `BLAZEMETER_API_KEY_ID`/
+  `BLAZEMETER_API_KEY_SECRET` to the script, so every BlazeMeter run
+  stopped at "must be set". GitHub Actions maps repository secrets of
+  those names into the run step, and automated (`workflow_call`) workflows
+  declare them as required secrets (call with `secrets: inherit`). Azure
+  DevOps maps secret pipeline variables of those names into the step's
+  `env:`. Jenkins wraps the call in `withCredentials` on a Username with
+  password credential `blazemeter-api-key`. The generated README's TODOs
+  now say exactly what to create per platform (and drop the vague "fill
+  secret variable names" line).
+
 - **Breaking:** scenarios now belong to an environment.
   `catalog.scenarios` (a flat top-level list) is removed; each
   `catalog.environments[]` entry has its own `scenarios[]`. A scenario key

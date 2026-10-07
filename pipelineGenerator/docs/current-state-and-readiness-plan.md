@@ -976,8 +976,10 @@ considered ready for executing tests when:
   first of the three tools to have one).
 - Secrets and credentials are documented — N/A for JMeter/LoadRunner (they
   manage no remote credentials at all); BlazeMeter's
-  `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET` are documented in the
-  generated setup README.
+  `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET` are wired into every
+  generated pipeline (GitHub secrets, Azure secret variables mapped into
+  `env:`, Jenkins `withCredentials` on credential `blazemeter-api-key`) and
+  the generated setup README says exactly what to create on each platform.
 - [x] The generated script's real-execution behavior is covered by
   automated tests using mocks or test doubles, for all three tools — see
   "Recommended Implementation Order" item 14.

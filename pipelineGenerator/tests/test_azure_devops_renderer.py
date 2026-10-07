@@ -176,3 +176,32 @@ def test_render_azure_devops_automated_job_passes_no_load_flags(tmp_path: Path) 
     assert automated
     for path in automated:
         assert "--users" not in path.read_text(encoding="utf-8")
+
+
+def _blazemeter_config() -> dict:
+    config = _config()
+    config["tool"] = {
+        "type": "blazemeter",
+        "connection": {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"},
+    }
+    return config
+
+
+def test_render_azure_devops_maps_blazemeter_secret_variables_into_steps(tmp_path: Path) -> None:
+    # Azure never exposes secret variables to scripts automatically; they must be mapped.
+    config = _blazemeter_config()
+    render_azure_devops(config, build_generic_package(config), tmp_path)
+
+    for name in ("performance-manual.yml", "performance-automated-post-deploy-smoke.yml"):
+        doc = yaml.safe_load((tmp_path / "azure" / name).read_text())
+        env = doc["jobs"][0]["steps"][1]["env"]
+        assert env["BLAZEMETER_API_KEY_ID"] == "$(BLAZEMETER_API_KEY_ID)", name
+        assert env["BLAZEMETER_API_KEY_SECRET"] == "$(BLAZEMETER_API_KEY_SECRET)", name
+
+
+def test_render_azure_devops_jmeter_has_no_blazemeter_secrets(tmp_path: Path) -> None:
+    config = _config()
+    render_azure_devops(config, build_generic_package(config), tmp_path)
+
+    for path in (tmp_path / "azure").iterdir():
+        assert "BLAZEMETER" not in path.read_text()

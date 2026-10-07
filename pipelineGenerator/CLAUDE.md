@@ -212,8 +212,13 @@ Pipeline: **customer YAML → validate → generic pipeline model → CI/CD rend
   own comments as best-understanding, pending verification against a live
   account. JMeter and LoadRunner Professional both run locally/on-agent (no
   remote API credentials managed by this script); BlazeMeter authenticates
-  via `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET` env vars, hardcoded
-  per `tool.type` in `scripts.py` rather than driven by any config field —
+  via `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET` env vars
+  (`BLAZEMETER_SECRET_NAMES` in `config/schema.py`; every renderer maps
+  them in via `quoting.secret_names(tool_type)` — GitHub `secrets.*` plus a
+  `workflow_call.secrets` declaration on automated workflows, Azure `$(...)`
+  in the step `env:`, Jenkins `withCredentials` on
+  `JENKINS_BLAZEMETER_CREDENTIALS_ID`), hardcoded per `tool.type` rather
+  than driven by any config field —
   there used to be a `tool.auth.type` config field mirroring this, but it
   was asked in the wizard and validated against an enum without ever
   actually gating any behavior, so it was removed as dead config.

@@ -305,3 +305,43 @@ def test_readme_todos_list_unfilled_load_values() -> None:
 
     assert "`load_profile.users`" in todos
     assert "`load_profile.duration_minutes`" not in todos
+
+
+def _blazemeter_readme(cicd_type: str) -> str:
+    config = _base_config(
+        "blazemeter", {"base_url": "https://a.blazemeter.com", "workspace_id": "1", "project_id": "2"}
+    )
+    config["cicd"]["type"] = cicd_type
+    config["automated_jobs"] = [
+        {"name": "nightly", "environment_ref": "qa", "scenario_ref": "checkout_smoke", "enabled": True}
+    ]
+    return render_setup_readme(config, build_generic_package(config))
+
+
+def test_readme_tells_github_users_where_blazemeter_secrets_go() -> None:
+    readme = _blazemeter_readme("github_actions")
+
+    todos = _section(readme, "Remaining TODOs")
+    assert "repository secrets `BLAZEMETER_API_KEY_ID` and `BLAZEMETER_API_KEY_SECRET`" in todos
+    assert "secrets: inherit" in _section(readme, "Automated Job Integration")
+
+
+def test_readme_tells_azure_users_to_create_secret_variables() -> None:
+    todos = _section(_blazemeter_readme("azure_devops"), "Remaining TODOs")
+
+    assert "secret pipeline variables `BLAZEMETER_API_KEY_ID` and `BLAZEMETER_API_KEY_SECRET`" in todos
+
+
+def test_readme_tells_jenkins_users_the_credentials_id() -> None:
+    todos = _section(_blazemeter_readme("jenkins"), "Remaining TODOs")
+
+    assert "`blazemeter-api-key`" in todos
+    assert "Username with password" in todos
+
+
+def test_readme_no_longer_asks_to_fill_secret_names_in_pipeline_files() -> None:
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
+
+    todos = _section(render_setup_readme(config, build_generic_package(config)), "Remaining TODOs")
+
+    assert "Fill secret variable names" not in todos

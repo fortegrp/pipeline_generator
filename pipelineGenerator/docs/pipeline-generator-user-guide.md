@@ -615,37 +615,47 @@ nothing beyond the tool itself (e.g. `jmeter` on `PATH`) at execution time.
 
 Written to `.github/workflows/`:
 
-- `performance-manual.yml` — a `workflow_dispatch` workflow with `choice`
-  inputs for environment and scenario, populated from your catalog.
+- `performance-manual.yml` — a `workflow_dispatch` workflow with one
+  `test_case` `choice` input listing your catalog's `<environment>:
+  <scenario>` pairs, plus the load-profile inputs.
 - `performance-automated-<job-name>.yml` — a `workflow_call` reusable
   workflow, one per enabled automated job.
 
-Both check out the repo, run `./scripts/run-<tool_type>.sh` with the
-environment/scenario, and upload `run-output/` as a build artifact.
+Both check out the repo, run `./scripts/run-<tool_type>.sh --test-case
+...`, and upload `run-output/` as a build artifact. For BlazeMeter, both map
+repository secrets `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET` into
+the run step; the reusable workflow also declares them under
+`workflow_call.secrets`, so its caller must pass them (`secrets: inherit`).
 
 ### Azure DevOps
 
 Written to `azure/`:
 
-- `performance-manual.yml` — a pipeline with `string`-typed parameters
-  (`environment`, `scenario`) constrained to your catalog's values.
+- `performance-manual.yml` — a pipeline with one `string`-typed
+  `test_case` parameter constrained to your catalog's `<environment>:
+  <scenario>` pairs, plus the load-profile parameters.
 - `performance-automated-<job-name>.yml` — one per enabled automated job.
 
 Both check out the repo, run `./scripts/run-<tool_type>.sh` in a
 "Run performance wrapper" step, and publish `run-output/` as a pipeline
-artifact.
+artifact. For BlazeMeter, create secret pipeline variables
+`BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET`; the step maps them into
+its `env:` (Azure never exposes secret variables to scripts on its own).
 
 ### Jenkins
 
 Written to `jenkins/` as declarative Jenkinsfiles:
 
-- `Jenkinsfile.performance-manual` — a pipeline with `choice` build
-  parameters for environment and scenario.
+- `Jenkinsfile.performance-manual` — a pipeline with one `TEST_CASE`
+  `choice` build parameter listing your catalog's pairs, plus the
+  load-profile `string` parameters.
 - `Jenkinsfile.performance-automated-<job-name>` — one per enabled
   automated job.
 
-Both `sh` out to `./scripts/run-<tool_type>.sh` with the environment/scenario,
-and archive `run-output/**` as build artifacts.
+Both `sh` out to `./scripts/run-<tool_type>.sh --test-case ...`, and archive
+`run-output/**` as build artifacts. For BlazeMeter, the call is wrapped in
+`withCredentials` reading a **Username with password** credential with ID
+`blazemeter-api-key` (username = API key ID, password = API key secret).
 
 ## 10. Performance Testing Tools
 
@@ -800,8 +810,11 @@ it's more likely if you hand-edited the YAML.
 
 **"ERROR: BLAZEMETER_API_KEY_ID must be set" / "... BLAZEMETER_API_KEY_SECRET must be set"**
 The generated `scripts/run-blazemeter.sh` needs both env vars set before
-it will make any API call — set them as CI/CD secrets (see the generated
-setup README).
+it will make any API call. The generated pipelines already map them in, so
+this means the secret doesn't exist where the pipeline looks: GitHub
+repository secrets (and `secrets: inherit` when calling an automated
+workflow), Azure secret pipeline variables, or the Jenkins credential
+`blazemeter-api-key` — exact names are in the generated setup README.
 
 **"ERROR: jq is required to parse BlazeMeter API responses but was not found."**
 The generated `scripts/run-blazemeter.sh` needs `jq` installed on whatever

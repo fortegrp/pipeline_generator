@@ -3,8 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from pipeline_generator.generator.generic_model import AutomatedJobSpec, GenericPipelinePackage
-from pipeline_generator.config.schema import LOAD_PROFILE_LABELS
-from pipeline_generator.renderers.quoting import blazemeter_timeout_flag, groovy_squote, load_flags, safe_filename_component
+from pipeline_generator.config.schema import JENKINS_BLAZEMETER_CREDENTIALS_ID, LOAD_PROFILE_LABELS
+from pipeline_generator.renderers.quoting import (
+    blazemeter_timeout_flag,
+    groovy_squote,
+    load_flags,
+    safe_filename_component,
+    secret_names,
+)
 
 
 def render_jenkins(config: dict, package: GenericPipelinePackage, setup_dir: Path) -> list[str]:
@@ -60,7 +66,7 @@ def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
                 // Jenkins; referencing them here (rather than Groovy-interpolating
                 // ${{params.X}} into the command text) avoids splicing a
                 // build-triggerer-controlled value directly into the shell script.
-                sh './scripts/run-{package.tool_type}.sh --test-case "$TEST_CASE"{load_flag_text}{timeout_flag}'
+{_run_step(package.tool_type, f'sh \'./scripts/run-{package.tool_type}.sh --test-case "$TEST_CASE"{load_flag_text}{timeout_flag}\'')}
             }}
         }}
     }}
@@ -71,6 +77,19 @@ def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
     }}
 }}
 """
+
+
+def _run_step(tool_type: str, sh_line: str) -> str:
+    if not secret_names(tool_type):
+        return f"                {sh_line}"
+    # One "Username with password" credential: username = API key ID,
+    # password = API key secret.
+    return (
+        f"                withCredentials([usernamePassword(credentialsId: '{JENKINS_BLAZEMETER_CREDENTIALS_ID}', "
+        "usernameVariable: 'BLAZEMETER_API_KEY_ID', passwordVariable: 'BLAZEMETER_API_KEY_SECRET')]) {\n"
+        f"                    {sh_line}\n"
+        "                }"
+    )
 
 
 def _render_automated_job(job: AutomatedJobSpec, tool_type: str) -> str:
@@ -86,7 +105,7 @@ def _render_automated_job(job: AutomatedJobSpec, tool_type: str) -> str:
     stages {{
         stage('Run performance wrapper') {{
             steps {{
-                sh './scripts/run-{tool_type}.sh --test-case "$TEST_CASE"{timeout_flag}'
+{_run_step(tool_type, f'sh \'./scripts/run-{tool_type}.sh --test-case "$TEST_CASE"{timeout_flag}\'')}
             }}
         }}
     }}
