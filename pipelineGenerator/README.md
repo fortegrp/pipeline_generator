@@ -334,8 +334,9 @@ are under [`examples/`](examples/).
 
 ## Recommended Next Work
 
-- Verify BlazeMeter's exact status-string vocabulary and report endpoint
-  against a live account (flagged as best-understanding in
-  `renderers/scripts.py` and the generated setup README)
+- Run the [real-platform verification checklist](docs/real-platform-verification-checklist.md):
+  BlazeMeter's API fields/status values against a live account, LoadRunner
+  on a real Windows agent, and one real run per CI/CD platform — the only
+  parts not covered by the automated (stub-based) tests
 - Add a GitLab CI renderer
 - Add non-interactive `generate` workflows around completed YAML inputs
