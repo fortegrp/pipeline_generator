@@ -28,9 +28,7 @@ def render_github_actions(config: dict, package: GenericPipelinePackage, setup_d
     if package.automated_jobs:
         for job in package.automated_jobs:
             automated_path = workflow_dir / f"performance-automated-{safe_filename_component(job.name)}.yml"
-            automated_path.write_text(
-                _render_automated_workflow(job, package.tool_type, package.runner), encoding="utf-8"
-            )
+            automated_path.write_text(_render_automated_workflow(job, package), encoding="utf-8")
             outputs.append(str(automated_path))
 
     return outputs
@@ -80,7 +78,7 @@ on:
 
 jobs:
   run-performance-test:
-    runs-on: {_runs_on(package.runner)}
+    runs-on: {_runs_on(package.runner)}{_concurrency(package.setup_id)}
     timeout-minutes: {timeout}
     steps:
       - uses: actions/checkout@v4
@@ -113,7 +111,18 @@ def _runs_on(runner: str) -> str:
     return "[" + ", ".join(yaml_dquote(label) for label in labels) + "]"
 
 
-def _render_automated_workflow(job: AutomatedJobSpec, tool_type: str, runner: str) -> str:
+def _concurrency(setup_id: str) -> str:
+    # One group per setup, shared by the manual and automated workflows: two
+    # load tests at once would skew each other (and a LoadRunner Controller runs
+    # one scenario at a time). Never cancel a test that's already running.
+    return f"""
+    concurrency:
+      group: {yaml_dquote(f"performance-{setup_id}")}
+      cancel-in-progress: false"""
+
+
+def _render_automated_workflow(job: AutomatedJobSpec, package: GenericPipelinePackage) -> str:
+    tool_type, runner = package.tool_type, package.runner
     job_id = _safe_job_id(job.name)
     timeout_flag = blazemeter_timeout_flag(tool_type, job.timeout_minutes, separator="\n          ")
     names = secret_names(tool_type)
@@ -131,7 +140,7 @@ on:
 
 jobs:
   {job_id}:
-    runs-on: {_runs_on(runner)}
+    runs-on: {_runs_on(runner)}{_concurrency(package.setup_id)}
     timeout-minutes: {job.timeout_minutes}
     steps:
       - uses: actions/checkout@v4

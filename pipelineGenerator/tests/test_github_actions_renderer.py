@@ -139,8 +139,8 @@ def test_render_github_actions_includes_timeout_flag_for_blazemeter(tmp_path: Pa
         tmp_path / ".github" / "workflows" / "performance-automated-post-deploy-smoke.yml"
     ).read_text(encoding="utf-8")
 
-    assert "--timeout-minutes 120" in manual_text
-    assert "--timeout-minutes 60" in automated_text
+    assert "--timeout-minutes 115" in manual_text
+    assert "--timeout-minutes 55" in automated_text
 
 
 _LOAD_PROFILE = {"test_type": "load", "users": 20, "ramp_up_seconds": 60, "duration_minutes": 10, "throughput_rps": 0}
@@ -278,3 +278,13 @@ def test_render_github_actions_targets_configured_runner_labels(tmp_path: Path) 
 
     for doc in _all_workflows(tmp_path):
         assert next(iter(doc["jobs"].values()))["runs-on"] == ["self-hosted", "windows", "lr-controller"]
+
+
+def test_render_github_actions_serializes_runs_of_the_same_setup(tmp_path: Path) -> None:
+    # Manual and automated runs share one group, and a running test is never cancelled.
+    config = _config()
+    render_github_actions(config, build_generic_package(config), tmp_path)
+
+    for doc in _all_workflows(tmp_path):
+        job = next(iter(doc["jobs"].values()))
+        assert job["concurrency"] == {"group": "performance-gha-test-setup", "cancel-in-progress": False}

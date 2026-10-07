@@ -374,3 +374,18 @@ def test_readme_says_which_bash_folders_go_on_windows_agent_path() -> None:
     assert "Git\\bin" in troubleshooting
     assert "Git\\usr\\bin" in troubleshooting
     assert "WSL" in troubleshooting
+
+
+def test_readme_explains_azure_depends_on_and_run_locking() -> None:
+    readme = _blazemeter_readme("azure_devops")
+
+    automated = _section(readme, "Automated Job Integration")
+    assert "dependsOn" in automated
+    assert "exclusive lock" in readme.lower()
+
+
+def test_readme_tells_jenkins_loadrunner_users_to_use_one_executor() -> None:
+    config = _base_config("loadrunner_professional", {"wlrun_path": "wlrun"})
+    config["cicd"]["type"] = "jenkins"
+
+    assert "one executor" in render_setup_readme(config, build_generic_package(config))

@@ -26,6 +26,16 @@ _BLAZEMETER_SECRET_LINES = {
 
 def _todo_lines(tool_type: str, cicd_type: str, runner: str, script_name: str) -> list[str]:
     lines = ["- Replace TODO placeholders in `customer.yaml`."]
+    if cicd_type == "azure_devops":
+        lines.append(
+            "- Azure doesn't serialize these runs on its own: to keep two load tests from overlapping, add an "
+            "**Exclusive lock** check to the agent pool (or an Environment) the pipelines use."
+        )
+    if cicd_type == "jenkins" and tool_type == "loadrunner_professional":
+        lines.append(
+            "- Give the LoadRunner agent one executor: `disableConcurrentBuilds()` only stops a job overlapping "
+            "itself, and the Controller runs one scenario at a time."
+        )
     if tool_type == "loadrunner_professional" and is_placeholder(runner):
         lines.append(
             "- Set `cicd.runner` to the runner label / agent pool / agent label of the Windows machine next to "
@@ -154,8 +164,10 @@ def _automated_job_lines(cicd_type: str, tool_type: str, job: AutomatedJobSpec) 
     if cicd_type == "azure_devops":
         return [
             f"- **{job.name}**: include the generated `azure/performance-automated-{job_slug}.yml` "
-            "jobs template from your deployment pipeline under `jobs:` "
-            f"(`- template: azure/performance-automated-{job_slug}.yml`).",
+            "jobs template from your deployment pipeline under `jobs:`, passing the deploy job's name "
+            "so it runs after the deploy instead of in parallel with it: "
+            f"`- template: azure/performance-automated-{job_slug}.yml` with "
+            "`parameters: {dependsOn: [deploy]}`.",
         ]
     if cicd_type == "jenkins":
         return [

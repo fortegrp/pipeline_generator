@@ -123,10 +123,16 @@ def _pool(runner: str) -> str:
 def _render_automated_job(job: AutomatedJobSpec, tool_type: str, runner: str) -> str:
     job_id = _safe_job_id(job.name)
     timeout_flag = blazemeter_timeout_flag(tool_type, job.timeout_minutes, separator="\n          ")
-    return f"""parameters: []
+    # dependsOn: jobs in one stage run in parallel unless they declare it, so
+    # the including pipeline passes e.g. [deploy] to run this after the deploy.
+    return f"""parameters:
+  - name: dependsOn
+    type: object
+    default: []
 
 jobs:
   - job: {job_id}
+    dependsOn: ${{{{ parameters.dependsOn }}}}
     timeoutInMinutes: {job.timeout_minutes}
     pool:
       {_pool(runner)}

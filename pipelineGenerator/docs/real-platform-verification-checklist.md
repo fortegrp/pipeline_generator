@@ -111,14 +111,17 @@ agent from section 2 if that's your target.
   Pass: it runs without inputs and uses `customer.yaml`'s values. For BlazeMeter, also try **without**
   `secrets: inherit`. Pass: GitHub refuses to start it (required secret missing).
 - [ ] **3.5 Runner** — if `cicd.runner` is set, confirm the job lands on that runner.
+- [ ] **3.5a No overlap** — start the manual workflow twice quickly. Pass: the second waits until the first
+  finishes (it is not cancelled).
 
 ### Azure DevOps
 - [ ] **3.6** Secret pipeline variables `BLAZEMETER_API_KEY_ID`/`_SECRET` (BlazeMeter setups only).
 - [ ] **3.7 Manual run** — register `azure/performance-manual.yml` as a pipeline and run it. Pass: one
   **Environment and scenario** parameter limited to your pairs, load parameters pre-filled, green run,
   `performance-results` artifact published.
-- [ ] **3.8 Automated template** — in another pipeline, under `jobs:` add
-  `- template: azure/performance-automated-<job>.yml`. Pass: the job runs. For BlazeMeter, define the
+- [ ] **3.8 Automated template** — in another pipeline with a `deploy` job, under `jobs:` add
+  `- template: azure/performance-automated-<job>.yml` with `parameters: {dependsOn: [deploy]}`.
+  Pass: the job starts only after `deploy` finishes. For BlazeMeter, define the
   secret variables on **this** pipeline. Then remove one and rerun. Pass: the script stops with
   "BLAZEMETER_API_KEY_ID is not defined" (not a 401 later).
 - [ ] **3.9 Pool** — if `cicd.runner` is a self-hosted pool name, confirm the job uses that pool.

@@ -120,8 +120,8 @@ def test_render_jenkins_includes_timeout_flag_for_blazemeter(tmp_path: Path) -> 
         tmp_path / "jenkins" / "Jenkinsfile.performance-automated-post-deploy-smoke"
     ).read_text(encoding="utf-8")
 
-    assert "--timeout-minutes 120" in manual_text
-    assert "--timeout-minutes 60" in automated_text
+    assert "--timeout-minutes 115" in manual_text
+    assert "--timeout-minutes 55" in automated_text
 
 
 _LOAD_PROFILE = {"test_type": "load", "users": 20, "ramp_up_seconds": 60, "duration_minutes": 10, "throughput_rps": 0}
@@ -206,3 +206,11 @@ def test_render_jenkins_targets_configured_agent_label(tmp_path: Path) -> None:
         text = path.read_text()
         assert "agent { label 'lr-controller && windows' }" in text
         assert "agent any" not in text
+
+
+def test_render_jenkins_disables_concurrent_builds(tmp_path: Path) -> None:
+    config = _config()
+    render_jenkins(config, build_generic_package(config), tmp_path)
+
+    for path in (tmp_path / "jenkins").iterdir():
+        assert "disableConcurrentBuilds()" in path.read_text()

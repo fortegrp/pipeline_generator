@@ -459,6 +459,12 @@ main() {{
       ;;
     *)
       echo "ERROR: Timed out after $timeout_minutes minutes waiting for BlazeMeter test to finish (master $master_id, last status: $status)" >&2
+      # Stop the remote test so it doesn't keep running (and spending credits)
+      # after the pipeline gives up. Endpoint is our best understanding of API v4.
+      if ! curl -s -o /dev/null -u "$BLAZEMETER_API_KEY_ID:$BLAZEMETER_API_KEY_SECRET" \\
+        -X POST "$base_url/api/v4/masters/$master_id/stop"; then
+        echo "WARNING: failed to stop BlazeMeter test (master $master_id) -- stop it in the BlazeMeter UI" >&2
+      fi
       summary_status="error"
       run_status=1
       ;;

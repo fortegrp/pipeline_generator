@@ -123,7 +123,15 @@ Pipeline: **customer YAML → validate → generic pipeline model → CI/CD rend
   required for LoadRunner (validator warning; wizard default `TODO`), since
   `wlrun` must run on the Controller-adjacent agent. Steps always invoke
   the script with bash (`shell: bash`, Azure `bash:` step, Jenkins `sh`),
-  because Windows agents otherwise use PowerShell/cmd. `render_tool_script`
+  because Windows agents otherwise use PowerShell/cmd. Runs of one setup
+  don't overlap: GitHub jobs share a `concurrency` group
+  `performance-<setup_id>` (`cancel-in-progress: false`), Jenkinsfiles set
+  `disableConcurrentBuilds()`, and the README tells Azure users to add an
+  Exclusive lock check. The Azure automated template takes a `dependsOn`
+  object parameter (jobs in one stage otherwise run in parallel with the
+  deploy). BlazeMeter's `--timeout-minutes` is the job timeout minus
+  `BLAZEMETER_DEADLINE_MARGIN_MINUTES` (5), so the script can stop the
+  remote test and write its summary before the CI kills the step. `render_tool_script`
   also writes `scripts/.gitattributes` (`*.sh text eol=lf`) because Git for
   Windows' default `core.autocrlf=true` would check the script out with
   CRLF and break bash. `cicd.runner` may be a string or a list of labels

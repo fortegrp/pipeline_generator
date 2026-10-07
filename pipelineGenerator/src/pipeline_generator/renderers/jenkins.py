@@ -59,6 +59,7 @@ def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
         ){load_parameters}
     }}
     options {{
+        disableConcurrentBuilds()
         timeout(time: {timeout}, unit: 'MINUTES')
     }}
     stages {{
@@ -108,6 +109,7 @@ def _render_automated_job(job: AutomatedJobSpec, tool_type: str, runner: str) ->
         TEST_CASE = {groovy_squote(job.test_case)}
     }}
     options {{
+        disableConcurrentBuilds()
         timeout(time: {job.timeout_minutes}, unit: 'MINUTES')
     }}
     stages {{

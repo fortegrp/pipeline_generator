@@ -1817,3 +1817,15 @@ def test_jmeter_docker_call_survives_git_bash_path_conversion(tmp_path: Path) ->
     content = script_path.read_text()
 
     assert 'MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W 2>/dev/null || pwd):/workspace"' in content
+
+
+
+def test_blazemeter_script_stops_remote_test_on_timeout(tmp_path: Path) -> None:
+    script_path = _render(tmp_path, _base_config("blazemeter", _BLAZEMETER_CONNECTION))
+    env = _stub_bin_with(tmp_path, curl=_logging_curl(tmp_path), jq=_FAKE_JQ)
+
+    result = _run(script_path, [*_QA, "--timeout-minutes", "0"], env, tmp_path)
+
+    assert result.returncode == 1
+    calls = (tmp_path / "curl-log").read_text().splitlines()
+    assert any("-X POST" in call and "/api/v4/masters/999/stop" in call for call in calls)

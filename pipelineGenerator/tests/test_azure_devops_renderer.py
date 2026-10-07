@@ -133,8 +133,8 @@ def test_render_azure_devops_includes_timeout_flag_for_blazemeter(tmp_path: Path
     manual_text = (tmp_path / "azure" / "performance-manual.yml").read_text(encoding="utf-8")
     automated_text = (tmp_path / "azure" / "performance-automated-post-deploy-smoke.yml").read_text(encoding="utf-8")
 
-    assert "--timeout-minutes 120" in manual_text
-    assert "--timeout-minutes 60" in automated_text
+    assert "--timeout-minutes 115" in manual_text
+    assert "--timeout-minutes 55" in automated_text
 
 
 _LOAD_PROFILE = {"test_type": "load", "users": 20, "ramp_up_seconds": 60, "duration_minutes": 10, "throughput_rps": 0}
@@ -243,3 +243,15 @@ def test_render_azure_devops_treats_hosted_image_names_as_vm_image(tmp_path: Pat
 
     for doc in _all_pipelines(tmp_path):
         assert doc["jobs"][0]["pool"] == {"vmImage": "windows-latest"}
+
+
+def test_render_azure_devops_automated_template_accepts_depends_on(tmp_path: Path) -> None:
+    # Jobs in one stage run in parallel unless they declare dependsOn; without
+    # it a post-deploy test would run during the deploy.
+    config = _config()
+    render_azure_devops(config, build_generic_package(config), tmp_path)
+
+    text = (tmp_path / "azure" / "performance-automated-post-deploy-smoke.yml").read_text()
+    doc = yaml.safe_load(text)
+    assert doc["parameters"] == [{"name": "dependsOn", "type": "object", "default": []}]
+    assert "dependsOn: ${{ parameters.dependsOn }}" in text

@@ -4,6 +4,20 @@ All notable changes to `pipeline-generator` are documented here.
 
 ## [Unreleased]
 
+- Azure automated templates take a `dependsOn` parameter; previously the
+  performance job ran in parallel with the deploy job it was meant to follow
+  (jobs in one stage run in parallel by default). Include it with
+  `parameters: {dependsOn: [deploy]}`.
+- Runs of the same setup no longer overlap: GitHub jobs share a
+  `concurrency` group per setup (never cancelling a running test), and
+  Jenkinsfiles set `disableConcurrentBuilds()`. The README covers the rest:
+  Azure needs an Exclusive lock check; a Jenkins LoadRunner agent should
+  have one executor.
+- BlazeMeter's script deadline is now the CI job timeout minus 5 minutes
+  (previously equal, so the CI killed the step before the script's own
+  timeout handling ran), and on that timeout the script stops the remote
+  BlazeMeter test instead of leaving it running.
+
 - The wizard no longer asks an environment identifier for LoadRunner
   Professional or BlazeMeter — their generated scripts never read it (only
   JMeter's `-Jenvironment` does). The validator only expects one for

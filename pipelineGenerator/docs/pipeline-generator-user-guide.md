@@ -656,6 +656,9 @@ Both check out the repo, run `./scripts/run-<tool_type>.sh --test-case
 repository secrets `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET` into
 the run step; the reusable workflow also declares them under
 `workflow_call.secrets`, so its caller must pass them (`secrets: inherit`).
+Both jobs share a `concurrency` group per setup (`performance-<setup id>`,
+never cancelling a running test), so a manual and an automated run of the
+same setup can't overlap.
 
 ### Azure DevOps
 
@@ -671,6 +674,11 @@ Both check out the repo, run `./scripts/run-<tool_type>.sh` in a
 artifact. For BlazeMeter, create secret pipeline variables
 `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET`; the step maps them into
 its `env:` (Azure never exposes secret variables to scripts on its own).
+The automated template takes a `dependsOn` parameter — pass your deploy job
+(`parameters: {dependsOn: [deploy]}`), because jobs in one stage otherwise
+run in parallel and the test would hit the environment mid-deploy. Azure
+doesn't serialize runs by itself: add an **Exclusive lock** check to the
+agent pool (or an Environment) to keep two load tests from overlapping.
 
 ### Jenkins
 
@@ -686,6 +694,9 @@ Both `sh` out to `./scripts/run-<tool_type>.sh --test-case ...`, and archive
 `run-output/**` as build artifacts. For BlazeMeter, the call is wrapped in
 `withCredentials` reading a **Username with password** credential with ID
 `blazemeter-api-key` (username = API key ID, password = API key secret).
+Both Jenkinsfiles set `disableConcurrentBuilds()`; for LoadRunner also give
+the Controller's agent a single executor, since that's what keeps the manual
+and automated jobs from overlapping on it.
 
 ## 10. Performance Testing Tools
 

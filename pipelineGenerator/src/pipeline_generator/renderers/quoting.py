@@ -7,6 +7,8 @@ from pipeline_generator.config.schema import BLAZEMETER_SECRET_NAMES
 from pipeline_generator.generator.generic_model import LoadInput
 from pipeline_generator.text_utils import slugify
 
+BLAZEMETER_DEADLINE_MARGIN_MINUTES = 5
+
 
 def yaml_dquote(value: str) -> str:
     """Render value as a YAML double-quoted scalar.
@@ -65,4 +67,7 @@ def blazemeter_timeout_flag(tool_type: str, timeout_minutes: int, separator: str
     """
     if tool_type != "blazemeter":
         return ""
-    return f"{separator}--timeout-minutes {timeout_minutes}"
+    # Give up a few minutes before the CI job's own timeout kills the step, so
+    # the script can still stop the BlazeMeter test and write run-summary.json.
+    deadline = max(1, timeout_minutes - BLAZEMETER_DEADLINE_MARGIN_MINUTES)
+    return f"{separator}--timeout-minutes {deadline}"
