@@ -67,18 +67,20 @@ def _as_list_of_dicts(value: object, path: str, result: ValidationResult) -> lis
     return items
 
 
-def _warn_duplicate_keys(items: list[dict], path: str, result: ValidationResult) -> None:
-    counts = Counter(item.get("key") for item in items if not is_placeholder(item.get("key")))
+def _warn_duplicate_keys(items: list[dict], path: str, consequence: str, result: ValidationResult) -> None:
+    counts = Counter(item.get("key") for item in items if isinstance(item.get("key"), str))
     for key, count in counts.items():
-        if count > 1:
-            result.warnings.append(
-                f"{path} has {count} entries with the duplicate key '{key}' -- "
-                "only the first is ever reachable; the others are silently unselectable."
-            )
+        if count > 1 and not is_placeholder(key):
+            result.warnings.append(f"{path} has {count} entries with the duplicate key '{key}' -- {consequence}")
 
 
 def _check_key_format(key: object, path: str, result: ValidationResult) -> None:
-    if not is_placeholder(key) and not re.fullmatch(CATALOG_KEY_PATTERN, str(key)):
+    if is_placeholder(key):
+        # Even a draft can't render an entry without a key (it's the dropdown value).
+        result.errors.append(f"{path} has an entry whose key is missing.")
+    elif not isinstance(key, str):
+        result.errors.append(f"{path} key {key!r} must be a string -- quote it in the YAML.")
+    elif not re.fullmatch(CATALOG_KEY_PATTERN, key):
         result.errors.append(
             f"{path} key {key!r} may only contain letters, digits, '_', '.', '-' "
             "and must start with a letter or digit."
@@ -140,10 +142,17 @@ def validate_config(config: dict) -> ValidationResult:
     if generation_mode not in GENERATION_MODES:
         result.errors.append(f"Unsupported setup.generation_mode: {generation_mode}")
 
+    if "scenarios" in catalog:
+        result.errors.append(
+            "catalog.scenarios is no longer supported -- move each scenario under its environment's "
+            "scenarios list (catalog.environments[].scenarios)."
+        )
     environments = _as_list_of_dicts(catalog.get("environments", []), "catalog.environments", result)
     if not environments:
         result.warnings.append("No environments are defined in catalog.environments.")
-    _warn_duplicate_keys(environments, "catalog.environments", result)
+    _warn_duplicate_keys(
+        environments, "catalog.environments", "merge them into one entry with all their scenarios.", result
+    )
 
     pairs: set[tuple[object, object]] = set()
     for env in environments:
@@ -155,8 +164,13 @@ def validate_config(config: dict) -> ValidationResult:
 
         scenarios = _as_list_of_dicts(env.get("scenarios", []), f"{env_path}.scenarios", result)
         if not scenarios:
-            result.warnings.append(f"{env_path} has no scenarios -- it can never be selected.")
-        _warn_duplicate_keys(scenarios, f"{env_path}.scenarios", result)
+            result.warnings.append(f"{env_path}.scenarios is missing -- this environment can never be selected.")
+        _warn_duplicate_keys(
+            scenarios,
+            f"{env_path}.scenarios",
+            "only the first is ever reachable; the others are silently unselectable.",
+            result,
+        )
         for scenario in scenarios:
             scenario_key = scenario.get("key")
             scenario_path = f"{env_path}.scenarios.{'unknown' if is_placeholder(scenario_key) else scenario_key}"
@@ -175,7 +189,11 @@ def validate_config(config: dict) -> ValidationResult:
         if not job.get("enabled", True):
             continue
         name = job.get("name", "unknown")
-        if job.get("environment_ref") not in env_keys:
+        if is_placeholder(job.get("environment_ref")):
+            result.warnings.append(f"Automated job '{name}' environment_ref is missing.")
+        elif is_placeholder(job.get("scenario_ref")):
+            result.warnings.append(f"Automated job '{name}' scenario_ref is missing.")
+        elif job.get("environment_ref") not in env_keys:
             result.warnings.append(f"Automated job '{name}' references an unknown environment.")
         elif (job.get("environment_ref"), job.get("scenario_ref")) not in pairs:
             result.warnings.append(

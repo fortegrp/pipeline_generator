@@ -363,7 +363,7 @@ def test_validation_warns_about_environment_with_no_scenarios() -> None:
 
     result = validate_config(config)
 
-    assert any("catalog.environments.staging has no scenarios" in warning for warning in result.warnings)
+    assert any("catalog.environments.staging.scenarios is missing" in warning for warning in result.warnings)
 
 
 def test_validation_warns_about_missing_scenario_identifier_with_nested_path() -> None:
@@ -414,3 +414,46 @@ def test_validation_accepts_simple_catalog_keys() -> None:
     result = validate_config(config)
 
     assert not result.errors
+
+
+def test_validation_errors_on_non_string_catalog_key() -> None:
+    # YAML reads `key: 1` / `key: yes` as int/bool; they'd crash generate later.
+    for bad in (1, 2025, True):
+        config = _complete_jmeter_config()
+        config["catalog"]["environments"][0]["scenarios"][0]["key"] = bad
+
+        result = validate_config(config)
+
+        assert any("must be a string" in error for error in result.errors), bad
+
+
+def test_validation_errors_on_missing_catalog_key() -> None:
+    config = _complete_jmeter_config()
+    config["catalog"]["environments"][0]["scenarios"] = [{"identifier": "SC-1"}]
+    config["incomplete"] = True
+
+    result = validate_config(config)
+
+    assert any("catalog.environments.qa.scenarios" in error and "key" in error for error in result.errors)
+
+
+def test_validation_errors_on_legacy_flat_scenarios_list() -> None:
+    config = _complete_jmeter_config()
+    config["catalog"]["scenarios"] = [{"key": "checkout_smoke", "identifier": "SC-1"}]
+
+    result = validate_config(config)
+
+    assert any("catalog.scenarios is no longer supported" in error for error in result.errors)
+
+
+def test_validation_duplicate_environment_warning_says_to_merge() -> None:
+    config = _complete_jmeter_config()
+    config["catalog"]["environments"].append(
+        {"key": "qa", "identifier": "env-qa", "scenarios": [{"key": "browse", "identifier": "SC-2"}]}
+    )
+
+    result = validate_config(config)
+
+    warning = next(w for w in result.warnings if "duplicate" in w.lower())
+    assert "merge" in warning
+    assert "only the first is ever reachable" not in warning

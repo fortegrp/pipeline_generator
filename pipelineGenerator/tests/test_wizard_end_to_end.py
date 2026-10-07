@@ -169,3 +169,31 @@ def test_config_with_non_todo_warning_is_not_marked_incomplete() -> None:
     config["manual_pipeline"]["timeout_minutes"] = 30
 
     assert _is_incomplete(config) is False
+
+
+def _filled_jmeter_config() -> dict:
+    config = _jmeter_config()
+    config["setup"]["id"] = "some-setup"
+    config["cicd"]["type"] = "github_actions"
+    config["tool"]["connection"] = {"test_plan_path": "plan.jmx", "docker_image": ""}
+    config["catalog"]["environments"] = [
+        {"key": "qa", "identifier": "env-qa", "scenarios": [{"key": "checkout_smoke", "identifier": "SC-1"}]}
+    ]
+    config["load_profile"].update({"users": 10, "ramp_up_seconds": 0, "duration_minutes": 5, "throughput_rps": 0})
+    return config
+
+
+def test_environment_left_without_scenarios_keeps_config_a_draft() -> None:
+    config = _filled_jmeter_config()
+    config["catalog"]["environments"].append({"key": "staging", "identifier": "env-stg", "scenarios": []})
+
+    assert _is_incomplete(config) is True
+
+
+def test_automated_job_with_todo_scenario_keeps_config_a_draft() -> None:
+    config = _filled_jmeter_config()
+    config["automated_jobs"] = [
+        {"name": "nightly", "enabled": True, "environment_ref": "qa", "scenario_ref": "TODO", "timeout_minutes": 240}
+    ]
+
+    assert _is_incomplete(config) is True

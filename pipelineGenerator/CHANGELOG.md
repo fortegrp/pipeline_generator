@@ -25,7 +25,10 @@ All notable changes to `pipeline-generator` are documented here.
   after the environments, re-asks invalid keys, and offers an automated
   job only its chosen environment's scenarios. `run-summary.json` is
   unchanged. No migration shim: move each config's scenarios under their
-  environment (all 9 examples are migrated).
+  environment (all 9 examples are migrated) — an old config's top-level
+  `catalog.scenarios` is reported as an error saying exactly that. A
+  missing or non-string catalog key (e.g. YAML `key: 1` or `key: yes`) is
+  now an error instead of a `generate` crash.
 
 - **Breaking:** JMeter and BlazeMeter configs now need a filled
   `load_profile` (`users`, `ramp_up_seconds`, `duration_minutes`,
