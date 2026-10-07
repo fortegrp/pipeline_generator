@@ -104,113 +104,113 @@ decision to keep asking it anyway.
 
 ## C. Generic model + generator (`generic_model.py`, `context.py`)
 
-`InputOption` (`value: str`, `identifier: str`) is unchanged. What
-changes is what populates it: `context.py` walks
-`catalog.environments[].scenarios[]` and builds one `InputOption` per
-valid **pair**, all sharing the same combined `value` —
+One flat list of valid pairs replaces the two independent option lists:
 
 ```python
-def _test_case_value(environment_key: str, scenario_key: str) -> str:
+def run_target_selector(environment_key: str, scenario_key: str) -> str:
     return f"{environment_key}: {scenario_key}"
+
+
+@dataclass
+class RunTarget:
+    environment_key: str
+    environment_identifier: str
+    scenario_key: str
+    scenario_identifier: str
+
+    @property
+    def selector(self) -> str:
+        return run_target_selector(self.environment_key, self.scenario_key)
 ```
 
-Two parallel `InputOption` lists come out of this walk (mirroring
-today's `environments`/`scenarios` lists on `GenericPipelinePackage`,
-so `scripts.py`'s existing `_render_resolvers`/`_render_slug_resolvers`
-machinery needs no changes at all):
+(Neither name starts with `Test`/`test_`: pytest would try to collect
+an imported `Test*` class or `test_*` function.)
 
-- one list where `.value` = combined pair string, `.identifier` =
-  environment identifier for that pair
-- one list where `.value` = the **same** combined pair string,
-  `.identifier` = scenario identifier for that pair
+- `GenericPipelinePackage.environments`/`.scenarios` (two
+  `list[InputOption]`) are replaced by `run_targets: list[RunTarget]`,
+  built by one walk over `catalog.environments[].scenarios[]` in
+  `context.py`.
+- `ManualPipelineSpec.inputs` is removed. Every renderer already
+  hardcoded `inputs[0]`/`inputs[1]` rather than iterating, so the
+  `PipelineInput` indirection was never used generically; renderers now
+  read `[t.selector for t in package.run_targets]` directly.
+  `InputOption` and `PipelineInput` are deleted — nothing else uses them.
+- `AutomatedJobSpec.environment_ref`/`scenario_ref` are replaced by one
+  `test_case: str`, formatted once in `context.py`. Renderers bake it
+  as-is and never format a selector themselves.
 
-Plus two more parallel lists, same `.value`, `.identifier` = the plain
-raw environment/scenario key (not slug, not remote identifier) — feeding
-two new resolver functions purely so `run-summary.json`'s
-`environment`/`scenario` fields keep showing the real keys, unchanged
-from today, even though only one combined value crosses the CLI boundary.
-
-`ManualPipelineSpec.inputs` goes from two `PipelineInput`s
-(`"environment"`, `"scenario"`) to one: `PipelineInput("test_case", "Test
-case", "dropdown", options)`.
-
-`AutomatedJobSpec` is unchanged (`environment_ref`/`scenario_ref` stay as
-plain strings) — renderers format the same combined-value string from
-those two fields directly at render time; no new field needed.
+`run_target_selector()` is the only place the `"<env>: <scenario>"`
+format exists; `context.py` uses it for automated jobs too.
 
 ## D. Generated script (`scripts.py`)
 
-Six resolver functions instead of four, **all keyed by the same combined
-test-case value**, generated via the existing generic
-`_render_resolver_function` helper (exact-match `if [ "$1" = ... ]`
-chains — deliberately not a `case` statement, same reasoning as today:
-`case` patterns are shell globs and a hostile catalog key could otherwise
-glob-match a pair it wasn't meant to):
+The four `resolve_*` functions are replaced by one,
+`resolve_test_case`, which sets every per-run variable in a single
+exact-match branch per pair:
 
-- `resolve_environment_identifier` / `resolve_scenario_identifier`
-  (existing two, re-keyed)
-- `resolve_environment_slug` / `resolve_scenario_slug` (existing two,
-  re-keyed)
-- `resolve_environment_key` / `resolve_scenario_key` (new — recover the
-  plain raw keys for `run-summary.json`)
+```bash
+resolve_test_case() {
+  if [ "$1" = 'qa: checkout_smoke' ]; then environment_key='qa'; scenario_key='checkout_smoke'; environment_identifier='QA'; scenario_identifier='C:\Scenarios\checkout_smoke_qa.lrs'; environment_slug='qa'; scenario_slug='checkout_smoke'; return; fi
+  echo "Unknown test case: $1" >&2
+  exit 1
+}
+```
 
-CLI changes from `--environment <key> --scenario <key>` to `--test-case
-"<environment key>: <scenario key>"`. Usage message, arg-parsing block,
-and all three tool-specific script bodies (`_render_jmeter_script`,
-`_render_loadrunner_script`, `_render_blazemeter_script`) update to
-resolve everything from the one parsed value. Results folder naming
-(`run-output/<environment_slug>_<scenario_slug>/`) is unchanged — both
-slugs are still resolved separately, just from the one input.
-
-Automated jobs' baked command uses the same `--test-case` flag with a
-literal value (`shell_quote(f"{job.environment_ref}: {job.scenario_ref}")`)
-— one script CLI interface for both trigger paths, not two.
+- Still exact-match `if [ "$1" = ... ]`, never `case` (glob safety).
+  Every value goes through `shell_quote`.
+- Slugs are computed at generation time with `safe_filename_component`,
+  as today.
+- `main` declares the six variables `local` and calls
+  `resolve_test_case "$test_case"` directly (not in `$(...)`); bash's
+  dynamic scoping assigns `main`'s locals. The per-tool
+  `resolve_*_slug` calls in the three tool bodies are deleted.
+- CLI: `--test-case "<environment key>: <scenario key>"` replaces
+  `--environment`/`--scenario`, for manual and automated triggers alike.
+- `_render_resolvers`, `_render_slug_resolvers` and
+  `_render_resolver_function` are deleted.
+- `run-summary.json` still reports `environment`/`scenario` from
+  `$environment_key`/`$scenario_key` — schema unchanged.
 
 ## E. Renderers
 
-All three (`github_actions.py`, `azure_devops.py`, `jenkins.py`)
-currently hardcode `inputs[0]`/`inputs[1]` to build two separate
-dropdown/parameter/choice blocks. Each becomes a single block built from
-`inputs[0]` only:
+All three build one trigger input from `package.run_targets`:
 
 - **GitHub Actions**: one `workflow_dispatch.inputs.test_case` (`type:
-  choice`, `options:` = every valid pair string).
-- **Azure DevOps**: one `parameters` entry (`type: string`, `values:` =
-  every valid pair string).
-- **Jenkins**: one `choice(name: 'TEST_CASE', choices: [...])`.
+  choice`), delivered via `env: TEST_CASE`.
+- **Azure DevOps**: one `testCase` parameter (`type: string`, `values:`),
+  delivered via `env: TEST_CASE`.
+- **Jenkins**: one `choice(name: 'TEST_CASE', ...)`; automated jobs set
+  `TEST_CASE` in `environment {}`.
 
-The shell/script invocation line changes from `--environment
-"$ENVIRONMENT" --scenario "$SCENARIO"` to `--test-case "$TEST_CASE"` (or
-platform equivalent variable name), sourced from the platform's single
-trigger input.
+The script call becomes `--test-case "$TEST_CASE"` everywhere. Automated
+GitHub/Azure jobs bake `--test-case {shell_quote(job.test_case)}`.
+
+`readme.py`'s manual-usage and troubleshooting lines that mention
+`--environment`/`--scenario`, "environment/scenario parameters" and
+`Unknown environment key` are updated to the single test-case input.
 
 ## F. Validation (`validator.py`)
 
-- `catalog.environments[].scenarios` validated as a nested list of dicts
-  per environment (reusing `_as_list_of_dicts`).
-- Duplicate-key check for scenarios becomes **per-environment** (the
-  same scenario key repeated *within one environment* is the problem;
-  reuse *across* environments is the whole point now).
-- New warning: an environment with zero scenarios — it can never appear
-  in the manual pipeline's pair list, which wasn't a distinct concept
-  before nesting existed.
-- "No scenarios defined" warning now means zero scenarios across *all*
-  environments combined.
-- Automated job validation: `scenario_ref` must exist within
-  `environment_ref`'s specific scenario list, not a global one.
+- **Key format (new error):** every non-placeholder environment and
+  scenario `key` must match `CATALOG_KEY_PATTERN =
+  r"^[A-Za-z0-9][A-Za-z0-9_.-]*$"` (in `schema.py`). Keys are short
+  names, not free text. This guarantees the selector can't collide (no
+  `:` in keys), keeps the dropdown readable, and makes results folder
+  names predictable. `shell_quote`/`safe_filename_component` stay as
+  a second line of defense.
+- `catalog.environments[].scenarios` is validated as a nested list of
+  dicts per environment (reusing `_as_list_of_dicts`).
+- Duplicate scenario keys are checked **per environment**; reuse across
+  environments is the point.
+- New warning: an environment with zero scenarios (it never appears in
+  the dropdown).
+- "No scenarios" warning means zero across all environments.
+- Automated job: `scenario_ref` must exist under its `environment_ref`.
 - "Manual pipeline enabled but environments/scenarios missing" becomes
-  "enabled but there are zero valid environment/scenario pairs."
+  "enabled but there are no environment/scenario pairs."
 
-## Known limitation
-
-The combined value is `f"{environment_key}: {scenario_key}"`. Two
-different pairs could theoretically produce the same combined string if
-a key itself contains `": "` in exactly the right place (e.g. env `"a:
-b"` + scenario `"c"` vs. env `"a"` + scenario `"b: c"`). This requires a
-deliberately crafted colliding key and produces a wrong-test-runs
-outcome, not a security issue beyond what an adversarial catalog already
-implies elsewhere in this codebase. Accepted as a known edge case for
-this pass, not solved.
+The wizard enforces the same pattern at the key prompt (re-asks on an
+invalid key), so a wizard-built config never hits the error.
 
 ## Migration
 
@@ -227,11 +227,11 @@ updates to the consolidated key (`checkout_smoke`) to match.
 ## Testing
 
 - `validator.py`: nested structural validation, per-environment duplicate
-  detection, scoped automated-job reference validation.
+  detection, scoped automated-job reference validation, key-format error.
 - Wizard: nested environment→scenario collection, resume behavior,
   automated-job scenario choices filtered to the picked environment.
-- `context.py`: combined-pair `InputOption` construction (identifiers,
-  slugs, raw keys — three parallel pairs of lists).
+- `context.py`: one `RunTarget` per pair, in catalog order; automated
+  job `test_case` formatted from its refs.
 - Renderers: single combined dropdown/parameter/choice block per
   platform; automated job's baked `--test-case` value.
 - `scripts.py`: extend the existing stub-based end-to-end tests
