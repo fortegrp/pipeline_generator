@@ -4,6 +4,19 @@ All notable changes to `pipeline-generator` are documented here.
 
 ## [Unreleased]
 
+- The wizard no longer asks an environment identifier for LoadRunner
+  Professional or BlazeMeter — their generated scripts never read it (only
+  JMeter's `-Jenvironment` does). The validator only expects one for
+  JMeter, and the LoadRunner/BlazeMeter examples drop it.
+- `validate` warns when two catalog keys would share a results folder
+  (`checkout_smoke` vs `checkout.smoke`, `qa` vs `QA`).
+- Wizard runner prompt: type `-` to clear a saved runner; switching CI/CD
+  platform drops the old platform's runner.
+- Azure: a Microsoft-hosted image name in `cicd.runner` (`windows-latest`,
+  `ubuntu-22.04`, ...) renders as `vmImage:` instead of a self-hosted pool.
+- JMeter's `docker run` survives Git Bash path conversion on Windows
+  self-hosted runners (`MSYS_NO_PATHCONV=1`, `pwd -W`).
+
 - Polish from review follow-ups:
   - A load-profile trigger input left blank now uses the `customer.yaml`
     value instead of failing as TODO; numeric values over 9 digits are

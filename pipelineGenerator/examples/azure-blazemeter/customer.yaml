@@ -23,7 +23,6 @@ automated_jobs:
 catalog:
   environments:
   - key: qa
-    identifier: QA
     scenarios:
     - key: smoke
       identifier: '3344556'

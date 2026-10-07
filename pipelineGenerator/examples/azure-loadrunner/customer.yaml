@@ -22,7 +22,6 @@ automated_jobs:
 catalog:
   environments:
   - key: prod
-    identifier: Production
     scenarios:
     - key: prod_release_validation
       identifier: C:\Scenarios\prod_release_validation.lrs

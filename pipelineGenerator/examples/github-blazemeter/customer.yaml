@@ -23,7 +23,6 @@ automated_jobs:
 catalog:
   environments:
   - key: staging
-    identifier: Staging
     scenarios:
     - key: checkout_baseline
       identifier: '2233445'

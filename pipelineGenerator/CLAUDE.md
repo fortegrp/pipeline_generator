@@ -106,6 +106,10 @@ Pipeline: **customer YAML → validate → generic pipeline model → CI/CD rend
   `incomplete: true` while any "... is missing" warning remains (a TODO
   value anywhere, not just a required field), so a config with TODOs still
   generates — other warnings still block `generate` on a complete config.
+  `CATALOG_IDENTIFIER_PROMPTS` decides which identifiers are asked: a missing
+  entry means the generated script never reads it, so it isn't asked (only
+  JMeter has an environment identifier). The runner prompt accepts `-` to
+  clear, and switching CI/CD platform resets the runner.
   `id_builder.py` builds the setup ID from `cicd_type + tool_type`, and the
   wizard assigns it silently the moment both are chosen (no separate
   prompt) via `generate_unique_setup_id()`, which appends a short random

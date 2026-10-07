@@ -5,6 +5,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 
 from pipeline_generator.config.placeholders import TODO_VALUE, is_placeholder
+from pipeline_generator.text_utils import slugify
 from pipeline_generator.config.schema import (
     CATALOG_KEY_PATTERN,
     GENERATION_MODES,
@@ -72,6 +73,23 @@ def _warn_duplicate_keys(items: list[dict], path: str, consequence: str, result:
     for key, count in counts.items():
         if count > 1 and not is_placeholder(key):
             result.warnings.append(f"{path} has {count} entries with the duplicate key '{key}' -- {consequence}")
+
+
+def _warn_shared_results_folder(items: list[dict], path: str, result: ValidationResult) -> None:
+    # Results go to run-output/<env_slug>_<scenario_slug>/; distinct keys with
+    # the same slug (checkout_smoke vs checkout.smoke, qa vs QA) would overwrite
+    # each other's results.
+    keys_by_slug: dict[str, list[str]] = {}
+    for key in dict.fromkeys(item.get("key") for item in items):
+        if isinstance(key, str) and not is_placeholder(key):
+            keys_by_slug.setdefault(slugify(key), []).append(key)
+    for slug, keys in keys_by_slug.items():
+        if len(keys) > 1:
+            names = " and ".join(repr(key) for key in keys)
+            result.warnings.append(
+                f"{path} keys {names} share results folder name '{slug}' -- a second run overwrites the "
+                "first; rename one."
+            )
 
 
 def _check_key_format(key: object, path: str, result: ValidationResult) -> None:
@@ -154,17 +172,21 @@ def validate_config(config: dict) -> ValidationResult:
         environments, "catalog.environments", "merge them into one entry with all their scenarios.", result
     )
 
+    _warn_shared_results_folder(environments, "catalog.environments", result)
+
     pairs: set[tuple[object, object]] = set()
     for env in environments:
         env_key = env.get("key")
         env_path = f"catalog.environments.{'unknown' if is_placeholder(env_key) else env_key}"
         _check_key_format(env_key, "catalog.environments", result)
-        if is_placeholder(env.get("identifier")):
+        if tool_type == "jmeter" and is_placeholder(env.get("identifier")):
+            # Only JMeter's script reads the environment identifier.
             result.warnings.append(f"{env_path}.identifier is missing.")
 
         scenarios = _as_list_of_dicts(env.get("scenarios", []), f"{env_path}.scenarios", result)
         if not scenarios:
             result.warnings.append(f"{env_path}.scenarios is missing -- this environment can never be selected.")
+        _warn_shared_results_folder(scenarios, f"{env_path}.scenarios", result)
         _warn_duplicate_keys(
             scenarios,
             f"{env_path}.scenarios",

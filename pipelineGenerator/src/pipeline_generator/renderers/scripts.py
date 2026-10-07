@@ -264,7 +264,9 @@ main() {{
   # fragments by relative path still resolves, and results written under
   # results_dir land directly on the host filesystem.
   local run_status=0
-  if ! docker run --rm -v "$(pwd):/workspace" -w /workspace "$docker_image" \\
+  # MSYS_NO_PATHCONV/pwd -W keep Git Bash (Windows self-hosted runners) from
+  # rewriting /workspace and the mount path into paths docker rejects.
+  if ! MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W 2>/dev/null || pwd):/workspace" -w /workspace "$docker_image" \\
     -n -t "$test_plan_path" -l "$results_dir/results.jtl" -e -o "$results_dir/report" \\
     -Jenvironment="$environment_identifier" -Jscenario="$scenario_identifier" \\
     -Jtest_type="$test_type" -Jusers="$users" -Jramp_up_seconds="$ramp_up_seconds" \\

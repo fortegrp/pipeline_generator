@@ -8,6 +8,10 @@ from pipeline_generator.renderers.github_actions import render_github_actions
 from pipeline_generator.renderers.quoting import shell_quote
 
 
+
+def _run_step(steps: list[dict]) -> dict:
+    return next(step for step in steps if "Run performance wrapper" in (step.get("name"), step.get("displayName")))
+
 def _config() -> dict:
     return {
         "setup": {"id": "gha-test-setup", "generation_mode": "both"},
@@ -49,7 +53,7 @@ def test_render_github_actions_writes_valid_workflows(tmp_path: Path) -> None:
     # The build-triggerer-controlled input must be delivered via env:, never
     # spliced directly into the run: shell text (workflow_dispatch's `choice`
     # restriction is only enforced by GitHub's UI, not its dispatch API).
-    step = manual_doc["jobs"]["run-performance-test"]["steps"][1]
+    step = _run_step(manual_doc["jobs"]["run-performance-test"]["steps"])
     assert step["env"]["TEST_CASE"] == "${{ github.event.inputs.test_case }}"
     assert "ENVIRONMENT" not in step["env"]
     assert "./scripts/run-jmeter.sh" in manual_text
@@ -154,7 +158,7 @@ def test_render_github_actions_manual_workflow_exposes_load_inputs(tmp_path: Pat
     assert inputs["users"]["type"] == "string"
     assert inputs["throughput_rps"]["default"] == "0"
     assert inputs["test_type"]["default"] == "load"
-    step = manual_doc["jobs"]["run-performance-test"]["steps"][1]
+    step = _run_step(manual_doc["jobs"]["run-performance-test"]["steps"])
     assert step["env"]["USERS"] == "${{ github.event.inputs.users }}"
     assert step["env"]["RAMP_UP_SECONDS"] == "${{ github.event.inputs.ramp_up_seconds }}"
     assert '--users "$USERS"' in step["run"]
@@ -223,7 +227,7 @@ def test_render_github_actions_maps_blazemeter_secrets_into_manual_step(tmp_path
     render_github_actions(config, build_generic_package(config), tmp_path)
 
     doc = yaml.safe_load((tmp_path / ".github" / "workflows" / "performance-manual.yml").read_text())
-    env = doc["jobs"]["run-performance-test"]["steps"][1]["env"]
+    env = _run_step(doc["jobs"]["run-performance-test"]["steps"])["env"]
     assert env["BLAZEMETER_API_KEY_ID"] == "${{ secrets.BLAZEMETER_API_KEY_ID }}"
     assert env["BLAZEMETER_API_KEY_SECRET"] == "${{ secrets.BLAZEMETER_API_KEY_SECRET }}"
 
@@ -239,7 +243,7 @@ def test_render_github_actions_automated_workflow_declares_and_maps_blazemeter_s
     declared = doc[True]["workflow_call"]["secrets"]
     assert declared["BLAZEMETER_API_KEY_ID"]["required"] is True
     assert declared["BLAZEMETER_API_KEY_SECRET"]["required"] is True
-    env = doc["jobs"]["post-deploy-smoke"]["steps"][1]["env"]
+    env = _run_step(doc["jobs"]["post-deploy-smoke"]["steps"])["env"]
     assert env["BLAZEMETER_API_KEY_ID"] == "${{ secrets.BLAZEMETER_API_KEY_ID }}"
     assert env["BLAZEMETER_API_KEY_SECRET"] == "${{ secrets.BLAZEMETER_API_KEY_SECRET }}"
 
@@ -264,7 +268,7 @@ def test_render_github_actions_defaults_to_hosted_ubuntu_and_bash(tmp_path: Path
         job = next(iter(doc["jobs"].values()))
         assert job["runs-on"] == "ubuntu-latest"
         # Explicit bash: a Windows runner would otherwise run the step in PowerShell.
-        assert job["steps"][1]["shell"] == "bash"
+        assert _run_step(job["steps"])["shell"] == "bash"
 
 
 def test_render_github_actions_targets_configured_runner_labels(tmp_path: Path) -> None:

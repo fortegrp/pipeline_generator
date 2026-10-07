@@ -34,23 +34,18 @@ from pipeline_generator.wizard.prompts import (
 
 TOTAL_STEPS = 8
 
+# Identifier prompts per tool and catalog kind. A missing entry means the
+# generated script never reads that identifier, so the wizard doesn't ask:
+# only JMeter uses the environment identifier (-Jenvironment).
 CATALOG_IDENTIFIER_PROMPTS = {
     "jmeter": {
         "environment": "Environment property value your .jmx reads via ${__P(environment)}",
         "scenario": "Scenario property value your .jmx reads via ${__P(scenario)}",
     },
     "loadrunner_professional": {
-        "environment": (
-            "Environment identifier (not used by the generated script for LoadRunner -- "
-            "only the key names the results folder)"
-        ),
         "scenario": "Path to the .lrs scenario file LoadRunner should run",
     },
     "blazemeter": {
-        "environment": (
-            "Environment identifier (not used by the generated script for BlazeMeter -- "
-            "only the key names the results folder)"
-        ),
         "scenario": "BlazeMeter Test ID to start",
     },
 }
@@ -103,6 +98,7 @@ def _step_setup_basics(config: dict, output_path: Path) -> None:
 
 def _step_cicd_and_tool(config: dict, output_path: Path) -> None:
     _section(2, "CI/CD platform and performance tool")
+    previous_cicd = config["cicd"]["type"]
     config["cicd"]["type"] = prompt_choice(
         "CI/CD platform",
         SUPPORTED_CICD,
@@ -115,13 +111,15 @@ def _step_cicd_and_tool(config: dict, output_path: Path) -> None:
     )
     if config["setup"]["id"] == TODO_VALUE:
         config["setup"]["id"] = generate_unique_setup_id(config["cicd"]["type"], config["tool"]["type"])
+    if config["cicd"]["type"] != previous_cicd:
+        config["cicd"]["runner"] = ""  # labels/pools/agent labels don't carry across platforms
     _prompt_runner(config)
     save_config(output_path, config)
 
 
 def _prompt_runner(config: dict) -> None:
     loadrunner = config["tool"]["type"] == "loadrunner_professional"
-    print(RUNNER_HINTS[config["cicd"]["type"]])
+    print(f"{RUNNER_HINTS[config['cicd']['type']]} Type - to clear a saved value.")
     if loadrunner:
         print(
             "  LoadRunner runs wlrun on the agent itself: target the Windows machine next to your Controller "
@@ -132,7 +130,8 @@ def _prompt_runner(config: dict) -> None:
     if stored == TODO_VALUE and not loadrunner:
         stored = ""
     default = stored or (TODO_VALUE if loadrunner else "")
-    config["cicd"]["runner"] = prompt_text(RUNNER_LABELS[config["cicd"]["type"]], default=default)
+    runner = prompt_text(RUNNER_LABELS[config["cicd"]["type"]], default=default)
+    config["cicd"]["runner"] = "" if runner == "-" else runner
 
 
 def _step_connection(config: dict, output_path: Path) -> None:
@@ -260,7 +259,8 @@ def _prompt_connection(config: dict) -> None:
 
 def _prompt_catalog_items(kind: str, tool_type: str, intro: str) -> list[dict]:
     items: list[dict] = []
-    identifier_label = CATALOG_IDENTIFIER_PROMPTS.get(tool_type, {}).get(kind, f"{kind} identifier")
+    tool_prompts = CATALOG_IDENTIFIER_PROMPTS.get(tool_type)
+    identifier_label = tool_prompts.get(kind) if tool_prompts is not None else f"{kind} identifier"
     print(intro)
     while True:
         key = prompt_text(f"{kind} key", allow_blank=True)
@@ -269,8 +269,10 @@ def _prompt_catalog_items(kind: str, tool_type: str, intro: str) -> list[dict]:
         if not re.fullmatch(CATALOG_KEY_PATTERN, key):
             print("  Use letters, digits, '_', '.', '-' only, starting with a letter or digit (e.g. qa, checkout_smoke).")
             continue
-        identifier = prompt_text(identifier_label, default=TODO_VALUE) or TODO_VALUE
-        items.append({"key": key, "identifier": identifier})
+        item = {"key": key}
+        if identifier_label:
+            item["identifier"] = prompt_text(identifier_label, default=TODO_VALUE) or TODO_VALUE
+        items.append(item)
     return items
 
 

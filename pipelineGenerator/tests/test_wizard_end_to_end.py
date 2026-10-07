@@ -277,3 +277,32 @@ def test_wizard_tolerates_null_scenarios_in_resumed_draft(
     jobs = _prompt_automated_jobs(config)
 
     assert jobs[0]["scenario_ref"] == "TODO"
+
+
+def test_runner_can_be_cleared_on_resume(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config = merged_base_config(None)
+    config["setup"]["id"] = "existing"
+    config["cicd"]["type"] = "github_actions"
+    config["tool"]["type"] = "jmeter"
+    config["cicd"]["runner"] = "self-hosted"
+    responses = iter(["", "", "-"])  # keep github, keep jmeter, "-" clears the runner
+    monkeypatch.setattr("builtins.input", lambda *_: next(responses))
+
+    _step_cicd_and_tool(config, tmp_path / "draft.yaml")
+
+    assert config["cicd"]["runner"] == ""
+
+
+def test_switching_cicd_platform_drops_old_platforms_runner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config = merged_base_config(None)
+    config["setup"]["id"] = "existing"
+    config["cicd"]["type"] = "jenkins"
+    config["tool"]["type"] = "jmeter"
+    config["cicd"]["runner"] = "linux && docker"
+    responses = iter(["1", "", ""])  # switch to github_actions, keep jmeter, blank runner
+    monkeypatch.setattr("builtins.input", lambda *_: next(responses))
+
+    _step_cicd_and_tool(config, tmp_path / "draft.yaml")
+
+    assert config["cicd"]["type"] == "github_actions"
+    assert config["cicd"]["runner"] == ""

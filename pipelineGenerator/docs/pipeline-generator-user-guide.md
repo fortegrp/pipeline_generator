@@ -291,14 +291,15 @@ placeholder if you don't have it yet):
   `${__P(environment)}`/`${__P(scenario)}` — not an ID on any external
   system.
 - **LoadRunner**: the **scenario** identifier is the full path to the
-  `.lrs` file to run. The **environment** identifier isn't actually used by
-  the generated script for LoadRunner — only the environment `key` affects
-  the results-folder name — but the wizard still asks for it today for
-  consistency with the other two tools.
+  `.lrs` file to run. Environments have no identifier — the generated
+  script never uses one, so the wizard doesn't ask; only the environment
+  `key` matters (it names the results folder).
 - **BlazeMeter**: the **scenario** identifier is the real BlazeMeter Test
-  ID to start. Same as LoadRunner, the **environment** identifier isn't
-  used by the generated script; only the `key` affects the results-folder
-  name.
+  ID to start. As with LoadRunner, environments are just a `key`.
+
+Two keys that only differ in punctuation or case (`checkout_smoke` vs
+`checkout.smoke`, `qa` vs `QA`) would share a results folder, so `validate`
+warns about them.
 
 ### Step 7 — Automated jobs
 

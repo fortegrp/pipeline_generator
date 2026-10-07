@@ -8,6 +8,10 @@ from pipeline_generator.renderers.azure_devops import render_azure_devops
 from pipeline_generator.renderers.quoting import shell_quote
 
 
+
+def _run_step(steps: list[dict]) -> dict:
+    return next(step for step in steps if "Run performance wrapper" in (step.get("name"), step.get("displayName")))
+
 def _config() -> dict:
     return {
         "setup": {"id": "azure-test-setup", "generation_mode": "both"},
@@ -49,7 +53,7 @@ def test_render_azure_devops_writes_valid_pipelines(tmp_path: Path) -> None:
     assert "qa" in manual_text
     # The parameter value must be delivered via env:, never spliced directly
     # into the script: text.
-    run_step = manual_doc["jobs"][0]["steps"][1]
+    run_step = _run_step(manual_doc["jobs"][0]["steps"])
     assert run_step["env"]["TEST_CASE"] == "${{ parameters.test_case }}"
     assert "./scripts/run-jmeter.sh" in manual_text
     assert '--test-case "$TEST_CASE"' in manual_text
@@ -150,7 +154,7 @@ def test_render_azure_devops_manual_pipeline_exposes_load_parameters(tmp_path: P
     assert parameters["users"]["default"] == "20"
     assert parameters["users"]["type"] == "string"
     assert parameters["test_type"]["default"] == "load"
-    step = doc["jobs"][0]["steps"][1]
+    step = _run_step(doc["jobs"][0]["steps"])
     assert step["env"]["USERS"] == "${{ parameters.users }}"
     assert '--users "$USERS"' in step["bash"]
     assert "parameters.users" not in step["bash"]
@@ -194,7 +198,7 @@ def test_render_azure_devops_maps_blazemeter_secret_variables_into_steps(tmp_pat
 
     for name in ("performance-manual.yml", "performance-automated-post-deploy-smoke.yml"):
         doc = yaml.safe_load((tmp_path / "azure" / name).read_text())
-        env = doc["jobs"][0]["steps"][1]["env"]
+        env = _run_step(doc["jobs"][0]["steps"])["env"]
         assert env["BLAZEMETER_API_KEY_ID"] == "$(BLAZEMETER_API_KEY_ID)", name
         assert env["BLAZEMETER_API_KEY_SECRET"] == "$(BLAZEMETER_API_KEY_SECRET)", name
 
@@ -219,8 +223,8 @@ def test_render_azure_devops_defaults_to_hosted_ubuntu_and_bash_step(tmp_path: P
         job = doc["jobs"][0]
         assert job["pool"] == {"vmImage": "ubuntu-latest"}
         # A bash step, not script: (which is cmd.exe on Windows agents).
-        assert "bash" in job["steps"][1]
-        assert "script" not in job["steps"][1]
+        assert "bash" in _run_step(job["steps"])
+        assert "script" not in _run_step(job["steps"])
 
 
 def test_render_azure_devops_targets_configured_agent_pool(tmp_path: Path) -> None:
@@ -230,3 +234,12 @@ def test_render_azure_devops_targets_configured_agent_pool(tmp_path: Path) -> No
 
     for doc in _all_pipelines(tmp_path):
         assert doc["jobs"][0]["pool"] == {"name": "LoadRunner Agents"}
+
+
+def test_render_azure_devops_treats_hosted_image_names_as_vm_image(tmp_path: Path) -> None:
+    config = _config()
+    config["cicd"]["runner"] = "windows-latest"
+    render_azure_devops(config, build_generic_package(config), tmp_path)
+
+    for doc in _all_pipelines(tmp_path):
+        assert doc["jobs"][0]["pool"] == {"vmImage": "windows-latest"}

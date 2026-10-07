@@ -22,14 +22,12 @@ automated_jobs:
 catalog:
   environments:
   - key: qa
-    identifier: QA
     scenarios:
     - key: checkout_smoke
       identifier: C:\Scenarios\checkout_smoke_qa.lrs
     - key: browse_baseline
       identifier: C:\Scenarios\browse_baseline_qa.lrs
   - key: staging
-    identifier: Staging
     scenarios:
     - key: checkout_smoke
       identifier: C:\Scenarios\checkout_smoke_staging.lrs

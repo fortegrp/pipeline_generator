@@ -54,7 +54,7 @@ def test_render_jmeter_script_with_precheck(tmp_path: Path) -> None:
     assert 'if [ ! -f "$test_plan_path" ]; then' in content
     assert "local test_plan_path=performance/checkout.jmx" in content
     assert "local docker_image=justb4/jmeter:5.6.3" in content
-    assert 'docker run --rm -v "$(pwd):/workspace" -w /workspace "$docker_image" \\' in content
+    assert 'docker run --rm -v "$(pwd -W 2>/dev/null || pwd):/workspace" -w /workspace "$docker_image" \\' in content
     assert '-n -t "$test_plan_path"' in content
     assert 'if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then' in content
 
@@ -1808,3 +1808,12 @@ def test_todo_wlrun_path_and_docker_image_fall_back_to_defaults(tmp_path: Path) 
 
     assert "local wlrun_path=wlrun" in lr.read_text()
     assert "local docker_image=justb4/jmeter:5.6.3" in jm.read_text()
+
+
+def test_jmeter_docker_call_survives_git_bash_path_conversion(tmp_path: Path) -> None:
+    # On a Windows self-hosted runner, Git Bash would rewrite -w /workspace into
+    # C:/Program Files/Git/workspace and $(pwd) into /c/..., which docker rejects.
+    script_path = _render(tmp_path, _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""}))
+    content = script_path.read_text()
+
+    assert 'MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W 2>/dev/null || pwd):/workspace"' in content

@@ -82,13 +82,15 @@ def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
 
 
 def _run_step(tool_type: str, sh_line: str) -> str:
-    if not secret_names(tool_type):
+    names = secret_names(tool_type)
+    if not names:
         return f"                {sh_line}"
+    key_id, key_secret = names
     # One "Username with password" credential: username = API key ID,
     # password = API key secret.
     return (
         f"                withCredentials([usernamePassword(credentialsId: '{JENKINS_BLAZEMETER_CREDENTIALS_ID}', "
-        "usernameVariable: 'BLAZEMETER_API_KEY_ID', passwordVariable: 'BLAZEMETER_API_KEY_SECRET')]) {\n"
+        f"usernameVariable: '{key_id}', passwordVariable: '{key_secret}')]) {{\n"
         f"                    {sh_line}\n"
         "                }"
     )

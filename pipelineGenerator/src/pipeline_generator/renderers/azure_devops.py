@@ -107,9 +107,17 @@ def _secret_env_block(tool_type: str) -> str:
     return f"\n        env:{secret_env}" if secret_env else ""
 
 
+_HOSTED_IMAGE = re.compile(r"(ubuntu|windows|macos|macOS)-(latest|\d[\d.]*)")
+
+
 def _pool(runner: str) -> str:
-    # Blank = Microsoft-hosted ubuntu-latest; otherwise a self-hosted agent pool.
-    return f"name: {yaml_dquote(runner)}" if runner else "vmImage: ubuntu-latest"
+    # Blank = Microsoft-hosted ubuntu-latest; a hosted image name (windows-latest,
+    # ubuntu-22.04, ...) stays Microsoft-hosted; anything else is a self-hosted pool.
+    if not runner:
+        return "vmImage: ubuntu-latest"
+    if _HOSTED_IMAGE.fullmatch(runner):
+        return f"vmImage: {yaml_dquote(runner)}"
+    return f"name: {yaml_dquote(runner)}"
 
 
 def _render_automated_job(job: AutomatedJobSpec, tool_type: str, runner: str) -> str:

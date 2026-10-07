@@ -84,11 +84,10 @@ def test_prompt_environments_section_no_existing_declines_adding(monkeypatch: py
 
 
 def test_prompt_environments_section_identifier_labels_are_tool_specific(monkeypatch: pytest.MonkeyPatch) -> None:
-    prompts = _feed(monkeypatch, ["y", "qa", "QA", "", "checkout_smoke", "C:\\s.lrs", ""])
+    prompts = _feed(monkeypatch, ["y", "qa", "", "checkout_smoke", "C:\\s.lrs", ""])
 
     _prompt_environments_section([], "loadrunner_professional")
 
-    assert any("not used by the generated script for LoadRunner" in p for p in prompts)
     assert any("Path to the .lrs scenario file" in p for p in prompts)
 
 
@@ -122,3 +121,14 @@ def test_prompt_automated_jobs_section_keep_as_is(monkeypatch: pytest.MonkeyPatc
     config = {"automated_jobs": [existing_job], "catalog": {"environments": [_QA]}}
 
     assert _prompt_automated_jobs_section(config) == [existing_job]
+
+
+@pytest.mark.parametrize("tool_type", ["loadrunner_professional", "blazemeter"])
+def test_environment_identifier_is_only_asked_for_jmeter(monkeypatch: pytest.MonkeyPatch, tool_type: str) -> None:
+    # Only JMeter's script reads the environment identifier (-Jenvironment).
+    prompts = _feed(monkeypatch, ["y", "qa", "", "checkout_smoke", "SC-1", ""])
+
+    result = _prompt_environments_section([], tool_type)
+
+    assert result == [{"key": "qa", "scenarios": [{"key": "checkout_smoke", "identifier": "SC-1"}]}]
+    assert not any("Environment identifier" in p or "environment identifier" in p for p in prompts)

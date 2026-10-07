@@ -491,3 +491,31 @@ def test_validation_accepts_runner_label_list_and_rejects_other_types() -> None:
     for bad in ({"label": "x"}, 123, ["ok", 5]):
         config["cicd"]["runner"] = bad
         assert any("cicd.runner" in e for e in validate_config(config).errors), bad
+
+
+def test_validation_only_requires_environment_identifier_for_jmeter() -> None:
+    config = _complete_jmeter_config()
+    del config["catalog"]["environments"][0]["identifier"]
+    assert "catalog.environments.qa.identifier is missing." in validate_config(config).warnings
+
+    config["tool"] = {"type": "loadrunner_professional", "connection": {}}
+    config["cicd"]["runner"] = "lr"
+    assert not any("environments.qa.identifier" in w for w in validate_config(config).warnings)
+
+
+def test_validation_warns_when_scenario_keys_share_a_results_folder() -> None:
+    config = _complete_jmeter_config()
+    config["catalog"]["environments"][0]["scenarios"].append({"key": "checkout.smoke", "identifier": "SC-2"})
+
+    warnings = validate_config(config).warnings
+
+    assert any("checkout_smoke" in w and "checkout.smoke" in w and "results folder" in w for w in warnings)
+
+
+def test_validation_warns_when_environment_keys_share_a_results_folder() -> None:
+    config = _complete_jmeter_config()
+    config["catalog"]["environments"].append(
+        {"key": "QA", "identifier": "env-qa2", "scenarios": [{"key": "other", "identifier": "SC-9"}]}
+    )
+
+    assert any("'qa'" in w and "'QA'" in w and "results folder" in w for w in validate_config(config).warnings)
