@@ -160,8 +160,21 @@ Professional** runs `wlrun` on the agent itself, so it must target the
 Windows machine next to your Controller; its default is `TODO`, and the
 setup stays a draft until it's set. Generated steps always run the script
 with **bash** (`shell: bash` on GitHub, a `bash:` step on Azure, `sh` on
-Jenkins), so a Windows agent needs Git for Windows (or another `bash` on
-`PATH`).
+Jenkins). On a Windows agent:
+
+- Install Git for Windows and put `C:\Program Files\Git\bin` (GitHub/Azure)
+  or `C:\Program Files\Git\usr\bin` (Jenkins `sh`, which also needs
+  `nohup`) on the agent service's PATH **ahead of** `C:\Windows\System32`
+  — otherwise WSL's `bash.exe` is found first and can't see `wlrun.exe`.
+  The installer's default only adds `Git\cmd`, which has no bash. Restart
+  the agent service afterwards.
+- The generated `scripts/.gitattributes` pins `*.sh` to LF line endings;
+  copy it into your repo with the script, or a CRLF checkout (Git for
+  Windows' default) makes bash fail with `/usr/bin/env: 'bash\r'`.
+- The LoadRunner Controller is a GUI app, so the agent may need to run as
+  an interactive user rather than a Windows service.
+- Write `wlrun_path` with forward slashes if it's a full path
+  (`C:/Program Files (x86)/.../wlrun.exe`).
 
 ### Step 3 — Tool connection details
 
@@ -691,7 +704,8 @@ all three tools, and `generate` writes a real, working
   Enterprise's REST API) were rejected. The generated pipelines target that
   agent through `cicd.runner` (wizard Step 2: GitHub `runs-on` labels,
   Azure agent pool, Jenkins agent label) and run the script with bash, so
-  the agent needs Git for Windows' `bash` on `PATH` alongside `wlrun`.
+  the agent needs Git for Windows' bash on `PATH` alongside `wlrun` — see
+  Step 2 in section 4 for the exact Windows agent setup.
 - **BlazeMeter.** The generated script authenticates via
   `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET`, optionally verifies
   host reachability / project existence / test existence, starts a test

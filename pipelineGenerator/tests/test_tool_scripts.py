@@ -45,7 +45,7 @@ def test_render_jmeter_script_with_precheck(tmp_path: Path) -> None:
     outputs = render_tool_script(config, package, tmp_path)
 
     script_path = tmp_path / "scripts" / "run-jmeter.sh"
-    assert outputs == [str(script_path)]
+    assert outputs == [str(script_path), str(tmp_path / "scripts" / ".gitattributes")]
     assert script_path.exists()
     assert script_path.stat().st_mode & 0o111 == 0o111
 
@@ -158,7 +158,7 @@ def test_render_blazemeter_script_runs_curl_for_real(tmp_path: Path) -> None:
     outputs = render_tool_script(config, package, tmp_path)
 
     script_path = tmp_path / "scripts" / "run-blazemeter.sh"
-    assert outputs == [str(script_path)]
+    assert outputs == [str(script_path), str(tmp_path / "scripts" / ".gitattributes")]
     assert script_path.exists()
     assert script_path.stat().st_mode & 0o111 == 0o111
 
@@ -498,7 +498,7 @@ def test_render_loadrunner_script_runs_wlrun_for_real(tmp_path: Path) -> None:
     outputs = render_tool_script(config, package, tmp_path)
 
     script_path = tmp_path / "scripts" / "run-loadrunner_professional.sh"
-    assert outputs == [str(script_path)]
+    assert outputs == [str(script_path), str(tmp_path / "scripts" / ".gitattributes")]
     assert script_path.exists()
     assert script_path.stat().st_mode & 0o111 == 0o111
 
@@ -506,7 +506,7 @@ def test_render_loadrunner_script_runs_wlrun_for_real(tmp_path: Path) -> None:
     assert "resolve_test_case() {" in content
     assert "local wlrun_path=wlrun" in content
     assert 'local results_dir="run-output/${environment_slug}_${scenario_slug}"' in content
-    assert '"$wlrun_path" -Run -TestPath "$scenario_identifier" -ResultName "$results_dir"' in content
+    assert '-ResultName "$(pwd -W 2>/dev/null || pwd)/$results_dir"' in content
     assert "not implemented in this generated script yet" not in content
 
     syntax_check = subprocess.run(["bash", "-n", str(script_path)], capture_output=True, text=True)
@@ -1749,3 +1749,31 @@ def test_blazemeter_script_rejects_unexpanded_azure_secret_macro(tmp_path: Path)
     assert result.returncode == 1
     assert "BLAZEMETER_API_KEY_ID is not defined" in result.stderr
     assert not (tmp_path / "curl-log").exists()
+
+
+
+def test_generated_scripts_pin_lf_line_endings(tmp_path: Path) -> None:
+    # Git for Windows defaults to core.autocrlf=true; a CRLF checkout makes bash
+    # fail with "/usr/bin/env: 'bash\r'" before anything runs.
+    render_tool_script(_base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""}),
+                       build_generic_package(_base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})),
+                       tmp_path)
+
+    assert (tmp_path / "scripts" / ".gitattributes").read_text() == "*.sh text eol=lf\n"
+
+
+def test_loadrunner_passes_absolute_result_path_to_wlrun(tmp_path: Path) -> None:
+    script_path = _render(tmp_path, _base_config("loadrunner_professional", {"wlrun_path": "wlrun"}))
+    env = _stub_bin_with(
+        tmp_path,
+        wlrun=f'echo "$@" > "{tmp_path / "wlrun-args"}"\n'
+        'prev=""; for a in "$@"; do [ "$prev" = "-ResultName" ] && mkdir -p "$a"; prev="$a"; done\n',
+    )
+
+    result = _run(script_path, _QA, env, tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    args = (tmp_path / "wlrun-args").read_text().split()
+    result_name = args[args.index("-ResultName") + 1]
+    assert result_name.startswith("/")  # absolute: wlrun may resolve relative paths elsewhere
+    assert result_name.endswith("/run-output/qa_checkout-smoke")

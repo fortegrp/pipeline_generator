@@ -223,3 +223,19 @@ def test_step_cicd_and_tool_runner_defaults_blank_for_jmeter(
     _step_cicd_and_tool(config, tmp_path / "draft.yaml")
 
     assert config["cicd"]["runner"] == "my-runner"
+
+
+def test_step_cicd_and_tool_drops_todo_runner_when_switching_away_from_loadrunner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = merged_base_config(None)
+    config["setup"]["id"] = "existing"
+    config["cicd"]["type"] = "github_actions"
+    config["tool"]["type"] = "loadrunner_professional"
+    config["cicd"]["runner"] = "TODO"
+    responses = iter(["", "3", ""])  # keep github, switch to jmeter, blank runner
+    monkeypatch.setattr("builtins.input", lambda *_: next(responses))
+
+    _step_cicd_and_tool(config, tmp_path / "draft.yaml")
+
+    assert config["cicd"]["runner"] == ""

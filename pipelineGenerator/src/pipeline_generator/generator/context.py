@@ -12,6 +12,13 @@ from pipeline_generator.generator.generic_model import (
 )
 
 
+def _runner(value: object) -> str:
+    # A YAML list of labels is the natural form for GitHub's runs-on.
+    if isinstance(value, list):
+        return ", ".join(str(label).strip() for label in value if str(label).strip())
+    return str(value or "").strip()
+
+
 def _load_default(load_profile: dict, name: str) -> str:
     value = load_profile.get(name)
     if value is None or value == "":
@@ -65,6 +72,6 @@ def build_generic_package(config: dict) -> GenericPipelinePackage:
         manual_pipeline=manual_pipeline,
         automated_jobs=automated_jobs,
         run_targets=run_targets,
-        runner=str(config["cicd"].get("runner") or ""),
+        runner=_runner(config["cicd"].get("runner")),
         load_inputs=load_inputs,
     )

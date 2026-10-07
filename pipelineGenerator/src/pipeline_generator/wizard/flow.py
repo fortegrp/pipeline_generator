@@ -127,7 +127,11 @@ def _prompt_runner(config: dict) -> None:
             "  LoadRunner runs wlrun on the agent itself: target the Windows machine next to your Controller "
             "(it also needs bash, e.g. Git for Windows). Leave TODO if you don't know it yet."
         )
-    default = config["cicd"].get("runner") or (TODO_VALUE if loadrunner else "")
+    stored = config["cicd"].get("runner") or ""
+    # A TODO left over from a LoadRunner draft shouldn't stick after switching tools.
+    if stored == TODO_VALUE and not loadrunner:
+        stored = ""
+    default = stored or (TODO_VALUE if loadrunner else "")
     config["cicd"]["runner"] = prompt_text(RUNNER_LABELS[config["cicd"]["type"]], default=default)
 
 

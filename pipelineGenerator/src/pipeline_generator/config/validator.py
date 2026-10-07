@@ -4,7 +4,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass, field
 
-from pipeline_generator.config.placeholders import is_placeholder
+from pipeline_generator.config.placeholders import TODO_VALUE, is_placeholder
 from pipeline_generator.config.schema import (
     CATALOG_KEY_PATTERN,
     GENERATION_MODES,
@@ -215,7 +215,15 @@ def validate_config(config: dict) -> ValidationResult:
             if is_placeholder(value):
                 result.warnings.append(f"tool.connection.{key} is missing for JMeter.")
 
-    if tool_type == "loadrunner_professional" and is_placeholder(cicd.get("runner")):
+    runner = cicd.get("runner")
+    if isinstance(runner, list) and all(isinstance(label, str) for label in runner):
+        runner = ", ".join(runner)
+    elif runner is not None and not isinstance(runner, str):
+        result.errors.append(f"cicd.runner must be a label string or a list of label strings, got: {runner!r}")
+        runner = None
+    if runner is not None and runner.strip() == TODO_VALUE:
+        result.warnings.append("cicd.runner is missing -- it's still TODO; set it or leave it blank for the hosted default.")
+    elif tool_type == "loadrunner_professional" and (runner is None or not runner.strip()):
         result.warnings.append(
             "cicd.runner is missing -- LoadRunner Professional must run on an agent co-located with the "
             "Controller, not the platform's hosted default."

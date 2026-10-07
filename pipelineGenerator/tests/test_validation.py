@@ -474,3 +474,20 @@ def test_validation_does_not_require_runner_for_jmeter() -> None:
     config["cicd"]["runner"] = ""
 
     assert not any("cicd.runner" in w for w in validate_config(config).warnings)
+
+
+def test_validation_warns_about_todo_runner_for_any_tool() -> None:
+    config = _complete_jmeter_config()
+    config["cicd"]["runner"] = "TODO"
+
+    assert any(w.startswith("cicd.runner is missing") for w in validate_config(config).warnings)
+
+
+def test_validation_accepts_runner_label_list_and_rejects_other_types() -> None:
+    config = _complete_jmeter_config()
+    config["cicd"]["runner"] = ["self-hosted", "windows"]
+    assert not any("cicd.runner" in e for e in validate_config(config).errors)
+
+    for bad in ({"label": "x"}, 123, ["ok", 5]):
+        config["cicd"]["runner"] = bad
+        assert any("cicd.runner" in e for e in validate_config(config).errors), bad

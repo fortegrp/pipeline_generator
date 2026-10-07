@@ -36,7 +36,11 @@ def render_tool_script(config: dict, package: GenericPipelinePackage, setup_dir:
 
     script_path.write_text(content, encoding="utf-8")
     script_path.chmod(0o755)
-    return [str(script_path)]
+    # Git for Windows defaults to core.autocrlf=true; a CRLF checkout makes bash
+    # fail with "/usr/bin/env: 'bash\r'" before anything runs.
+    gitattributes_path = scripts_dir / ".gitattributes"
+    gitattributes_path.write_text("*.sh text eol=lf\n", encoding="utf-8")
+    return [str(script_path), str(gitattributes_path)]
 
 
 def _render_test_case_resolver(package: GenericPipelinePackage) -> str:
@@ -514,7 +518,9 @@ main() {{
   # available locally; check the results directory's own reports for the
   # authoritative pass/fail status.
   local run_status=0
-  if ! "$wlrun_path" -Run -TestPath "$scenario_identifier" -ResultName "$results_dir"; then
+  # Absolute results path: wlrun may resolve a relative one against the
+  # Controller's own directory. `pwd -W` gives C:/... under Git Bash.
+  if ! "$wlrun_path" -Run -TestPath "$scenario_identifier" -ResultName "$(pwd -W 2>/dev/null || pwd)/$results_dir"; then
     run_status=1
   fi
 

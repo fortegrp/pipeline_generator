@@ -119,7 +119,11 @@ Pipeline: **customer YAML → validate → generic pipeline model → CI/CD rend
   required for LoadRunner (validator warning; wizard default `TODO`), since
   `wlrun` must run on the Controller-adjacent agent. Steps always invoke
   the script with bash (`shell: bash`, Azure `bash:` step, Jenkins `sh`),
-  because Windows agents otherwise use PowerShell/cmd.
+  because Windows agents otherwise use PowerShell/cmd. `render_tool_script`
+  also writes `scripts/.gitattributes` (`*.sh text eol=lf`) because Git for
+  Windows' default `core.autocrlf=true` would check the script out with
+  CRLF and break bash. `cicd.runner` may be a string or a list of labels
+  (joined with ", "); a `TODO` runner warns for every tool.
 - `generator/` — `context.py` reads validated config and builds a
   `GenericPipelinePackage` (`generic_model.py`): a CI/CD-agnostic
   representation of the manual pipeline (inputs, timeout, run command) and

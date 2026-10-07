@@ -13,7 +13,12 @@ All notable changes to `pipeline-generator` are documented here.
   that can't run `wlrun` and needed a hand-edit. Generated steps now always
   run the script with bash — `shell: bash` on GitHub and a `bash:` step on
   Azure (previously `script:`, i.e. cmd.exe on Windows agents) — so a
-  Windows agent needs Git for Windows' `bash`.
+  Windows agent needs Git for Windows' bash on the agent's PATH (see the
+  user guide for the exact folders). `generate` also writes
+  `scripts/.gitattributes` (`*.sh text eol=lf`) so a Windows checkout
+  doesn't turn the script into CRLF, and LoadRunner now passes `wlrun` an
+  absolute `-ResultName`. `cicd.runner` accepts a list of labels; a `TODO`
+  runner warns for every tool.
 
 - BlazeMeter credentials are now wired into every generated pipeline.
   Previously no pipeline passed `BLAZEMETER_API_KEY_ID`/

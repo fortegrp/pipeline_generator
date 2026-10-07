@@ -118,3 +118,12 @@ def test_build_generic_package_carries_runner() -> None:
     assert build_generic_package(config).runner == "lr-controller"
     del config["cicd"]["runner"]
     assert build_generic_package(config).runner == ""
+
+
+def test_build_generic_package_joins_runner_list_and_strips_whitespace() -> None:
+    config = _config()
+    config["cicd"]["runner"] = ["self-hosted", " windows "]
+    assert build_generic_package(config).runner == "self-hosted, windows"
+
+    config["cicd"]["runner"] = "   "
+    assert build_generic_package(config).runner == ""

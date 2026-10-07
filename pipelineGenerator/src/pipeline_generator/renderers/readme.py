@@ -223,8 +223,15 @@ def _troubleshooting_lines(tool_type: str, script_name: str) -> list[str]:
     elif tool_type == "loadrunner_professional":
         lines.append(
             "- This pipeline's CI/CD job must run on an agent co-located with the LoadRunner Controller "
-            "(`wlrun` must be on `PATH` there) — that's what `cicd.runner` targets. The step runs the "
-            "script with bash, so a Windows agent needs Git for Windows (or another `bash` on `PATH`)."
+            "(`wlrun` must be on `PATH` there) — that's what `cicd.runner` targets."
+        )
+        lines.append(
+            "- The step runs the script with bash. On the Windows agent install Git for Windows and put "
+            "`C:\\Program Files\\Git\\bin` (GitHub/Azure) or `C:\\Program Files\\Git\\usr\\bin` (Jenkins `sh`, "
+            "which also needs `nohup`) on the agent service's PATH **ahead of** `C:\\Windows\\System32` — "
+            "otherwise WSL's `bash.exe` wins and can't see `wlrun.exe` — then restart the agent service. "
+            "The LoadRunner Controller is a GUI app, so the agent may need to run as an interactive user "
+            "rather than a service."
         )
         lines.append(
             "- `wlrun`'s exit code is known to be unreliable on some LoadRunner versions/configurations "

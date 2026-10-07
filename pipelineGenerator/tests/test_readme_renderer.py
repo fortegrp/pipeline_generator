@@ -364,3 +364,13 @@ def test_readme_lists_missing_loadrunner_runner_as_todo() -> None:
 
     assert "`cicd.runner`" in todos
     assert "Git for Windows" in todos
+
+
+def test_readme_says_which_bash_folders_go_on_windows_agent_path() -> None:
+    config = _base_config("loadrunner_professional", {"wlrun_path": "wlrun"})
+
+    troubleshooting = _section(render_setup_readme(config, build_generic_package(config)), "Troubleshooting")
+
+    assert "Git\\bin" in troubleshooting
+    assert "Git\\usr\\bin" in troubleshooting
+    assert "WSL" in troubleshooting
