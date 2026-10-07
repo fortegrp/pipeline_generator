@@ -28,11 +28,8 @@ def render_jenkins(config: dict, package: GenericPipelinePackage, setup_dir: Pat
 
 def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
     assert package.manual_pipeline is not None
-    environment_choices = "\n".join(
-        f"                {groovy_squote(item.value)}," for item in package.manual_pipeline.inputs[0].options
-    )
-    scenario_choices = "\n".join(
-        f"                {groovy_squote(item.value)}," for item in package.manual_pipeline.inputs[1].options
+    test_case_choices = "\n".join(
+        f"                {groovy_squote(target.selector)}," for target in package.run_targets
     )
     timeout = package.manual_pipeline.timeout_minutes
     timeout_flag = blazemeter_timeout_flag(package.tool_type, timeout)
@@ -46,18 +43,11 @@ def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
     agent any
     parameters {{
         choice(
-            name: 'ENVIRONMENT',
+            name: 'TEST_CASE',
             choices: [
-{environment_choices}
+{test_case_choices}
             ],
-            description: 'Select environment'
-        )
-        choice(
-            name: 'SCENARIO',
-            choices: [
-{scenario_choices}
-            ],
-            description: 'Select scenario'
+            description: 'Select environment and scenario'
         ){load_parameters}
     }}
     options {{
@@ -70,7 +60,7 @@ def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
                 // Jenkins; referencing them here (rather than Groovy-interpolating
                 // ${{params.X}} into the command text) avoids splicing a
                 // build-triggerer-controlled value directly into the shell script.
-                sh './scripts/run-{package.tool_type}.sh --environment "$ENVIRONMENT" --scenario "$SCENARIO"{load_flag_text}{timeout_flag}'
+                sh './scripts/run-{package.tool_type}.sh --test-case "$TEST_CASE"{load_flag_text}{timeout_flag}'
             }}
         }}
     }}
@@ -88,8 +78,7 @@ def _render_automated_job(job: AutomatedJobSpec, tool_type: str) -> str:
     return f"""pipeline {{
     agent any
     environment {{
-        ENVIRONMENT = {groovy_squote(job.environment_ref)}
-        SCENARIO = {groovy_squote(job.scenario_ref)}
+        TEST_CASE = {groovy_squote(job.test_case)}
     }}
     options {{
         timeout(time: {job.timeout_minutes}, unit: 'MINUTES')
@@ -97,7 +86,7 @@ def _render_automated_job(job: AutomatedJobSpec, tool_type: str) -> str:
     stages {{
         stage('Run performance wrapper') {{
             steps {{
-                sh './scripts/run-{tool_type}.sh --environment "$ENVIRONMENT" --scenario "$SCENARIO"{timeout_flag}'
+                sh './scripts/run-{tool_type}.sh --test-case "$TEST_CASE"{timeout_flag}'
             }}
         }}
     }}

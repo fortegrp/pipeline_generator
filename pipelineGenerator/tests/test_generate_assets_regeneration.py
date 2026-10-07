@@ -32,8 +32,9 @@ def test_regenerating_after_removing_automated_job_removes_stale_workflow(tmp_pa
 
     config = _config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
     config["setup"]["generation_mode"] = "automated_only"
-    config["catalog"]["environments"] = [{"key": "qa", "identifier": "env-qa"}]
-    config["catalog"]["scenarios"] = [{"key": "checkout_smoke", "identifier": "SC-1"}]
+    config["catalog"]["environments"] = [
+        {"key": "qa", "identifier": "env-qa", "scenarios": [{"key": "checkout_smoke", "identifier": "SC-1"}]}
+    ]
     config["automated_jobs"] = [
         {"name": "nightly-load", "environment_ref": "qa", "scenario_ref": "checkout_smoke", "enabled": True}
     ]

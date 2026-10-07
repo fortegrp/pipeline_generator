@@ -89,26 +89,28 @@ def _manual_usage_lines(cicd_type: str, script_name: str) -> list[str]:
     if cicd_type == "github_actions":
         return [
             "- In GitHub, open the **Actions** tab and select the manual performance workflow.",
-            "- Click **Run workflow**, choose an environment and scenario from the dropdowns, "
-            "then click **Run workflow** again to start.",
+            "- Click **Run workflow**, choose a test case (an environment and one of its scenarios) "
+            "from the dropdown, then click **Run workflow** again to start.",
             "- Review the run's summary and download the published `run-output` artifact once it finishes.",
         ]
     if cicd_type == "azure_devops":
         return [
             "- In Azure DevOps, open **Pipelines** and select the manual performance pipeline.",
-            "- Click **Run pipeline**, fill in the `environment`/`scenario` parameters, then click **Run**.",
+            "- Click **Run pipeline**, pick the `test_case` parameter (environment and scenario), then click "
+            "**Run**.",
             "- Review the run's summary and download the published `run-output` pipeline artifact once "
             "it finishes.",
         ]
     if cicd_type == "jenkins":
         return [
             "- In Jenkins, open the manual performance job (`Jenkinsfile.performance-manual`).",
-            "- Click **Build with Parameters**, choose an environment and scenario, then click **Build**.",
+            "- Click **Build with Parameters**, choose a `TEST_CASE` (environment and scenario), then click "
+            "**Build**.",
             "- Review the build's console output and archived `run-output` artifacts once it finishes.",
         ]
     return [
-        f"- Trigger the generated manual pipeline and pass `--environment`/`--scenario` through to "
-        f"`{script_name}`.",
+        f"- Trigger the generated manual pipeline and pass `--test-case '<environment>: <scenario>'` "
+        f"through to `{script_name}`.",
     ]
 
 
@@ -172,9 +174,9 @@ def _troubleshooting_lines(tool_type: str, script_name: str) -> list[str]:
     lines = [
         f"- Check `run-summary.json`'s `status` (`passed`/`failed`/`error`) and `artifact_status` fields "
         "first for a quick, machine-readable verdict before digging into logs.",
-        "- An `Unknown environment key: ...` / `Unknown scenario key: ...` message on stderr means the "
-        f"`--environment`/`--scenario` value passed to `{script_name}` doesn't match any key in this "
-        "setup's catalog — check `customer.yaml`'s `catalog` section.",
+        "- An `Unknown test case: ...` message on stderr means the `--test-case` value passed to "
+        f"`{script_name}` isn't an `<environment>: <scenario>` pair defined in this setup's catalog — "
+        "check `customer.yaml`'s `catalog.environments[].scenarios`.",
     ]
     if tool_type == "blazemeter":
         lines.append(

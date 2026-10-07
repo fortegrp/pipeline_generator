@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Callable
 
 from pipeline_generator.config.loader import load_config, save_config
 from pipeline_generator.config.placeholders import TODO_VALUE
 from pipeline_generator.config.schema import (
+    CATALOG_KEY_PATTERN,
     DEFAULT_JMETER_DOCKER_IMAGE,
     GENERATION_MODES,
     LOAD_PROFILE_FIELDS,
@@ -149,12 +151,7 @@ def _step_manual_pipeline(config: dict, output_path: Path) -> None:
 def _step_catalog(config: dict, output_path: Path) -> None:
     _section(6, "Environments and scenarios")
     tool_type = config["tool"]["type"]
-    config["catalog"]["environments"] = _prompt_catalog_section(
-        "environment", config["catalog"]["environments"], tool_type
-    )
-    config["catalog"]["scenarios"] = _prompt_catalog_section(
-        "scenario", config["catalog"]["scenarios"], tool_type
-    )
+    config["catalog"]["environments"] = _prompt_environments_section(config["catalog"]["environments"], tool_type)
     save_config(output_path, config)
 
 
@@ -230,17 +227,29 @@ def _prompt_connection(config: dict) -> None:
         )
 
 
-def _prompt_catalog_items(kind: str, tool_type: str) -> list[dict]:
+def _prompt_catalog_items(kind: str, tool_type: str, intro: str) -> list[dict]:
     items: list[dict] = []
-    identifier_label = CATALOG_IDENTIFIER_PROMPTS.get(tool_type, {}).get(kind, f"{kind} remote identifier")
-    print(f"Enter {kind}s. Leave key blank to finish.")
+    identifier_label = CATALOG_IDENTIFIER_PROMPTS.get(tool_type, {}).get(kind, f"{kind} identifier")
+    print(intro)
     while True:
         key = prompt_text(f"{kind} key", allow_blank=True)
         if not key:
             break
+        if not re.fullmatch(CATALOG_KEY_PATTERN, key):
+            print("  Use letters, digits, '_', '.', '-' only, starting with a letter or digit (e.g. qa, checkout_smoke).")
+            continue
         identifier = prompt_text(identifier_label, default=TODO_VALUE) or TODO_VALUE
         items.append({"key": key, "identifier": identifier})
     return items
+
+
+def _prompt_environment_items(tool_type: str) -> list[dict]:
+    environments = _prompt_catalog_items("environment", tool_type, "Enter environments. Leave key blank to finish.")
+    for environment in environments:
+        environment["scenarios"] = _prompt_catalog_items(
+            "scenario", tool_type, f"Enter scenarios for {environment['key']}. Leave key blank to finish."
+        )
+    return environments
 
 
 def _prompt_resumable_list(
@@ -263,16 +272,16 @@ def _prompt_resumable_list(
     return existing
 
 
-def _prompt_catalog_section(kind: str, existing: list[dict], tool_type: str) -> list[dict]:
+def _prompt_environments_section(existing: list[dict], tool_type: str) -> list[dict]:
     return _prompt_resumable_list(
-        f"{kind}s", existing, [item["key"] for item in existing], lambda: _prompt_catalog_items(kind, tool_type)
+        "environments", existing, [item["key"] for item in existing], lambda: _prompt_environment_items(tool_type)
     )
 
 
 def _prompt_automated_jobs(config: dict) -> list[dict]:
     jobs: list[dict] = []
-    environment_keys = [item["key"] for item in config["catalog"]["environments"]]
-    scenario_keys = [item["key"] for item in config["catalog"]["scenarios"]]
+    environments = config["catalog"]["environments"]
+    environment_keys = [item["key"] for item in environments]
     print("Enter automated jobs. Leave name blank to finish.")
     while True:
         name = prompt_text("Automated job name", allow_blank=True)
@@ -282,6 +291,9 @@ def _prompt_automated_jobs(config: dict) -> list[dict]:
             environment_ref = prompt_choice("Environment key", environment_keys, default=environment_keys[0])
         else:
             environment_ref = prompt_text("Environment key", default=TODO_VALUE) or TODO_VALUE
+        # Only offer the chosen environment's scenarios: any other pair doesn't exist.
+        environment = next((item for item in environments if item["key"] == environment_ref), {})
+        scenario_keys = [item["key"] for item in environment.get("scenarios", [])]
         if scenario_keys:
             scenario_ref = prompt_choice("Scenario key", scenario_keys, default=scenario_keys[0])
         else:
@@ -319,7 +331,7 @@ def _print_summary(config: dict) -> None:
     print(f"  Tool: {config['tool']['type']}")
     print(f"  Manual pipeline: {'enabled' if config['manual_pipeline']['enabled'] else 'disabled'}")
     print(f"  Environments: {len(config['catalog']['environments'])}")
-    print(f"  Scenarios: {len(config['catalog']['scenarios'])}")
+    print(f"  Scenarios: {sum(len(env.get('scenarios', [])) for env in config['catalog']['environments'])}")
     print(f"  Automated jobs: {len(config['automated_jobs'])}")
 
 

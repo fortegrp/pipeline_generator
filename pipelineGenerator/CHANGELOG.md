@@ -4,6 +4,29 @@ All notable changes to `pipeline-generator` are documented here.
 
 ## [Unreleased]
 
+- **Breaking:** scenarios now belong to an environment.
+  `catalog.scenarios` (a flat top-level list) is removed; each
+  `catalog.environments[]` entry has its own `scenarios[]`. A scenario key
+  only needs to be unique within its environment, so `checkout_smoke` can
+  point at `qa`'s `.lrs` under `qa` and at staging's under `staging` —
+  retiring the `_qa`/`_staging` key-suffix workaround. The manual pipeline
+  (all three CI/CD platforms) now shows **one** `test_case` dropdown listing
+  only the defined `<environment>: <scenario>` pairs instead of two
+  independent dropdowns, so a mismatched pair can no longer be selected.
+  `scripts/run-<tool>.sh` takes `--test-case "<environment>: <scenario>"`
+  instead of `--environment`/`--scenario` (automated jobs bake the same
+  flag); the four generated `resolve_*` functions become one
+  `resolve_test_case`. Catalog keys must now be simple names (letters,
+  digits, `_`, `.`, `-`, starting with a letter or digit — an error
+  otherwise), which also rules out selector collisions. The validator
+  checks duplicate scenario keys per environment, warns on an environment
+  with no scenarios, and checks an automated job's `scenario_ref` against
+  its own environment. The wizard asks each environment's scenarios right
+  after the environments, re-asks invalid keys, and offers an automated
+  job only its chosen environment's scenarios. `run-summary.json` is
+  unchanged. No migration shim: move each config's scenarios under their
+  environment (all 9 examples are migrated).
+
 - **Breaking:** JMeter and BlazeMeter configs now need a filled
   `load_profile` (`users`, `ramp_up_seconds`, `duration_minutes`,
   `throughput_rps`). An existing `incomplete: false` config without it

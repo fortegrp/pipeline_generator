@@ -15,8 +15,7 @@ def _config() -> dict:
         "tool": {"type": "jmeter", "connection": {"test_plan_path": "plan.jmx", "docker_image": ""}},
         "pre_run_checks": [],
         "catalog": {
-            "environments": [{"key": "qa", "name": "QA", "identifier": "env-qa"}],
-            "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "SC-1"}],
+            "environments": [{"key": "qa", "name": "QA", "identifier": "env-qa", "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "SC-1"}]}],
         },
         "manual_pipeline": {"enabled": True, "name": "Performance Manual Run", "timeout_minutes": 120},
         "automated_jobs": [
@@ -46,17 +45,16 @@ def test_render_github_actions_writes_valid_workflows(tmp_path: Path) -> None:
     manual_doc = yaml.safe_load(manual_text)
     assert manual_doc["name"] == "Performance Manual Run"
     assert manual_doc["jobs"]["run-performance-test"]["timeout-minutes"] == 120
-    assert '"qa"' in manual_text
-    assert '"checkout_smoke"' in manual_text
+    assert '"qa: checkout_smoke"' in manual_text
     # The build-triggerer-controlled input must be delivered via env:, never
     # spliced directly into the run: shell text (workflow_dispatch's `choice`
     # restriction is only enforced by GitHub's UI, not its dispatch API).
     step = manual_doc["jobs"]["run-performance-test"]["steps"][1]
-    assert step["env"]["ENVIRONMENT"] == "${{ github.event.inputs.environment }}"
-    assert step["env"]["SCENARIO"] == "${{ github.event.inputs.scenario }}"
+    assert step["env"]["TEST_CASE"] == "${{ github.event.inputs.test_case }}"
+    assert "ENVIRONMENT" not in step["env"]
     assert "./scripts/run-jmeter.sh" in manual_text
-    assert '--environment "$ENVIRONMENT"' in manual_text
-    assert '--scenario "$SCENARIO"' in manual_text
+    assert '--test-case "$TEST_CASE"' in manual_text
+    assert manual_doc[True]["workflow_dispatch"]["inputs"]["test_case"]["options"] == ["qa: checkout_smoke"]
     assert "github.event.inputs" not in step["run"]
     assert "pipeline-generator" not in manual_text
 
@@ -64,8 +62,7 @@ def test_render_github_actions_writes_valid_workflows(tmp_path: Path) -> None:
     automated_doc = yaml.safe_load(automated_text)
     assert automated_doc["jobs"]["post-deploy-smoke"]["timeout-minutes"] == 60
     assert "./scripts/run-jmeter.sh" in automated_text
-    assert "--environment qa" in automated_text
-    assert "--scenario checkout_smoke" in automated_text
+    assert "--test-case 'qa: checkout_smoke'" in automated_text
     assert "pipeline-generator" not in automated_text
 
 
@@ -79,8 +76,7 @@ def test_render_github_actions_escapes_adversarial_values(tmp_path: Path) -> Non
         "tool": {"type": "jmeter", "connection": {"test_plan_path": "plan.jmx", "docker_image": ""}},
         "pre_run_checks": [],
         "catalog": {
-            "environments": [{"key": nasty_env_value, "name": "QA", "identifier": "env-nasty"}],
-            "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "SC-1"}],
+            "environments": [{"key": nasty_env_value, "name": "QA", "identifier": "env-nasty", "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "SC-1"}]}],
         },
         "manual_pipeline": {"enabled": True, "name": nasty_pipeline_name, "timeout_minutes": 30},
         "automated_jobs": [
@@ -110,7 +106,7 @@ def test_render_github_actions_escapes_adversarial_values(tmp_path: Path) -> Non
     manual_doc = yaml.safe_load(manual_text)  # raises if the escaping broke YAML syntax
     assert manual_doc["name"] == nasty_pipeline_name
     # PyYAML's default resolver reads the bare "on:" key as boolean True.
-    assert nasty_env_value in manual_doc[True]["workflow_dispatch"]["inputs"]["environment"]["options"]
+    assert f"{nasty_env_value}: checkout_smoke" in manual_doc[True]["workflow_dispatch"]["inputs"]["test_case"]["options"]
 
     workflows_dir = tmp_path / ".github" / "workflows"
     automated_files = [p for p in workflows_dir.iterdir() if p.name.startswith("performance-automated-")]
@@ -121,7 +117,7 @@ def test_render_github_actions_escapes_adversarial_values(tmp_path: Path) -> Non
     assert automated_doc["name"] == f"Performance Automated Job - {nasty_job_name}"
     job_id = next(iter(automated_doc["jobs"]))
     assert re.match(r"^[A-Za-z_][A-Za-z0-9_-]*$", job_id)
-    assert shell_quote(nasty_env_value) in automated_text
+    assert shell_quote(f"{nasty_env_value}: checkout_smoke") in automated_text
 
 
 def test_render_github_actions_includes_timeout_flag_for_blazemeter(tmp_path: Path) -> None:
@@ -197,3 +193,17 @@ def test_render_github_actions_automated_job_passes_no_load_flags(tmp_path: Path
     ).read_text(encoding="utf-8")
     assert "--users" not in automated_text
     assert "--test-type" not in automated_text
+
+
+def test_render_github_actions_dropdown_lists_only_defined_pairs(tmp_path: Path) -> None:
+    config = _config()
+    config["catalog"]["environments"] = [
+        {"key": "qa", "identifier": "QA", "scenarios": [{"key": "checkout", "identifier": "1"}, {"key": "browse", "identifier": "2"}]},
+        {"key": "staging", "identifier": "STG", "scenarios": [{"key": "checkout", "identifier": "3"}]},
+    ]
+    config["automated_jobs"] = []
+    render_github_actions(config, build_generic_package(config), tmp_path)
+
+    manual_doc = yaml.safe_load((tmp_path / ".github" / "workflows" / "performance-manual.yml").read_text())
+    options = manual_doc[True]["workflow_dispatch"]["inputs"]["test_case"]["options"]
+    assert options == ["qa: checkout", "qa: browse", "staging: checkout"]  # no "staging: browse"

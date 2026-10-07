@@ -15,8 +15,7 @@ def _config() -> dict:
         "tool": {"type": "jmeter", "connection": {"test_plan_path": "plan.jmx", "docker_image": ""}},
         "pre_run_checks": [],
         "catalog": {
-            "environments": [{"key": "qa", "name": "QA", "identifier": "env-qa"}],
-            "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "SC-1"}],
+            "environments": [{"key": "qa", "name": "QA", "identifier": "env-qa", "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "SC-1"}]}],
         },
         "manual_pipeline": {"enabled": True, "name": "Performance Manual Run", "timeout_minutes": 120},
         "automated_jobs": [
@@ -45,17 +44,16 @@ def test_render_azure_devops_writes_valid_pipelines(tmp_path: Path) -> None:
     manual_text = manual_path.read_text(encoding="utf-8")
     manual_doc = yaml.safe_load(manual_text)
     assert manual_doc["jobs"][0]["timeoutInMinutes"] == 120
-    assert manual_doc["parameters"][0]["name"] == "environment"
+    assert manual_doc["parameters"][0]["name"] == "test_case"
+    assert manual_doc["parameters"][0]["values"] == ["qa: checkout_smoke"]
     assert "qa" in manual_text
     # The parameter value must be delivered via env:, never spliced directly
     # into the script: text.
     run_step = manual_doc["jobs"][0]["steps"][1]
-    assert run_step["env"]["ENVIRONMENT"] == "${{ parameters.environment }}"
-    assert run_step["env"]["SCENARIO"] == "${{ parameters.scenario }}"
+    assert run_step["env"]["TEST_CASE"] == "${{ parameters.test_case }}"
     assert "./scripts/run-jmeter.sh" in manual_text
-    assert '--environment "$ENVIRONMENT"' in manual_text
-    assert '--scenario "$SCENARIO"' in manual_text
-    assert "parameters.environment" not in run_step["script"]
+    assert '--test-case "$TEST_CASE"' in manual_text
+    assert "parameters.test_case" not in run_step["script"]
     assert "pipeline-generator" not in manual_text
 
     automated_text = automated_path.read_text(encoding="utf-8")
@@ -64,8 +62,7 @@ def test_render_azure_devops_writes_valid_pipelines(tmp_path: Path) -> None:
     # job identifiers get hyphens sanitized to underscores.
     assert automated_doc["jobs"][0]["job"] == "post_deploy_smoke"
     assert "./scripts/run-jmeter.sh" in automated_text
-    assert "--environment qa" in automated_text
-    assert "--scenario checkout_smoke" in automated_text
+    assert "--test-case 'qa: checkout_smoke'" in automated_text
     assert "pipeline-generator" not in automated_text
 
 
@@ -78,8 +75,7 @@ def test_render_azure_devops_escapes_adversarial_values(tmp_path: Path) -> None:
         "tool": {"type": "jmeter", "connection": {"test_plan_path": "plan.jmx", "docker_image": ""}},
         "pre_run_checks": [],
         "catalog": {
-            "environments": [{"key": nasty_env_value, "name": "QA", "identifier": "env-nasty"}],
-            "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "SC-1"}],
+            "environments": [{"key": nasty_env_value, "name": "QA", "identifier": "env-nasty", "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "SC-1"}]}],
         },
         "manual_pipeline": {"enabled": True, "name": "Performance Manual Run", "timeout_minutes": 30},
         "automated_jobs": [
@@ -105,8 +101,8 @@ def test_render_azure_devops_escapes_adversarial_values(tmp_path: Path) -> None:
     manual_path = tmp_path / "azure" / "performance-manual.yml"
     manual_text = manual_path.read_text(encoding="utf-8")
     manual_doc = yaml.safe_load(manual_text)  # raises if the escaping broke YAML syntax
-    environment_param = next(p for p in manual_doc["parameters"] if p["name"] == "environment")
-    assert nasty_env_value in environment_param["values"]
+    test_case_param = next(p for p in manual_doc["parameters"] if p["name"] == "test_case")
+    assert f"{nasty_env_value}: checkout_smoke" in test_case_param["values"]
 
     azure_dir = tmp_path / "azure"
     automated_files = [p for p in azure_dir.iterdir() if p.name.startswith("performance-automated-")]
@@ -117,7 +113,7 @@ def test_render_azure_devops_escapes_adversarial_values(tmp_path: Path) -> None:
     job_id = automated_doc["jobs"][0]["job"]
     assert re.match(r"^[A-Za-z0-9_]+$", job_id)
     assert not job_id[0].isdigit()
-    assert shell_quote(nasty_env_value) in automated_text
+    assert shell_quote(f"{nasty_env_value}: checkout_smoke") in automated_text
 
 
 def test_render_azure_devops_includes_timeout_flag_for_blazemeter(tmp_path: Path) -> None:

@@ -151,15 +151,15 @@ Generation is the tool's last step: it never triggers or contacts a
 performance test itself. Alongside the CI/CD files and `customer.yaml`,
 `generate` writes `scripts/run-<tool_type>.sh` — a real, executable script
 that the generated pipeline's "Run performance wrapper" step calls directly
-(e.g. `./scripts/run-jmeter.sh --environment "$ENVIRONMENT" --scenario
-"$SCENARIO"`). For JMeter this script actually resolves the environment/
-scenario to their catalog identifiers and runs JMeter inside a Docker
+(e.g. `./scripts/run-jmeter.sh --test-case "$TEST_CASE"`, where the test
+case is one `<environment>: <scenario>` pair from the catalog). For JMeter
+this script actually resolves that pair to its catalog identifiers and runs JMeter inside a Docker
 container (`docker run --rm -v "$(pwd):/workspace" -w /workspace
 <docker_image> -n -t ...`) — the agent/runner needs Docker installed and
 available, but not a local JMeter install.
 LoadRunner Professional is also real: it assumes the CI job runs on a
 dedicated agent co-located with the LoadRunner Controller, resolves
-`--environment`/`--scenario` the same way, and runs `wlrun -Run -TestPath
+`--test-case` the same way, and runs `wlrun -Run -TestPath
 <scenario_identifier> -ResultName run-output/<environment_slug>_
 <scenario_slug>` — a scenario's catalog identifier is a full `.lrs` file
 path rather than a remote name, since `wlrun` has no native "environment"
@@ -192,6 +192,13 @@ about how it behaves:
   of these from the `.lrs` scenario, so it's only asked the label.
 - **Inline hints.** Choices with non-obvious implications (`generation_mode`)
   show a one-line explanation of what each option means.
+- **Each environment owns its scenarios.** After entering environments,
+  the wizard asks for each one's scenarios, so the manual pipeline offers
+  a single dropdown of the `<environment>: <scenario>` pairs you actually
+  defined — a QA-only scenario can't be run against staging by mistake.
+  Keys must be simple names (letters, digits, `_`, `.`, `-`); an invalid
+  key is re-asked. An automated job's scenario choice is limited to its
+  chosen environment's scenarios.
 - **Resuming never discards existing entries.** If you `--resume` a draft
   that already has environments, scenarios, or automated jobs, the wizard
   shows what's already there and asks whether to keep it as-is, add more on
@@ -251,8 +258,8 @@ job, in each case.
 
 The `scripts/run-<tool_type>.sh` file is always present alongside those
 CI/CD files, regardless of platform, since every generated pipeline calls it
-the same way (`./scripts/run-<tool_type>.sh --environment "$ENVIRONMENT"
---scenario "$SCENARIO"`, plus the load-profile flags for manual runs).
+the same way (`./scripts/run-<tool_type>.sh --test-case "$TEST_CASE"`,
+plus the load-profile flags for manual runs).
 
 ## Config Shape
 
@@ -273,9 +280,14 @@ catalog:
   environments:
     - key: qa
       identifier: QA
-  scenarios:
-    - key: checkout_smoke_qa
-      identifier: C:\Scenarios\checkout_smoke_qa.lrs
+      scenarios:              # each environment owns its scenarios
+        - key: checkout_smoke
+          identifier: C:\Scenarios\checkout_smoke_qa.lrs
+    - key: staging
+      identifier: Staging
+      scenarios:              # same key, this environment's own .lrs
+        - key: checkout_smoke
+          identifier: C:\Scenarios\checkout_smoke_staging.lrs
 manual_pipeline:
   enabled: true
   name: Performance Manual Run
@@ -284,7 +296,7 @@ automated_jobs:
   - name: post-deploy-smoke
     enabled: true
     environment_ref: qa
-    scenario_ref: checkout_smoke_qa
+    scenario_ref: checkout_smoke   # must exist under environment qa
     timeout_minutes: 90
 pre_run_checks:
   - verify_controller_access

@@ -15,8 +15,7 @@ def test_validation_warns_when_catalog_identifier_is_missing() -> None:
     config["cicd"]["type"] = "github_actions"
     config["tool"]["type"] = "jmeter"
     config["tool"]["connection"] = {"test_plan_path": "performance/checkout.jmx"}
-    config["catalog"]["environments"] = [{"key": "qa"}]
-    config["catalog"]["scenarios"] = [{"key": "checkout_smoke", "identifier": "SC-1"}]
+    config["catalog"]["environments"] = [{"key": "qa", "scenarios": [{"key": "checkout_smoke", "identifier": "SC-1"}]}]
 
     result = validate_config(config)
 
@@ -31,11 +30,11 @@ def test_validation_does_not_warn_about_optional_wlrun_path() -> None:
     config["cicd"]["type"] = "github_actions"
     config["tool"]["type"] = "loadrunner_professional"
     config["tool"]["connection"] = {}
-    config["catalog"]["environments"] = [{"key": "qa", "identifier": "QA"}]
-    config["catalog"]["scenarios"] = [
+    config["catalog"]["environments"] = [
         {
-            "key": "checkout_smoke_qa",
-            "identifier": "C:\\Scenarios\\checkout_smoke_qa.lrs",
+            "key": "qa",
+            "identifier": "QA",
+            "scenarios": [{"key": "checkout_smoke", "identifier": "C:\\Scenarios\\checkout_smoke_qa.lrs"}],
         }
     ]
 
@@ -80,8 +79,9 @@ def _complete_jmeter_config() -> dict:
     config["cicd"]["type"] = "github_actions"
     config["tool"]["type"] = "jmeter"
     config["tool"]["connection"] = {"test_plan_path": "performance/checkout.jmx"}
-    config["catalog"]["environments"] = [{"key": "qa", "identifier": "env-qa"}]
-    config["catalog"]["scenarios"] = [{"key": "checkout_smoke", "identifier": "SC-1"}]
+    config["catalog"]["environments"] = [
+        {"key": "qa", "identifier": "env-qa", "scenarios": [{"key": "checkout_smoke", "identifier": "SC-1"}]}
+    ]
     config["load_profile"] = {
         "test_type": "load",
         "users": 10,
@@ -114,8 +114,8 @@ def test_validation_does_not_warn_about_recognized_pre_run_check() -> None:
 def test_validation_warns_about_duplicate_environment_key() -> None:
     config = _complete_jmeter_config()
     config["catalog"]["environments"] = [
-        {"key": "qa", "identifier": "env-qa-east"},
-        {"key": "qa", "identifier": "env-qa-west"},
+        {"key": "qa", "identifier": "env-qa-east", "scenarios": [{"key": "checkout_smoke", "identifier": "SC-1"}]},
+        {"key": "qa", "identifier": "env-qa-west", "scenarios": [{"key": "checkout_smoke", "identifier": "SC-2"}]},
     ]
 
     result = validate_config(config)
@@ -124,9 +124,9 @@ def test_validation_warns_about_duplicate_environment_key() -> None:
     assert any("duplicate" in warning.lower() and "qa" in warning for warning in result.warnings)
 
 
-def test_validation_warns_about_duplicate_scenario_key() -> None:
+def test_validation_warns_about_duplicate_scenario_key_within_same_environment() -> None:
     config = _complete_jmeter_config()
-    config["catalog"]["scenarios"] = [
+    config["catalog"]["environments"][0]["scenarios"] = [
         {"key": "checkout_smoke", "identifier": "SC-1"},
         {"key": "checkout_smoke", "identifier": "SC-2"},
     ]
@@ -193,11 +193,11 @@ def test_validation_errors_instead_of_crashing_on_environments_as_list_of_string
 
 def test_validation_errors_instead_of_crashing_on_scenarios_as_dict() -> None:
     config = base_config()
-    config["catalog"]["scenarios"] = {"key": "checkout_smoke"}
+    config["catalog"]["environments"] = [{"key": "qa", "identifier": "QA", "scenarios": {"key": "checkout_smoke"}}]
 
     result = validate_config(config)
 
-    assert any("catalog.scenarios" in error for error in result.errors)
+    assert any("catalog.environments.qa.scenarios" in error for error in result.errors)
 
 
 def test_validation_errors_instead_of_crashing_on_automated_jobs_as_dict() -> None:
@@ -344,3 +344,73 @@ def test_validation_accepts_simple_test_type_label() -> None:
     result = validate_config(config)
 
     assert not any("test_type" in message for message in result.errors + result.warnings)
+
+
+def test_validation_does_not_warn_about_same_scenario_key_reused_across_environments() -> None:
+    config = _complete_jmeter_config()
+    config["catalog"]["environments"].append(
+        {"key": "staging", "identifier": "env-staging", "scenarios": [{"key": "checkout_smoke", "identifier": "SC-2"}]}
+    )
+
+    result = validate_config(config)
+
+    assert not any("duplicate" in warning.lower() for warning in result.warnings)
+
+
+def test_validation_warns_about_environment_with_no_scenarios() -> None:
+    config = _complete_jmeter_config()
+    config["catalog"]["environments"].append({"key": "staging", "identifier": "env-staging", "scenarios": []})
+
+    result = validate_config(config)
+
+    assert any("catalog.environments.staging has no scenarios" in warning for warning in result.warnings)
+
+
+def test_validation_warns_about_missing_scenario_identifier_with_nested_path() -> None:
+    config = _complete_jmeter_config()
+    config["catalog"]["environments"][0]["scenarios"] = [{"key": "checkout_smoke"}]
+
+    result = validate_config(config)
+
+    assert "catalog.environments.qa.scenarios.checkout_smoke.identifier is missing." in result.warnings
+
+
+def test_validation_warns_about_automated_job_scenario_from_another_environment() -> None:
+    config = _complete_jmeter_config()
+    config["catalog"]["environments"].append(
+        {"key": "staging", "identifier": "env-staging", "scenarios": [{"key": "browse_baseline", "identifier": "SC-9"}]}
+    )
+    config["automated_jobs"] = [
+        {"name": "nightly", "environment_ref": "staging", "scenario_ref": "checkout_smoke", "enabled": True}
+    ]
+
+    result = validate_config(config)
+
+    assert any(
+        "nightly" in warning and "unknown scenario for environment 'staging'" in warning
+        for warning in result.warnings
+    )
+
+
+def test_validation_errors_on_catalog_key_with_unsupported_characters() -> None:
+    for bad in ("qa: east", "../x", "east us", "-qa"):
+        config = _complete_jmeter_config()
+        config["catalog"]["environments"][0]["key"] = bad
+
+        result = validate_config(config)
+
+        assert any("catalog.environments" in error and "key" in error for error in result.errors), bad
+
+    config = _complete_jmeter_config()
+    config["catalog"]["environments"][0]["scenarios"][0]["key"] = "smoke: 1"
+    assert any("scenarios" in error and "key" in error for error in validate_config(config).errors)
+
+
+def test_validation_accepts_simple_catalog_keys() -> None:
+    config = _complete_jmeter_config()
+    config["catalog"]["environments"][0]["key"] = "qa-east.1"
+    config["catalog"]["environments"][0]["scenarios"][0]["key"] = "Checkout_Smoke"
+
+    result = validate_config(config)
+
+    assert not result.errors

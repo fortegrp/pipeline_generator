@@ -3,24 +3,30 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
-@dataclass
-class InputOption:
-    value: str
-    identifier: str
+def run_target_selector(environment_key: str, scenario_key: str) -> str:
+    """The one format for an environment+scenario pair: the manual pipeline's
+    dropdown value, an automated job's baked value, and the generated script's
+    resolve_test_case key. Catalog keys can't contain ":" (validator), so
+    distinct pairs never collide.
+    """
+    return f"{environment_key}: {scenario_key}"
 
 
 @dataclass
-class PipelineInput:
-    key: str
-    label: str
-    kind: str
-    options: list[InputOption]
+class RunTarget:
+    environment_key: str
+    environment_identifier: str
+    scenario_key: str
+    scenario_identifier: str
+
+    @property
+    def selector(self) -> str:
+        return run_target_selector(self.environment_key, self.scenario_key)
 
 
 @dataclass
 class ManualPipelineSpec:
     name: str
-    inputs: list[PipelineInput]
     timeout_minutes: int
 
 
@@ -28,8 +34,7 @@ class ManualPipelineSpec:
 class AutomatedJobSpec:
     name: str
     timeout_minutes: int
-    environment_ref: str
-    scenario_ref: str
+    test_case: str
 
 
 @dataclass
@@ -53,6 +58,5 @@ class GenericPipelinePackage:
     tool_type: str
     manual_pipeline: ManualPipelineSpec | None = None
     automated_jobs: list[AutomatedJobSpec] = field(default_factory=list)
-    environments: list[InputOption] = field(default_factory=list)
-    scenarios: list[InputOption] = field(default_factory=list)
+    run_targets: list[RunTarget] = field(default_factory=list)
     load_inputs: list[LoadInput] = field(default_factory=list)

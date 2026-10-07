@@ -275,8 +275,8 @@ what replaced `run`.
 
 `generate` writes `scripts/run-<tool_type>.sh` alongside the CI/CD files.
 This is what the generated pipeline's step actually calls
-(`./scripts/run-<tool_type>.sh --environment "$ENVIRONMENT" --scenario
-"$SCENARIO"`) — it is a plain, standalone bash script with no dependency on
+(`./scripts/run-<tool_type>.sh --test-case "$TEST_CASE"`, one
+`<environment>: <scenario>` pair from the catalog) — it is a plain, standalone bash script with no dependency on
 `pipeline-generator` or Python at execution time. It can also be run by hand
 from a checkout of the generated setup.
 
@@ -288,8 +288,8 @@ overridden per run with `--users`/`--ramp-up-seconds`/`--duration-minutes`/
 `--throughput-rps`/`--test-type` (the manual pipeline exposes these as
 trigger inputs).
 
-- For **JMeter**, it's real and complete: it resolves `--environment`/
-  `--scenario` to their catalog identifiers, optionally checks the test plan
+- For **JMeter**, it's real and complete: it resolves `--test-case` to its
+  catalog identifiers, optionally checks the test plan
   file exists first (if `verify_scenario_exists` is in `pre_run_checks`)
   and that `docker` is on `PATH` (if `verify_docker_available` is
   configured), then creates `run-output/<environment_slug>_<scenario_slug>/`
@@ -304,8 +304,8 @@ trigger inputs).
   bind-mounted at `/workspace` so relative-path CSV data sets/fragments
   still resolve, and results land directly on the host filesystem.
 - For **LoadRunner Professional**, it's also real and complete: it resolves
-  `--environment`/`--scenario` the same way (a scenario's identifier is a
-  full `.lrs` file path), optionally checks `wlrun_path` resolves to a
+  `--test-case` the same way (a scenario's identifier is a full `.lrs` file
+  path; each environment lists its own scenarios), optionally checks `wlrun_path` resolves to a
   runnable command and/or the `.lrs` file exists (`verify_controller_access`
   / `verify_scenario_exists`), then runs `wlrun -Run -TestPath
   <scenario_identifier> -ResultName run-output/<environment_slug>_
@@ -335,7 +335,9 @@ Major sections:
 - `tool`: selected performance testing tool and connection details.
 - `manual_pipeline`: manual pipeline settings.
 - `automated_jobs`: reusable automated job definitions.
-- `catalog`: available environments and scenarios.
+- `catalog`: `environments[]`, each owning its `scenarios[]` — a scenario
+  key only needs to be unique within its environment, and only defined
+  pairs are ever offered. Keys are simple names (letters, digits, `_.-`).
 - `pre_run_checks`: checks requested before execution.
 - `load_profile`: `test_type` label for every tool; for JMeter/BlazeMeter
   also `users`, `ramp_up_seconds`, `duration_minutes`, `throughput_rps`
@@ -378,13 +380,13 @@ The generic model currently includes:
 - CI/CD type.
 - Tool type.
 - Optional manual pipeline spec.
-- Automated job specs (each carrying its `environment_ref`/`scenario_ref`).
-- Pipeline inputs for environments and scenarios, each carrying its catalog
-  `identifier`.
+- Automated job specs (each carrying its fixed `test_case` selector).
+- `run_targets`: one entry per defined environment/scenario pair, with
+  both keys and identifiers; the manual pipeline's single dropdown and the
+  script's `resolve_test_case` are both built from it.
 
-Each renderer builds its own `./scripts/run-<tool_type>.sh --environment ...
---scenario ...` invocation from `package.tool_type` and the relevant
-`environment_ref`/`scenario_ref`, rather than reading a shared run-command
+Each renderer builds its own `./scripts/run-<tool_type>.sh --test-case ...`
+invocation from `package.tool_type` and the job's `test_case`, rather than reading a shared run-command
 field off the generic model — the three platforms need different delivery
 mechanisms for runtime-supplied values (see "Renderer Output Uses
 Handwritten YAML Strings" below), which a single generic command list
@@ -403,13 +405,12 @@ been replaced by the flow baked into the generated
 `scripts/run-<tool_type>.sh` itself, which runs standalone, later, on
 whatever machine the CI/CD job executes on:
 
-1. Parse `--environment` and `--scenario` (both required), plus optional
+1. Parse `--test-case` (required), plus optional
    load-profile overrides; reject non-numeric load values and stop on any
    value still `TODO`.
-2. Resolve each to its catalog `identifier` via generated shell functions
-   (`resolve_environment_identifier`/`resolve_scenario_identifier`) — an
-   unrecognized key prints `Unknown environment key: ...` /
-   `Unknown scenario key: ...` and exits non-zero.
+2. Resolve it via the generated `resolve_test_case` function, which sets
+   both keys, both identifiers and both results-folder slugs at once — an
+   undefined pair prints `Unknown test case: ...` and exits non-zero.
 3. Create `run-output/`.
 4. Run the tool:
    - **JMeter**: optionally verify the test plan file exists (if
@@ -481,9 +482,9 @@ This used to describe the `run` CLI command's request-building `ValueError`s
 tracebacks instead of clean CLI output. The `run` command, and the Python
 runtime layer that raised those errors, have both been deleted — bad input
 is now handled entirely inside the generated `scripts/run-<tool_type>.sh`
-itself (missing `--environment`/`--scenario` prints a one-line `Usage: ...`
-message and exits 1; an unrecognized environment/scenario key prints
-`Unknown environment key: ...` / `Unknown scenario key: ...` and exits 1),
+itself (a missing `--test-case` prints a one-line `Usage: ...` message and
+exits 1; an undefined environment/scenario pair prints
+`Unknown test case: ...` and exits 1),
 so there's no longer a Python exception path here to catch.
 
 ### README and Schema Are Slightly Out of Sync — Resolved

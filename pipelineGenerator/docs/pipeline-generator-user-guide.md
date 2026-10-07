@@ -41,8 +41,9 @@ that isn't a `pipeline-generator` command at all:
   it has no code that talks to GitHub, Azure DevOps, Jenkins, BlazeMeter, or
   a LoadRunner controller.
 - **`scripts/run-<tool>.sh`** is the one real step every generated pipeline
-  calls to do its work (e.g. `./scripts/run-jmeter.sh --environment "$ENV"
-  --scenario "$SCENARIO"`). It's a plain bash script with no dependency on
+  calls to do its work (e.g. `./scripts/run-jmeter.sh --test-case
+  "$TEST_CASE"`, where the test case is one `<environment>: <scenario>`
+  pair from the catalog). It's a plain bash script with no dependency on
   `pipeline-generator` or Python at all, so it runs the same way whether the
   CI/CD platform's job that calls it happens to have this tool installed or
   not. All three tools are real and complete: JMeter and LoadRunner
@@ -222,9 +223,18 @@ asking again:
 
 ### Step 6 — Environments and scenarios
 
-For a brand-new config, you're asked "Add environments now?" / "Add
-scenarios now?" (yes/no); saying no leaves the catalog empty for now (fine
-for a draft — see section 6).
+For a brand-new config, you're asked "Add environments now?" (yes/no);
+saying no leaves the catalog empty for now (fine for a draft — see
+section 6). Saying yes collects the environments, then asks for **each
+environment's own scenarios** in turn. Scenarios belong to an environment:
+the same scenario key (e.g. `checkout_smoke`) can exist under `qa` and
+`staging` with a different identifier each, and the manual pipeline's
+single dropdown lists only the `<environment>: <scenario>` pairs you
+defined — so a scenario that only exists for QA can't be run against
+staging by mistake.
+
+Keys must be simple names — letters, digits, `_`, `.`, `-`, starting with
+a letter or digit (e.g. `qa`, `checkout_smoke`); anything else is re-asked.
 
 **If you're resuming a draft that already has entries**, the wizard shows
 what's there and asks what to do:
@@ -243,7 +253,7 @@ versions of this flow made "yes, edit this" silently wipe the existing list,
 which was a real problem for any catalog with more than a couple of entries.
 
 Each environment/scenario entry has two fields: a `key` (used
-programmatically, e.g. as a dropdown value and in automated job
+programmatically, e.g. in the dropdown value and in automated job
 references) and an `identifier` whose meaning depends on the tool picked in
 Step 2 — the wizard's prompt label changes to match (defaults to a `TODO`
 placeholder if you don't have it yet):
@@ -269,9 +279,9 @@ resuming. For each new job you enter:
 
 - **Job name** (blank to stop adding jobs)
 - **Environment key** and **Scenario key** — if you already have catalog
-  entries from Step 6, these are presented as a numbered choice from that
-  catalog (not free text), so a job can't accidentally reference an
-  environment/scenario that doesn't exist.
+  entries from Step 6, these are presented as numbered choices (not free
+  text), and the scenario choices are only the chosen environment's own
+  scenarios — so a job can't reference a pair that doesn't exist.
 - **Timeout minutes** — same positive-integer prompt as Step 5.
 
 ### Step 8 — Pre-run checks
@@ -325,16 +335,21 @@ automated_jobs:
   - name: post-deploy-smoke
     enabled: true
     environment_ref: qa              # must match a catalog.environments[].key
-    scenario_ref: checkout_smoke_qa  # must match a catalog.scenarios[].key
+    scenario_ref: checkout_smoke     # must match a key in that environment's scenarios
     timeout_minutes: 90
 
 catalog:
   environments:
-    - key: qa
+    - key: qa                        # letters, digits, _ . - only
       identifier: QA
-  scenarios:
-    - key: checkout_smoke_qa
-      identifier: C:\Scenarios\checkout_smoke_qa.lrs
+      scenarios:                     # this environment's own scenarios
+        - key: checkout_smoke        # unique within this environment
+          identifier: C:\Scenarios\checkout_smoke_qa.lrs
+    - key: staging
+      identifier: Staging
+      scenarios:
+        - key: checkout_smoke        # same key, staging's own .lrs
+          identifier: C:\Scenarios\checkout_smoke_staging.lrs
 
 pre_run_checks:
   - verify_controller_access
@@ -433,7 +448,7 @@ dependency on `pipeline-generator` or Python. This is the command the
 *generated* pipeline files themselves invoke:
 
 ```bash
-./scripts/run-jmeter.sh --environment qa --scenario checkout_smoke
+./scripts/run-jmeter.sh --test-case "qa: checkout_smoke"
 ```
 
 Load values default to `customer.yaml`'s `load_profile`; JMeter and
@@ -451,21 +466,20 @@ plain script:
 
 ```bash
 cd generated/acme-github-actions-jmeter-storefront
-./scripts/run-jmeter.sh --environment qa --scenario checkout_smoke
+./scripts/run-jmeter.sh --test-case "qa: checkout_smoke"
 ```
 
 What the script does:
 
-1. Parses `--environment` and `--scenario` (both required; BlazeMeter also
-   requires `--timeout-minutes`).
-2. Resolves each to its catalog `identifier` using generated shell
-   functions (`resolve_environment_identifier`/
-   `resolve_scenario_identifier`) — an unrecognized key prints
-   `Unknown environment key: ...` / `Unknown scenario key: ...` and exits
-   non-zero.
+1. Parses `--test-case "<environment>: <scenario>"` (required; BlazeMeter
+   also requires `--timeout-minutes`).
+2. Resolves it with the generated `resolve_test_case` function, which sets
+   both keys, both catalog identifiers and both results-folder slugs at
+   once — a pair that isn't defined in the catalog prints
+   `Unknown test case: ...` and exits non-zero.
 3. Creates `run-output/<environment_slug>_<scenario_slug>/` (all three
-   tools now use this same per-run folder, resolved via generated
-   `resolve_environment_slug`/`resolve_scenario_slug` functions) — in
+   tools use this same per-run folder, with slugs sanitized at generation
+   time) — in
    practice this happens just before the tool actually runs, after any
    configured prechecks in step 4 have already passed, so a precheck
    failure leaves no per-run folder behind.
@@ -582,8 +596,8 @@ it's always a URL.
 This file is separate from BlazeMeter's own `summary.json`/
 `report_link.json` (its raw API report), which are unchanged.
 
-Bad input (missing `--environment`/`--scenario`/`--timeout-minutes` where
-required, an unrecognized key, or a non-numeric `--timeout-minutes`) is
+Bad input (missing `--test-case`/`--timeout-minutes` where required, a
+pair that isn't in the catalog, or a non-numeric `--timeout-minutes`) is
 reported as a plain one-line message on stderr with a non-zero exit code,
 not a stack trace.
 
@@ -592,7 +606,7 @@ not a stack trace.
 All three renderers produce one file for the manual pipeline (if enabled)
 and one file per enabled automated job, all of which call the same
 `scripts/run-<tool_type>.sh` under the hood with the appropriate
-`--environment`/`--scenario` flags — so the generated pipeline logic is
+`--test-case` flag — so the generated pipeline logic is
 identical across platforms; only the wrapping syntax differs. None of them
 install Python or `pipeline-generator` — the script is pure bash and needs
 nothing beyond the tool itself (e.g. `jmeter` on `PATH`) at execution time.
@@ -704,11 +718,12 @@ Beyond the schema checks described in section 5 ("Understanding
   `verify_scenario_exist` missing the `s`). Without this warning, the
   check would be silently dropped at generation time with no trace at all
   in the generated script, not even a `# TODO precheck: ...` comment.
-- **A duplicate `key` within `catalog.environments` or
-  `catalog.scenarios`** — two entries sharing a key make the second one's
-  identifier silently unreachable in the generated resolver function; a
-  user picking it from a CI/CD dropdown would silently get the first
-  entry's identifier instead.
+- **A duplicate environment `key`, or a duplicate scenario `key` within
+  one environment** — two entries sharing a key make the second one's
+  identifier silently unreachable in the generated resolver function.
+  (Reusing a scenario key across *different* environments is normal.)
+- **An environment with no scenarios** — it can never appear in the
+  manual pipeline's dropdown.
 - **A setup where neither the manual pipeline nor any automated job is
   enabled** — `generate` would otherwise happily produce a setup with zero
   CI/CD pipeline files and no indication anything is wrong.
@@ -730,10 +745,10 @@ pipeline-generator wizard --output setups/acme-bm.yaml
 #    Step 4: test_type=load, users=20, ramp-up=60, duration=10,
 #            throughput=0
 #    Step 5: name="Acme BlazeMeter Manual Run", timeout=180
-#    Step 6: add environments (qa), add scenarios (checkout_smoke_qa,
-#            identifier = the real BlazeMeter Test ID, e.g. 1234567)
+#    Step 6: add environment qa, then qa's scenario checkout_smoke
+#            (identifier = the real BlazeMeter Test ID, e.g. 1234567)
 #    Step 7: add one automated job: post-deploy-smoke, env=qa,
-#            scenario=checkout_smoke_qa, timeout=60
+#            scenario=checkout_smoke, timeout=60
 #    Step 8: enable verify_host_reachable, verify_project_exists,
 #            verify_scenario_exists
 #    -> wizard prints a summary and validation result, then exits
@@ -754,8 +769,8 @@ pipeline-generator generate --config setups/acme-bm.yaml --output-dir generated
 # 4. Sanity-check the generated script locally before handing off
 cd generated/github-actions-blazemeter-4f2a9c
 export BLAZEMETER_API_KEY_ID=... BLAZEMETER_API_KEY_SECRET=...
-./scripts/run-blazemeter.sh --environment qa --scenario checkout_smoke_qa --timeout-minutes 60
-# -> resolves qa/checkout_smoke_qa to their catalog identifiers, checks jq
+./scripts/run-blazemeter.sh --test-case "qa: checkout_smoke" --timeout-minutes 60
+# -> resolves the qa/checkout_smoke pair to its catalog identifiers, checks jq
 #    is available, requires the two env vars above, runs the configured
 #    prechecks, then starts the real BlazeMeter test and polls it to
 #    completion -- or fails with a specific error (missing secret, host
@@ -778,8 +793,8 @@ See section 6. Either resolve the listed warnings, or set `incomplete: true`
 in the YAML if you're not actually ready to finalize this setup yet.
 
 **"Automated job '...' references an unknown environment/scenario."**
-The job's `environment_ref`/`scenario_ref` doesn't match any `key` under
-`catalog.environments`/`catalog.scenarios`. If you built the job through the
+The job's `environment_ref` doesn't match any `catalog.environments[].key`,
+or its `scenario_ref` isn't one of *that environment's* scenarios. If you built the job through the
 wizard's Step 7, this shouldn't happen (refs are chosen from the catalog);
 it's more likely if you hand-edited the YAML.
 
@@ -813,15 +828,15 @@ assumes it's running on an agent co-located with the LoadRunner Controller
 (section 10) — check `wlrun_path` in `customer.yaml`, or that the CI job
 is actually running on the right agent.
 
-**"Unknown environment key: ..." / "Unknown scenario key: ..."**
-The `--environment`/`--scenario` value passed to `scripts/run-<tool>.sh`
-doesn't match any `key` in `catalog.environments`/`catalog.scenarios` for
-that setup. Check the value against `customer.yaml`, or regenerate if the
+**"Unknown test case: ..."**
+The `--test-case` value passed to `scripts/run-<tool>.sh` isn't an
+`<environment>: <scenario>` pair defined in that setup's
+`catalog.environments[].scenarios`. Check the value against `customer.yaml`, or regenerate if the
 catalog changed after the script was last written.
 
-**"Usage: ./scripts/run-<tool>.sh --environment <key> --scenario <key>" / "... --timeout-minutes <minutes>"**
-The script was called without a required flag — `--environment`/
-`--scenario` for every tool, plus `--timeout-minutes` for BlazeMeter — check
+**"Usage: ./scripts/run-<tool>.sh --test-case '<environment>: <scenario>'" / "... --timeout-minutes <minutes>"**
+The script was called without a required flag — `--test-case` for every
+tool, plus `--timeout-minutes` for BlazeMeter — check
 the CI/CD step (or your own command line) that invokes it, against
 section 8.
 

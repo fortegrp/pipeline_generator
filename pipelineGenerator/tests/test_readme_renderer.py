@@ -12,8 +12,7 @@ def _base_config(tool_type: str, connection: dict) -> dict:
         "tool": {"type": tool_type, "connection": connection},
         "pre_run_checks": [],
         "catalog": {
-            "environments": [{"key": "qa", "identifier": "env-qa"}],
-            "scenarios": [{"key": "checkout_smoke", "identifier": "SC-1"}],
+            "environments": [{"key": "qa", "identifier": "env-qa", "scenarios": [{"key": "checkout_smoke", "identifier": "SC-1"}]}],
         },
         "manual_pipeline": {"enabled": True, "name": "Performance Manual Run", "timeout_minutes": 30},
         "automated_jobs": [],
@@ -155,7 +154,7 @@ def test_readme_troubleshooting_has_generic_guidance_for_every_tool() -> None:
         readme = render_setup_readme(config, package)
         troubleshooting = _section(readme, "Troubleshooting")
         assert "run-summary.json" in troubleshooting
-        assert "Unknown environment key" in troubleshooting
+        assert "Unknown test case" in troubleshooting
 
 
 def test_readme_connection_details_jmeter() -> None:

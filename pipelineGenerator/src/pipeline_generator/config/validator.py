@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 from pipeline_generator.config.placeholders import is_placeholder
 from pipeline_generator.config.schema import (
+    CATALOG_KEY_PATTERN,
     GENERATION_MODES,
     LOAD_PROFILE_FIELDS,
     LOAD_PROFILE_MINIMUMS,
@@ -66,6 +67,24 @@ def _as_list_of_dicts(value: object, path: str, result: ValidationResult) -> lis
     return items
 
 
+def _warn_duplicate_keys(items: list[dict], path: str, result: ValidationResult) -> None:
+    counts = Counter(item.get("key") for item in items if not is_placeholder(item.get("key")))
+    for key, count in counts.items():
+        if count > 1:
+            result.warnings.append(
+                f"{path} has {count} entries with the duplicate key '{key}' -- "
+                "only the first is ever reachable; the others are silently unselectable."
+            )
+
+
+def _check_key_format(key: object, path: str, result: ValidationResult) -> None:
+    if not is_placeholder(key) and not re.fullmatch(CATALOG_KEY_PATTERN, str(key)):
+        result.errors.append(
+            f"{path} key {key!r} may only contain letters, digits, '_', '.', '-' "
+            "and must start with a letter or digit."
+        )
+
+
 def _is_int_at_least(value: object, minimum: int) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= minimum
 
@@ -122,57 +141,46 @@ def validate_config(config: dict) -> ValidationResult:
         result.errors.append(f"Unsupported setup.generation_mode: {generation_mode}")
 
     environments = _as_list_of_dicts(catalog.get("environments", []), "catalog.environments", result)
-    scenarios = _as_list_of_dicts(catalog.get("scenarios", []), "catalog.scenarios", result)
     if not environments:
         result.warnings.append("No environments are defined in catalog.environments.")
-    if not scenarios:
-        result.warnings.append("No scenarios are defined in catalog.scenarios.")
+    _warn_duplicate_keys(environments, "catalog.environments", result)
 
-    env_keys = {item.get("key") for item in environments}
-    scenario_keys = {item.get("key") for item in scenarios}
+    pairs: set[tuple[object, object]] = set()
+    for env in environments:
+        env_key = env.get("key")
+        env_path = f"catalog.environments.{'unknown' if is_placeholder(env_key) else env_key}"
+        _check_key_format(env_key, "catalog.environments", result)
+        if is_placeholder(env.get("identifier")):
+            result.warnings.append(f"{env_path}.identifier is missing.")
 
-    env_key_counts = Counter(item.get("key") for item in environments if not is_placeholder(item.get("key")))
-    for key, count in env_key_counts.items():
-        if count > 1:
-            result.warnings.append(
-                f"catalog.environments has {count} entries with the duplicate key '{key}' -- "
-                "only the first is ever reachable; the others are silently unselectable."
-            )
+        scenarios = _as_list_of_dicts(env.get("scenarios", []), f"{env_path}.scenarios", result)
+        if not scenarios:
+            result.warnings.append(f"{env_path} has no scenarios -- it can never be selected.")
+        _warn_duplicate_keys(scenarios, f"{env_path}.scenarios", result)
+        for scenario in scenarios:
+            scenario_key = scenario.get("key")
+            scenario_path = f"{env_path}.scenarios.{'unknown' if is_placeholder(scenario_key) else scenario_key}"
+            _check_key_format(scenario_key, f"{env_path}.scenarios", result)
+            if is_placeholder(scenario.get("identifier")):
+                result.warnings.append(f"{scenario_path}.identifier is missing.")
+            pairs.add((env_key, scenario_key))
 
-    scenario_key_counts = Counter(item.get("key") for item in scenarios if not is_placeholder(item.get("key")))
-    for key, count in scenario_key_counts.items():
-        if count > 1:
-            result.warnings.append(
-                f"catalog.scenarios has {count} entries with the duplicate key '{key}' -- "
-                "only the first is ever reachable; the others are silently unselectable."
-            )
+    if not pairs:
+        result.warnings.append("No scenarios are defined under catalog.environments[].scenarios.")
+        if manual_pipeline.get("enabled"):
+            result.warnings.append("Manual pipeline is enabled but there are no environment/scenario pairs.")
 
-    for item in environments:
-        key = item.get("key")
-        display_key = "unknown" if is_placeholder(key) else key
-        if is_placeholder(item.get("identifier")):
-            result.warnings.append(f"catalog.environments.{display_key}.identifier is missing.")
-
-    for item in scenarios:
-        key = item.get("key")
-        display_key = "unknown" if is_placeholder(key) else key
-        if is_placeholder(item.get("identifier")):
-            result.warnings.append(f"catalog.scenarios.{display_key}.identifier is missing.")
-
-    if manual_pipeline.get("enabled"):
-        if not scenarios or not environments:
-            result.warnings.append("Manual pipeline is enabled but environments or scenarios are missing.")
-
+    env_keys = {env.get("key") for env in environments}
     for job in automated_jobs:
         if not job.get("enabled", True):
             continue
+        name = job.get("name", "unknown")
         if job.get("environment_ref") not in env_keys:
+            result.warnings.append(f"Automated job '{name}' references an unknown environment.")
+        elif (job.get("environment_ref"), job.get("scenario_ref")) not in pairs:
             result.warnings.append(
-                f"Automated job '{job.get('name', 'unknown')}' references an unknown environment."
-            )
-        if job.get("scenario_ref") not in scenario_keys:
-            result.warnings.append(
-                f"Automated job '{job.get('name', 'unknown')}' references an unknown scenario."
+                f"Automated job '{name}' references an unknown scenario for environment "
+                f"'{job.get('environment_ref')}'."
             )
 
     connection = _as_dict(tool.get("connection", {}), "tool.connection", result)

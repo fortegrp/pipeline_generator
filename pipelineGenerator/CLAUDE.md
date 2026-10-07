@@ -87,10 +87,10 @@ Pipeline: **customer YAML → validate → generic pipeline model → CI/CD rend
   section to report other real problems in the same pass. Beyond
   structural shape, it also warns on a `pre_run_checks` value outside the
   `PRE_RUN_CHECKS` enum (a likely typo, otherwise silently dropped at
-  generation time with no trace), a duplicate `key` within
-  `catalog.environments`/`catalog.scenarios` (the second entry's
-  identifier becomes silently unreachable in the generated resolver
-  function), and a setup with neither the manual pipeline nor any
+  generation time with no trace), a duplicate environment `key` or a
+  duplicate scenario `key` within one environment (the second entry
+  becomes silently unreachable in the generated resolver function), an
+  environment with no scenarios, and a setup with neither the manual pipeline nor any
   automated job enabled (generates zero CI/CD pipeline files).
 - `wizard/` — interactive flow (`flow.py`) that builds/resumes a draft YAML
   using `merged_base_config`, so re-running the wizard against an existing
@@ -146,16 +146,25 @@ Pipeline: **customer YAML → validate → generic pipeline model → CI/CD rend
   splicing that value directly used to be a real, triggerable injection, not
   just a defense-in-depth concern.
   `scripts.py:render_tool_script` writes the `scripts/run-<tool_type>.sh`
-  that the generated pipeline actually calls to trigger a test. It renders
-  two shell functions, `resolve_environment_identifier`/
-  `resolve_scenario_identifier`, one per catalog key, each an
-  `if [ "$1" = <key> ]; then echo <identifier>; return; fi` line —
-  deliberately exact-match string comparisons rather than a `case`
-  statement, since `case` patterns are shell globs and a catalog key
-  containing `*`/`?`/`[`/`]` (config-controlled, not validated as
-  glob-safe) would otherwise be able to match an environment/scenario key
-  it wasn't meant to. For `jmeter`, the rendered script is real: it resolves
-  the passed `--environment`/`--scenario` to their identifiers, optionally
+  that the generated pipeline actually calls to trigger a test. The catalog
+  is nested (`catalog.environments[].scenarios[]`): `context.py` flattens it
+  into `GenericPipelinePackage.run_targets` (`RunTarget`: env key/identifier,
+  scenario key/identifier; `.selector` = `"<env>: <scenario>"`, formatted
+  only by `run_target_selector`), and the script takes one
+  `--test-case "<env>: <scenario>"` flag (manual and automated alike). It
+  renders one shell function, `resolve_test_case`, with one
+  `if [ "$1" = <selector> ]; then environment_key=...; ...; return; fi`
+  line per pair setting all six per-run variables (keys, identifiers,
+  slugs pre-sanitized with `safe_filename_component`) — called directly,
+  not in `$(...)`, so the assignments land in `main`'s locals. It's
+  deliberately exact-match string comparison rather than a `case`
+  statement, since `case` patterns are shell globs. Catalog keys are also
+  validated against `CATALOG_KEY_PATTERN` (letters, digits, `_.-`, no `:`),
+  so selectors can't collide; the quoting remains a second line of
+  defense. Each CI/CD renderer builds one dropdown/parameter/choice
+  (`test_case`/`TEST_CASE`) listing only the defined pairs. For `jmeter`,
+  the rendered script is real: it resolves the passed `--test-case` to its
+  identifiers, optionally
   checks the test plan file exists first (only if `verify_scenario_exists`
   is in `pre_run_checks`) and that `docker` is on `PATH` (if
   `verify_docker_available` is in `pre_run_checks`, mirroring
@@ -180,14 +189,15 @@ Pipeline: **customer YAML → validate → generic pipeline model → CI/CD rend
   <scenario_identifier> -ResultName
   run-output/<environment_slug>_<scenario_slug>` — since `wlrun` has no
   native "environment" parameter, a scenario's catalog `identifier` is a
-  full `.lrs` file path (customers author one catalog scenario entry per
-  environment/scenario combination they have a file for), and the
+  full `.lrs` file path (each environment lists its own scenarios, so the
+  same scenario key points at that environment's `.lrs`), and the
   environment only names the results folder. `wlrun`'s exit code is known
   to be unreliable on some LoadRunner versions (can return 0 on a failed
   scenario); nonzero is still treated as failure as the best local signal
-  available (this results-folder path uses `resolve_environment_slug`/
-  `resolve_scenario_slug`, sanitized via `safe_filename_component`, not the
-  raw catalog keys — a hostile key otherwise escapes `run-output/`).
+  available (this results-folder path uses the `environment_slug`/
+  `scenario_slug` that `resolve_test_case` sets, sanitized via
+  `safe_filename_component`, not the raw catalog keys — a hostile key
+  otherwise escapes `run-output/`).
   `blazemeter` is also real: it authenticates via `BLAZEMETER_API_KEY_ID`/
   `BLAZEMETER_API_KEY_SECRET` (Basic Auth), optionally checks the host is
   reachable / the project exists / the test exists
@@ -220,7 +230,7 @@ shared schema (`tool`, `run_id`, `environment`, `scenario`, `status`
 `run-<tool_type>.sh` scripts can read one consistent file regardless of
 which tool ran. `environment`/`scenario` are passed through a generated
 `json_escape` bash function before embedding, since they carry the raw,
-unsanitized `--environment`/`--scenario` CLI values (catalog keys) rather
+unsanitized catalog keys resolved from `--test-case` rather
 than the already-sanitized slugs `results_dir` is built from. This also
 gave JMeter its own `results_dir` for the first time — it previously wrote
 flat into `run-output/`, so a second run silently overwrote the first.

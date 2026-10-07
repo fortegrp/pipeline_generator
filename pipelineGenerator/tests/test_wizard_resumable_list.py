@@ -1,89 +1,116 @@
 import pytest
 
-from pipeline_generator.wizard.flow import _prompt_automated_jobs_section, _prompt_catalog_section
+from pipeline_generator.wizard.flow import (
+    _prompt_automated_jobs,
+    _prompt_automated_jobs_section,
+    _prompt_environments_section,
+)
+
+_QA = {"key": "qa", "identifier": "env-qa", "scenarios": [{"key": "checkout_smoke", "identifier": "SC-1"}]}
 
 
-def test_prompt_catalog_section_keep_as_is(monkeypatch: pytest.MonkeyPatch) -> None:
-    inputs = iter(["1"])  # "keep as-is" is option 1
-    monkeypatch.setattr("builtins.input", lambda *_: next(inputs))
+def _feed(monkeypatch: pytest.MonkeyPatch, responses: list[str]) -> list[str]:
+    prompts: list[str] = []
+    answers = iter(responses)
 
-    existing = [{"key": "qa", "identifier": "env-qa"}]
-    result = _prompt_catalog_section("environment", existing, "jmeter")
+    def fake_input(prompt: str = "") -> str:
+        prompts.append(prompt)
+        return next(answers)
+
+    monkeypatch.setattr("builtins.input", fake_input)
+    return prompts
+
+
+def test_prompt_environments_section_keep_as_is_keeps_nested_scenarios(monkeypatch: pytest.MonkeyPatch) -> None:
+    _feed(monkeypatch, ["1"])  # "keep as-is"
+
+    existing = [_QA]
+    result = _prompt_environments_section(existing, "jmeter")
 
     assert result is existing
 
 
-def test_prompt_catalog_section_start_over(monkeypatch: pytest.MonkeyPatch) -> None:
-    inputs = iter(
+def test_prompt_environments_section_collects_each_environments_scenarios(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _feed(
+        monkeypatch,
         [
-            "3",  # "start over"
-            "staging",  # new key
-            "env-staging",  # identifier
-            "",  # blank key ends collection
-        ]
-    )
-    monkeypatch.setattr("builtins.input", lambda *_: next(inputs))
-
-    existing = [{"key": "qa", "identifier": "env-qa"}]
-    result = _prompt_catalog_section("environment", existing, "jmeter")
-
-    assert result == [{"key": "staging", "identifier": "env-staging"}]
-
-
-def test_prompt_catalog_section_add_more(monkeypatch: pytest.MonkeyPatch) -> None:
-    inputs = iter(
-        [
-            "2",  # "add more"
-            "staging",
-            "env-staging",
+            "y",  # add environments now?
+            "qa", "env-qa",
+            "staging", "env-stg",
+            "",  # end environments
+            "checkout_smoke", "SC-1",  # qa's scenarios
+            "browse", "SC-2",
             "",
-        ]
+            "checkout_smoke", "SC-3",  # staging's scenarios
+            "",
+        ],
     )
-    monkeypatch.setattr("builtins.input", lambda *_: next(inputs))
 
-    existing = [{"key": "qa", "identifier": "env-qa"}]
-    result = _prompt_catalog_section("environment", existing, "jmeter")
+    result = _prompt_environments_section([], "jmeter")
 
     assert result == [
-        {"key": "qa", "identifier": "env-qa"},
-        {"key": "staging", "identifier": "env-staging"},
+        {
+            "key": "qa",
+            "identifier": "env-qa",
+            "scenarios": [{"key": "checkout_smoke", "identifier": "SC-1"}, {"key": "browse", "identifier": "SC-2"}],
+        },
+        {"key": "staging", "identifier": "env-stg", "scenarios": [{"key": "checkout_smoke", "identifier": "SC-3"}]},
     ]
 
 
-def test_prompt_catalog_section_no_existing_declines_adding(monkeypatch: pytest.MonkeyPatch) -> None:
-    inputs = iter(["n"])  # "Add environments now?" -> no
-    monkeypatch.setattr("builtins.input", lambda *_: next(inputs))
+def test_prompt_environments_section_reasks_invalid_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    _feed(monkeypatch, ["y", "qa: east", "qa-east", "env-qa", "", "smoke test", "smoke", "SC-1", ""])
 
-    result = _prompt_catalog_section("environment", [], "jmeter")
+    result = _prompt_environments_section([], "jmeter")
 
-    assert result == []
+    assert result == [{"key": "qa-east", "identifier": "env-qa", "scenarios": [{"key": "smoke", "identifier": "SC-1"}]}]
 
 
-def test_prompt_catalog_section_identifier_label_is_tool_specific(monkeypatch: pytest.MonkeyPatch) -> None:
-    prompts: list[str] = []
-    responses = iter(
-        [
-            "y",  # "Add environments now?"
-            "qa",  # environment key
-            "env-qa",  # identifier
-            "",  # blank key ends collection
-        ]
-    )
+def test_prompt_environments_section_add_more(monkeypatch: pytest.MonkeyPatch) -> None:
+    _feed(monkeypatch, ["2", "staging", "env-stg", "", "checkout_smoke", "SC-3", ""])
 
-    def fake_input(prompt: str = "") -> str:
-        prompts.append(prompt)
-        return next(responses)
+    result = _prompt_environments_section([_QA], "jmeter")
 
-    monkeypatch.setattr("builtins.input", fake_input)
+    assert [env["key"] for env in result] == ["qa", "staging"]
+    assert result[1]["scenarios"] == [{"key": "checkout_smoke", "identifier": "SC-3"}]
 
-    _prompt_catalog_section("environment", [], "loadrunner_professional")
+
+def test_prompt_environments_section_no_existing_declines_adding(monkeypatch: pytest.MonkeyPatch) -> None:
+    _feed(monkeypatch, ["n"])
+
+    assert _prompt_environments_section([], "jmeter") == []
+
+
+def test_prompt_environments_section_identifier_labels_are_tool_specific(monkeypatch: pytest.MonkeyPatch) -> None:
+    prompts = _feed(monkeypatch, ["y", "qa", "QA", "", "checkout_smoke", "C:\\s.lrs", ""])
+
+    _prompt_environments_section([], "loadrunner_professional")
 
     assert any("not used by the generated script for LoadRunner" in p for p in prompts)
+    assert any("Path to the .lrs scenario file" in p for p in prompts)
+
+
+def test_prompt_automated_jobs_offers_only_chosen_environments_scenarios(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = {
+        "catalog": {
+            "environments": [
+                _QA,
+                {"key": "staging", "identifier": "env-stg", "scenarios": [{"key": "browse", "identifier": "SC-9"}]},
+            ]
+        }
+    }
+    prompts = _feed(monkeypatch, ["nightly", "2", "", "", ""])  # env 2 = staging, default scenario, timeout
+
+    jobs = _prompt_automated_jobs(config)
+
+    assert jobs[0]["environment_ref"] == "staging"
+    assert jobs[0]["scenario_ref"] == "browse"
 
 
 def test_prompt_automated_jobs_section_keep_as_is(monkeypatch: pytest.MonkeyPatch) -> None:
-    inputs = iter(["1"])  # "keep as-is"
-    monkeypatch.setattr("builtins.input", lambda *_: next(inputs))
+    _feed(monkeypatch, ["1"])
 
     existing_job = {
         "name": "nightly",
@@ -92,10 +119,6 @@ def test_prompt_automated_jobs_section_keep_as_is(monkeypatch: pytest.MonkeyPatc
         "scenario_ref": "checkout_smoke",
         "timeout_minutes": 240,
     }
-    config = {
-        "automated_jobs": [existing_job],
-        "catalog": {"environments": [], "scenarios": []},
-    }
-    result = _prompt_automated_jobs_section(config)
+    config = {"automated_jobs": [existing_job], "catalog": {"environments": [_QA]}}
 
-    assert result == [existing_job]
+    assert _prompt_automated_jobs_section(config) == [existing_job]

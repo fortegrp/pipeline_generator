@@ -43,12 +43,9 @@ def _safe_job_id(value: str) -> str:
 
 def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
     assert package.manual_pipeline is not None
-    environment_options = package.manual_pipeline.inputs[0].options
-    scenario_options = package.manual_pipeline.inputs[1].options
-    environment_values = "\n".join(f"      - {yaml_dquote(item.value)}" for item in environment_options)
-    scenario_values = "\n".join(f"      - {yaml_dquote(item.value)}" for item in scenario_options)
-    environment_default = yaml_dquote(environment_options[0].value if environment_options else "TODO")
-    scenario_default = yaml_dquote(scenario_options[0].value if scenario_options else "TODO")
+    selectors = [target.selector for target in package.run_targets]
+    test_case_values = "\n".join(f"      - {yaml_dquote(selector)}" for selector in selectors)
+    test_case_default = yaml_dquote(selectors[0] if selectors else "TODO")
     timeout_flag = blazemeter_timeout_flag(
         package.tool_type, package.manual_pipeline.timeout_minutes, separator="\n          "
     )
@@ -68,18 +65,12 @@ def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
 pr: none
 
 parameters:
-  - name: environment
-    displayName: Environment
+  - name: test_case
+    displayName: Environment and scenario
     type: string
-    default: {environment_default}
+    default: {test_case_default}
     values:
-{environment_values}
-  - name: scenario
-    displayName: Scenario
-    type: string
-    default: {scenario_default}
-    values:
-{scenario_values}{load_parameters}
+{test_case_values}{load_parameters}
 
 jobs:
   - job: run_performance_test
@@ -90,11 +81,9 @@ jobs:
       - checkout: self
       - script: >
           ./scripts/run-{package.tool_type}.sh
-          --environment "$ENVIRONMENT"
-          --scenario "$SCENARIO"{load_flag_text}{timeout_flag}
+          --test-case "$TEST_CASE"{load_flag_text}{timeout_flag}
         env:
-          ENVIRONMENT: ${{{{ parameters.environment }}}}
-          SCENARIO: ${{{{ parameters.scenario }}}}{load_env}
+          TEST_CASE: ${{{{ parameters.test_case }}}}{load_env}
         displayName: Run performance wrapper
       - task: PublishPipelineArtifact@1
         condition: always()
@@ -118,8 +107,7 @@ jobs:
       - checkout: self
       - script: >
           ./scripts/run-{tool_type}.sh
-          --environment {shell_quote(job.environment_ref)}
-          --scenario {shell_quote(job.scenario_ref)}{timeout_flag}
+          --test-case {shell_quote(job.test_case)}{timeout_flag}
         displayName: Run performance wrapper
       - task: PublishPipelineArtifact@1
         condition: always()

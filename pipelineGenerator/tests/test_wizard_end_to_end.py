@@ -26,8 +26,7 @@ def test_run_wizard_full_flow_produces_expected_config(tmp_path: Path, monkeypat
             "qa",  # environment key
             "env-qa",  # environment identifier
             "",  # blank key ends environment collection
-            "y",  # add scenarios now?
-            "checkout_smoke",  # scenario key
+            "checkout_smoke",  # qa's scenario key (asked right after the environments)
             "SC-1",  # scenario identifier
             "",  # blank key ends scenario collection
             "y",  # add automated jobs now?
@@ -54,8 +53,11 @@ def test_run_wizard_full_flow_produces_expected_config(tmp_path: Path, monkeypat
         "name": "Performance Manual Run",
         "timeout_minutes": 240,
     }
-    assert config["catalog"]["environments"] == [{"key": "qa", "identifier": "env-qa"}]
-    assert config["catalog"]["scenarios"] == [{"key": "checkout_smoke", "identifier": "SC-1"}]
+    assert config["catalog"] == {
+        "environments": [
+            {"key": "qa", "identifier": "env-qa", "scenarios": [{"key": "checkout_smoke", "identifier": "SC-1"}]}
+        ]
+    }
     assert config["automated_jobs"] == [
         {
             "name": "nightly-load",
@@ -160,8 +162,9 @@ def test_config_with_non_todo_warning_is_not_marked_incomplete() -> None:
     config["setup"]["id"] = "some-setup"
     config["cicd"]["type"] = "github_actions"
     config["tool"]["connection"] = {"test_plan_path": "plan.jmx", "docker_image": ""}
-    config["catalog"]["environments"] = [{"key": "qa", "identifier": "env-qa"}]
-    config["catalog"]["scenarios"] = [{"key": "checkout_smoke", "identifier": "SC-1"}]
+    config["catalog"]["environments"] = [
+        {"key": "qa", "identifier": "env-qa", "scenarios": [{"key": "checkout_smoke", "identifier": "SC-1"}]}
+    ]
     config["load_profile"].update({"users": 10, "ramp_up_seconds": 0, "duration_minutes": 60, "throughput_rps": 0})
     config["manual_pipeline"]["timeout_minutes"] = 30
 

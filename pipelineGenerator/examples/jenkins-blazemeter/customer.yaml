@@ -24,9 +24,9 @@ catalog:
   environments:
   - key: qa
     identifier: QA
-  scenarios:
-  - key: qa_smoke_qa
-    identifier: '3344556'
+    scenarios:
+    - key: qa_smoke_qa
+      identifier: '3344556'
 pre_run_checks:
 - verify_host_reachable
 - verify_project_exists

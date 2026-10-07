@@ -4,7 +4,7 @@ from pathlib import Path
 
 from pipeline_generator.config.placeholders import TODO_VALUE
 from pipeline_generator.config.schema import DEFAULT_JMETER_DOCKER_IMAGE, LOAD_PROFILE_FIELDS, PRE_RUN_CHECKS
-from pipeline_generator.generator.generic_model import GenericPipelinePackage, InputOption, LoadInput
+from pipeline_generator.generator.generic_model import GenericPipelinePackage, LoadInput
 from pipeline_generator.renderers.quoting import safe_filename_component, shell_quote
 
 
@@ -39,40 +39,31 @@ def render_tool_script(config: dict, package: GenericPipelinePackage, setup_dir:
     return [str(script_path)]
 
 
-def _render_resolver_function(function_name: str, kind: str, options: list[InputOption]) -> str:
-    lines = [f"{function_name}() {{"]
-    for option in options:
-        lines.append(
-            f'  if [ "$1" = {shell_quote(option.value)} ]; then echo {shell_quote(option.identifier)}; return; fi'
+def _render_test_case_resolver(package: GenericPipelinePackage) -> str:
+    """One exact-match branch per catalog pair, setting every per-run variable
+    at once. Deliberately `if [ "$1" = ... ]`, not `case`: case patterns are
+    shell globs, so a catalog key containing * ? [ ] could match a pair it
+    wasn't meant to. main() calls this directly (not in $(...)) so the
+    assignments land in its locals via bash's dynamic scoping.
+    """
+    lines = ["resolve_test_case() {"]
+    for target in package.run_targets:
+        assignments = "; ".join(
+            f"{name}={shell_quote(value)}"
+            for name, value in (
+                ("environment_key", target.environment_key),
+                ("scenario_key", target.scenario_key),
+                ("environment_identifier", target.environment_identifier),
+                ("scenario_identifier", target.scenario_identifier),
+                ("environment_slug", safe_filename_component(target.environment_key)),
+                ("scenario_slug", safe_filename_component(target.scenario_key)),
+            )
         )
-    lines.append(f'  echo "Unknown {kind} key: $1" >&2')
+        lines.append(f'  if [ "$1" = {shell_quote(target.selector)} ]; then {assignments}; return; fi')
+    lines.append('  echo "Unknown test case: $1" >&2')
     lines.append("  exit 1")
     lines.append("}")
     return "\n".join(lines)
-
-
-def _render_resolvers(package: GenericPipelinePackage) -> str:
-    environment_resolver = _render_resolver_function(
-        "resolve_environment_identifier", "environment", package.environments
-    )
-    scenario_resolver = _render_resolver_function("resolve_scenario_identifier", "scenario", package.scenarios)
-    return f"{environment_resolver}\n\n{scenario_resolver}"
-
-
-def _render_slug_resolvers(package: GenericPipelinePackage) -> str:
-    environment_slugs = [
-        InputOption(value=item.value, identifier=safe_filename_component(item.value))
-        for item in package.environments
-    ]
-    scenario_slugs = [
-        InputOption(value=item.value, identifier=safe_filename_component(item.value))
-        for item in package.scenarios
-    ]
-    environment_slug_resolver = _render_resolver_function(
-        "resolve_environment_slug", "environment", environment_slugs
-    )
-    scenario_slug_resolver = _render_resolver_function("resolve_scenario_slug", "scenario", scenario_slugs)
-    return f"{environment_slug_resolver}\n\n{scenario_slug_resolver}"
 
 
 def _render_json_escape_helper() -> str:
@@ -176,25 +167,22 @@ def _render_arg_parsing(load_inputs: list[LoadInput], include_timeout: bool = Fa
         if item.name != "test_type"
     )
 
-    return f"""  local environment_key=""
-  local scenario_key=""
+    return f"""  local test_case=""
 {timeout_local}{load_locals}  while [ $# -gt 0 ]; do
     case "$1" in
-      --environment) environment_key="$2"; shift 2 ;;
-      --scenario) scenario_key="$2"; shift 2 ;;
+      --test-case) test_case="$2"; shift 2 ;;
 {timeout_case}{load_cases}      *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
   done
 
-  if [ -z "$environment_key" ] || [ -z "$scenario_key" ]{timeout_required_check}; then
-    echo "Usage: $0 --environment <key> --scenario <key>{timeout_usage}{load_usage}" >&2
+  if [ -z "$test_case" ]{timeout_required_check}; then
+    echo "Usage: $0 --test-case '<environment>: <scenario>'{timeout_usage}{load_usage}" >&2
     exit 1
   fi
 {timeout_numeric_check}{load_checks}
-  local environment_identifier
-  local scenario_identifier
-  environment_identifier="$(resolve_environment_identifier "$environment_key")"
-  scenario_identifier="$(resolve_scenario_identifier "$scenario_key")"
+  local environment_key="" scenario_key="" environment_identifier="" scenario_identifier=""
+  local environment_slug="" scenario_slug=""
+  resolve_test_case "$test_case"
 """
 
 
@@ -232,9 +220,7 @@ def _render_jmeter_script(config: dict, package: GenericPipelinePackage) -> str:
     return f"""#!/usr/bin/env bash
 set -euo pipefail
 
-{_render_resolvers(package)}
-
-{_render_slug_resolvers(package)}
+{_render_test_case_resolver(package)}
 
 {_render_json_escape_helper()}
 
@@ -250,10 +236,6 @@ main() {{
   require_value "catalog environment identifier for $environment_key" "$environment_identifier"
   require_value "catalog scenario identifier for $scenario_key" "$scenario_identifier"
 {scenario_check}{docker_check}{precheck_comments}
-  local environment_slug
-  local scenario_slug
-  environment_slug="$(resolve_environment_slug "$environment_key")"
-  scenario_slug="$(resolve_scenario_slug "$scenario_key")"
   local results_dir="run-output/${{environment_slug}}_${{scenario_slug}}"
   mkdir -p "$results_dir"
 
@@ -345,9 +327,7 @@ def _render_blazemeter_script(config: dict, package: GenericPipelinePackage) -> 
     return f"""#!/usr/bin/env bash
 set -euo pipefail
 
-{_render_resolvers(package)}
-
-{_render_slug_resolvers(package)}
+{_render_test_case_resolver(package)}
 
 {_render_json_escape_helper()}
 
@@ -371,10 +351,6 @@ main() {{
   : "${{BLAZEMETER_API_KEY_ID:?BLAZEMETER_API_KEY_ID must be set}}"
   : "${{BLAZEMETER_API_KEY_SECRET:?BLAZEMETER_API_KEY_SECRET must be set}}"
 {host_check}{project_check}{scenario_check}{precheck_comments}
-  local environment_slug
-  local scenario_slug
-  environment_slug="$(resolve_environment_slug "$environment_key")"
-  scenario_slug="$(resolve_scenario_slug "$scenario_key")"
   local results_dir="run-output/${{environment_slug}}_${{scenario_slug}}"
   mkdir -p "$results_dir"
 
@@ -500,9 +476,7 @@ def _render_loadrunner_script(config: dict, package: GenericPipelinePackage) -> 
     return f"""#!/usr/bin/env bash
 set -euo pipefail
 
-{_render_resolvers(package)}
-
-{_render_slug_resolvers(package)}
+{_render_test_case_resolver(package)}
 
 {_render_json_escape_helper()}
 
@@ -515,10 +489,6 @@ main() {{
   local wlrun_path={shell_quote(wlrun_path)}
   require_value "catalog scenario identifier for $scenario_key" "$scenario_identifier"
 {controller_check}{scenario_check}{precheck_comments}
-  local environment_slug
-  local scenario_slug
-  environment_slug="$(resolve_environment_slug "$environment_key")"
-  scenario_slug="$(resolve_scenario_slug "$scenario_key")"
   local results_dir="run-output/${{environment_slug}}_${{scenario_slug}}"
   mkdir -p "$results_dir"
 

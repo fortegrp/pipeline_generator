@@ -47,8 +47,7 @@ def _safe_job_id(value: str) -> str:
 
 def _render_manual_workflow(package: GenericPipelinePackage) -> str:
     assert package.manual_pipeline is not None
-    environment_options = ", ".join(yaml_dquote(item.value) for item in package.manual_pipeline.inputs[0].options)
-    scenario_options = ", ".join(yaml_dquote(item.value) for item in package.manual_pipeline.inputs[1].options)
+    test_case_options = ", ".join(yaml_dquote(target.selector) for target in package.run_targets)
     timeout = package.manual_pipeline.timeout_minutes
     timeout_flag = blazemeter_timeout_flag(package.tool_type, timeout, separator="\n          ")
     load_input_blocks = "".join(
@@ -69,16 +68,11 @@ def _render_manual_workflow(package: GenericPipelinePackage) -> str:
 on:
   workflow_dispatch:
     inputs:
-      environment:
-        description: Select environment
+      test_case:
+        description: Select environment and scenario
         required: true
         type: choice
-        options: [{environment_options}]
-      scenario:
-        description: Select scenario
-        required: true
-        type: choice
-        options: [{scenario_options}]{load_input_blocks}
+        options: [{test_case_options}]{load_input_blocks}
 
 jobs:
   run-performance-test:
@@ -88,12 +82,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run performance wrapper
         env:
-          ENVIRONMENT: ${{{{ github.event.inputs.environment }}}}
-          SCENARIO: ${{{{ github.event.inputs.scenario }}}}{load_env}
+          TEST_CASE: ${{{{ github.event.inputs.test_case }}}}{load_env}
         run: >
           ./scripts/run-{package.tool_type}.sh
-          --environment "$ENVIRONMENT"
-          --scenario "$SCENARIO"{load_flag_text}{timeout_flag}
+          --test-case "$TEST_CASE"{load_flag_text}{timeout_flag}
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
@@ -120,8 +112,7 @@ jobs:
       - name: Run performance wrapper
         run: >
           ./scripts/run-{tool_type}.sh
-          --environment {shell_quote(job.environment_ref)}
-          --scenario {shell_quote(job.scenario_ref)}{timeout_flag}
+          --test-case {shell_quote(job.test_case)}{timeout_flag}
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4

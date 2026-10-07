@@ -16,23 +16,24 @@ automated_jobs:
 - name: post-deploy-smoke
   enabled: true
   environment_ref: qa
-  scenario_ref: checkout_smoke_qa
+  scenario_ref: checkout_smoke
   timeout_minutes: 90
 catalog:
   environments:
   - key: qa
     identifier: QA
+    scenarios:
+    - key: checkout_smoke
+      identifier: C:\Scenarios\checkout_smoke_qa.lrs
+    - key: browse_baseline
+      identifier: C:\Scenarios\browse_baseline_qa.lrs
   - key: staging
     identifier: Staging
-  scenarios:
-  - key: checkout_smoke_qa
-    identifier: C:\Scenarios\checkout_smoke_qa.lrs
-  - key: checkout_smoke_staging
-    identifier: C:\Scenarios\checkout_smoke_staging.lrs
-  - key: browse_baseline_qa
-    identifier: C:\Scenarios\browse_baseline_qa.lrs
-  - key: browse_baseline_staging
-    identifier: C:\Scenarios\browse_baseline_staging.lrs
+    scenarios:
+    - key: checkout_smoke
+      identifier: C:\Scenarios\checkout_smoke_staging.lrs
+    - key: browse_baseline
+      identifier: C:\Scenarios\browse_baseline_staging.lrs
 pre_run_checks:
 - verify_controller_access
 - verify_scenario_exists

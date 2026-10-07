@@ -8,8 +8,9 @@ def _config() -> dict:
         "cicd": {"type": "github_actions"},
         "tool": {"type": "jmeter", "connection": {}},
         "catalog": {
-            "environments": [{"key": "qa", "name": "QA", "identifier": "env-qa"}],
-            "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "SC-1"}],
+            "environments": [
+                {"key": "qa", "identifier": "env-qa", "scenarios": [{"key": "checkout_smoke", "identifier": "SC-1"}]}
+            ],
         },
         "manual_pipeline": {"enabled": True, "name": "Performance Manual Run", "timeout_minutes": 60},
         "automated_jobs": [
@@ -28,14 +29,13 @@ def test_build_generic_package_carries_identifiers_and_tool_type() -> None:
     package = build_generic_package(_config())
 
     assert package.tool_type == "jmeter"
-    assert package.environments == [package.environments[0]]
-    assert package.environments[0].value == "qa"
-    assert package.environments[0].identifier == "env-qa"
-    assert package.scenarios[0].identifier == "SC-1"
+    assert len(package.run_targets) == 1
+    target = package.run_targets[0]
+    assert (target.environment_key, target.environment_identifier) == ("qa", "env-qa")
+    assert (target.scenario_key, target.scenario_identifier) == ("checkout_smoke", "SC-1")
+    assert target.selector == "qa: checkout_smoke"
 
-    job = package.automated_jobs[0]
-    assert job.environment_ref == "qa"
-    assert job.scenario_ref == "checkout_smoke"
+    assert package.automated_jobs[0].test_case == "qa: checkout_smoke"
 
 
 def test_build_generic_package_defaults_missing_identifier_to_todo_placeholder() -> None:
@@ -44,7 +44,7 @@ def test_build_generic_package_defaults_missing_identifier_to_todo_placeholder()
 
     package = build_generic_package(config)
 
-    assert package.environments[0].identifier == TODO_VALUE
+    assert package.run_targets[0].environment_identifier == TODO_VALUE
 
 
 def test_build_generic_package_builds_load_inputs_for_jmeter() -> None:
@@ -92,3 +92,20 @@ def test_load_input_flag_and_env_var() -> None:
     ramp_up = next(item for item in package.load_inputs if item.name == "ramp_up_seconds")
     assert ramp_up.flag == "--ramp-up-seconds"
     assert ramp_up.env_var == "RAMP_UP_SECONDS"
+
+
+def test_build_generic_package_builds_one_target_per_defined_pair_in_catalog_order() -> None:
+    config = _config()
+    config["catalog"]["environments"] = [
+        {
+            "key": "qa",
+            "identifier": "env-qa",
+            "scenarios": [{"key": "checkout_smoke", "identifier": "SC-1"}, {"key": "browse", "identifier": "SC-2"}],
+        },
+        {"key": "staging", "identifier": "env-stg", "scenarios": [{"key": "checkout_smoke", "identifier": "SC-3"}]},
+    ]
+
+    package = build_generic_package(config)
+
+    assert [t.selector for t in package.run_targets] == ["qa: checkout_smoke", "qa: browse", "staging: checkout_smoke"]
+    assert package.run_targets[2].scenario_identifier == "SC-3"

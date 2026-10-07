@@ -22,9 +22,9 @@ catalog:
   environments:
   - key: prod
     identifier: Production
-  scenarios:
-  - key: prod_release_validation
-    identifier: C:\Scenarios\prod_release_validation.lrs
+    scenarios:
+    - key: prod_release_validation
+      identifier: C:\Scenarios\prod_release_validation.lrs
 pre_run_checks:
 - verify_controller_access
 - verify_scenario_exists

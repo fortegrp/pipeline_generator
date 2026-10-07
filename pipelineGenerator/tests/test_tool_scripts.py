@@ -18,10 +18,9 @@ def _base_config(tool_type: str, connection: dict, checks: list[str] | None = No
         "pre_run_checks": checks or [],
         "catalog": {
             "environments": [
-                {"key": "qa", "identifier": "env-qa"},
-                {"key": "staging", "identifier": "env-stg"},
+                {"key": "qa", "identifier": "env-qa", "scenarios": [{"key": "checkout_smoke", "identifier": "SC-1"}]},
+                {"key": "staging", "identifier": "env-stg", "scenarios": []},
             ],
-            "scenarios": [{"key": "checkout_smoke", "identifier": "SC-1"}],
         },
         "manual_pipeline": {"enabled": True, "name": "Performance Manual Run", "timeout_minutes": 30},
         "automated_jobs": [],
@@ -51,8 +50,7 @@ def test_render_jmeter_script_with_precheck(tmp_path: Path) -> None:
     assert script_path.stat().st_mode & 0o111 == 0o111
 
     content = script_path.read_text(encoding="utf-8")
-    assert "resolve_environment_identifier() {" in content
-    assert "resolve_scenario_identifier() {" in content
+    assert "resolve_test_case() {" in content
     assert 'if [ ! -f "$test_plan_path" ]; then' in content
     assert "local test_plan_path=performance/checkout.jmx" in content
     assert "local docker_image=justb4/jmeter:5.6.3" in content
@@ -74,27 +72,30 @@ def test_render_jmeter_script_without_precheck_flag(tmp_path: Path) -> None:
     assert "Test plan not found" not in content
 
 
+def _resolve(script_path: Path, selector: str, variable: str) -> subprocess.CompletedProcess:
+    command = f'source {shlex.quote(str(script_path))}; resolve_test_case {shlex.quote(selector)}; echo "${variable}"'
+    return subprocess.run(["bash", "-c", command], capture_output=True, text=True)
+
+
 def test_jmeter_resolver_uses_exact_match_not_glob(tmp_path: Path) -> None:
     config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
     config["catalog"]["environments"] = [
-        {"key": "*", "identifier": "should-not-match"},
-        {"key": "staging", "identifier": "env-stg"},
+        {"key": "*", "identifier": "should-not-match", "scenarios": [{"key": "*", "identifier": "nope"}]},
+        {"key": "staging", "identifier": "env-stg", "scenarios": [{"key": "checkout_smoke", "identifier": "SC-1"}]},
     ]
     package = build_generic_package(config)
 
     render_tool_script(config, package, tmp_path)
     script_path = tmp_path / "scripts" / "run-jmeter.sh"
 
-    result = subprocess.run(
-        ["bash", "-c", f'source "{script_path}"; resolve_environment_identifier staging'],
-        capture_output=True,
-        text=True,
-    )
+    result = _resolve(script_path, "staging: checkout_smoke", "environment_identifier")
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "env-stg"
 
 
 def test_resolver_handles_adversarial_catalog_keys(tmp_path: Path) -> None:
+    # The validator rejects such keys, so this exercises the second line of
+    # defense: the generated comparisons must still match literally.
     marker = tmp_path / "should-not-exist"
     adversarial_keys = [
         "qa's staging",
@@ -104,7 +105,8 @@ def test_resolver_handles_adversarial_catalog_keys(tmp_path: Path) -> None:
     ]
     config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
     config["catalog"]["environments"] = [
-        {"key": key, "identifier": f"env-{i}"} for i, key in enumerate(adversarial_keys)
+        {"key": key, "identifier": f"env-{i}", "scenarios": [{"key": "checkout_smoke", "identifier": "SC-1"}]}
+        for i, key in enumerate(adversarial_keys)
     ]
     package = build_generic_package(config)
 
@@ -115,17 +117,35 @@ def test_resolver_handles_adversarial_catalog_keys(tmp_path: Path) -> None:
     assert syntax_check.returncode == 0, syntax_check.stderr
 
     for i, key in enumerate(adversarial_keys):
-        # shlex.quote here only protects the *test's* shell -c string; it has
-        # nothing to do with the production shell_quote already baked into
-        # the sourced script. This exercises exactly what the generated
-        # `[ "$1" = '...' ]` comparison does with a hostile key -- it must
-        # match literally rather than executing $(...) or backticks.
-        command = f"source {shlex.quote(str(script_path))}; resolve_environment_identifier {shlex.quote(key)}"
-        result = subprocess.run(["bash", "-c", command], capture_output=True, text=True)
+        result = _resolve(script_path, f"{key}: checkout_smoke", "environment_identifier")
         assert result.returncode == 0, result.stderr
         assert result.stdout.strip() == f"env-{i}"
 
     assert not marker.exists()
+
+
+def test_resolver_rejects_unknown_test_case(tmp_path: Path) -> None:
+    script_path = tmp_path / "scripts" / "run-jmeter.sh"
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
+    render_tool_script(config, build_generic_package(config), tmp_path)
+
+    result = _resolve(script_path, "qa: nope", "environment_identifier")
+
+    assert result.returncode != 0
+    assert "Unknown test case: qa: nope" in result.stderr
+
+
+def test_resolver_gives_same_scenario_key_its_own_identifier_per_environment(tmp_path: Path) -> None:
+    config = _base_config("loadrunner_professional", {"wlrun_path": "wlrun"})
+    config["catalog"]["environments"] = [
+        {"key": "qa", "identifier": "QA", "scenarios": [{"key": "checkout_smoke", "identifier": "C:\\qa.lrs"}]},
+        {"key": "staging", "identifier": "Staging", "scenarios": [{"key": "checkout_smoke", "identifier": "C:\\stg.lrs"}]},
+    ]
+    render_tool_script(config, build_generic_package(config), tmp_path)
+    script_path = tmp_path / "scripts" / "run-loadrunner_professional.sh"
+
+    assert _resolve(script_path, "qa: checkout_smoke", "scenario_identifier").stdout.strip() == "C:\\qa.lrs"
+    assert _resolve(script_path, "staging: checkout_smoke", "scenario_identifier").stdout.strip() == "C:\\stg.lrs"
 
 
 def test_render_blazemeter_script_runs_curl_for_real(tmp_path: Path) -> None:
@@ -143,8 +163,7 @@ def test_render_blazemeter_script_runs_curl_for_real(tmp_path: Path) -> None:
     assert script_path.stat().st_mode & 0o111 == 0o111
 
     content = script_path.read_text(encoding="utf-8")
-    assert "resolve_environment_slug() {" in content
-    assert "resolve_scenario_slug() {" in content
+    assert "resolve_test_case() {" in content
     assert "local base_url=https://a.blazemeter.com" in content
     assert "local workspace_id=12345" in content
     assert "local project_id=67890" in content
@@ -258,7 +277,7 @@ def test_render_blazemeter_script_requires_timeout_minutes_flag(tmp_path: Path) 
     content = script_path.read_text(encoding="utf-8")
 
     assert '--timeout-minutes) timeout_minutes="$2"; shift 2 ;;' in content
-    assert 'echo "Usage: $0 --environment <key> --scenario <key> --timeout-minutes <minutes> [--test-type LABEL] [--users N]' in content
+    assert 'echo "Usage: $0 --test-case \'<environment>: <scenario>\' --timeout-minutes <minutes> [--test-type LABEL] [--users N]' in content
 
     # Calling main without --timeout-minutes must fail fast during arg
     # parsing, before any network call -- safe to actually execute. main's
@@ -267,7 +286,7 @@ def test_render_blazemeter_script_requires_timeout_minutes_flag(tmp_path: Path) 
     # process's own exit code IS the check -- there is no shell code after
     # `main ...` in this command line that would ever run.
     result = subprocess.run(
-        ["bash", "-c", f'source "{script_path}"; main --environment qa --scenario checkout_smoke'],
+        ["bash", "-c", f'source "{script_path}"; main --test-case \"qa: checkout_smoke\"'],
         capture_output=True,
         text=True,
     )
@@ -295,21 +314,18 @@ def test_render_blazemeter_script_sanitizes_results_dir_from_hostile_catalog_key
     config = _base_config(
         "blazemeter", {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"}
     )
-    config["catalog"]["environments"] = [{"key": "../../pwn", "identifier": "Hostile"}]
-    config["catalog"]["scenarios"] = [{"key": "checkout_smoke", "identifier": "1234567"}]
+    config["catalog"]["environments"] = [
+        {"key": "../../pwn", "identifier": "Hostile", "scenarios": [{"key": "checkout_smoke", "identifier": "1234567"}]}
+    ]
     package = build_generic_package(config)
 
     render_tool_script(config, package, tmp_path)
     script_path = tmp_path / "scripts" / "run-blazemeter.sh"
     content = script_path.read_text(encoding="utf-8")
 
-    assert "resolve_environment_slug() {" in content
+    assert "resolve_test_case() {" in content
 
-    result = subprocess.run(
-        ["bash", "-c", f'source "{script_path}"; resolve_environment_slug "../../pwn"'],
-        capture_output=True,
-        text=True,
-    )
+    result = _resolve(script_path, "../../pwn: checkout_smoke", "environment_slug")
     assert result.returncode == 0, result.stderr
     slug = result.stdout.strip()
     assert ".." not in slug
@@ -350,7 +366,7 @@ def test_render_blazemeter_script_rejects_non_numeric_timeout(tmp_path: Path) ->
         [
             "bash",
             "-c",
-            f'source "{script_path}"; main --environment qa --scenario checkout_smoke --timeout-minutes abc',
+            f'source "{script_path}"; main --test-case \"qa: checkout_smoke\" --timeout-minutes abc',
         ],
         capture_output=True,
         text=True,
@@ -424,7 +440,7 @@ esac
     env["BLAZEMETER_API_KEY_SECRET"] = "secret"
 
     result = subprocess.run(
-        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke", "--timeout-minutes", "1"],
+        ["bash", str(script_path), "--test-case", "qa: checkout_smoke", "--timeout-minutes", "1"],
         capture_output=True,
         text=True,
         env=env,
@@ -464,7 +480,7 @@ exit 1
     env["BLAZEMETER_API_KEY_SECRET"] = "secret"
 
     result = subprocess.run(
-        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke", "--timeout-minutes", "1"],
+        ["bash", str(script_path), "--test-case", "qa: checkout_smoke", "--timeout-minutes", "1"],
         capture_output=True,
         text=True,
         env=env,
@@ -487,8 +503,7 @@ def test_render_loadrunner_script_runs_wlrun_for_real(tmp_path: Path) -> None:
     assert script_path.stat().st_mode & 0o111 == 0o111
 
     content = script_path.read_text(encoding="utf-8")
-    assert "resolve_environment_identifier() {" in content
-    assert "resolve_scenario_identifier() {" in content
+    assert "resolve_test_case() {" in content
     assert "local wlrun_path=wlrun" in content
     assert 'local results_dir="run-output/${environment_slug}_${scenario_slug}"' in content
     assert '"$wlrun_path" -Run -TestPath "$scenario_identifier" -ResultName "$results_dir"' in content
@@ -575,9 +590,12 @@ def test_render_loadrunner_script_defaults_wlrun_path_when_blank(tmp_path: Path)
 
 def test_render_loadrunner_script_sanitizes_results_dir_from_hostile_catalog_key(tmp_path: Path) -> None:
     config = _base_config("loadrunner_professional", {"wlrun_path": "wlrun"})
-    config["catalog"]["environments"] = [{"key": "../../pwn", "identifier": "Hostile"}]
-    config["catalog"]["scenarios"] = [
-        {"key": "checkout_smoke", "identifier": "C:\\Scenarios\\checkout_smoke.lrs"}
+    config["catalog"]["environments"] = [
+        {
+            "key": "../../pwn",
+            "identifier": "Hostile",
+            "scenarios": [{"key": "checkout_smoke", "identifier": "C:\\Scenarios\\checkout_smoke.lrs"}],
+        }
     ]
     package = build_generic_package(config)
 
@@ -585,18 +603,13 @@ def test_render_loadrunner_script_sanitizes_results_dir_from_hostile_catalog_key
     script_path = tmp_path / "scripts" / "run-loadrunner_professional.sh"
     content = script_path.read_text(encoding="utf-8")
 
-    assert "resolve_environment_slug() {" in content
-    assert "resolve_scenario_slug() {" in content
+    assert "resolve_test_case() {" in content
 
     # The slug resolver must map the hostile key to a sanitized value at
     # generation time (safe_filename_component == slugify), not pass it
     # through raw -- this is what closes the run-output/../../pwn escape
     # the final review demonstrated.
-    result = subprocess.run(
-        ["bash", "-c", f'source "{script_path}"; resolve_environment_slug "../../pwn"'],
-        capture_output=True,
-        text=True,
-    )
+    result = _resolve(script_path, "../../pwn: checkout_smoke", "environment_slug")
     assert result.returncode == 0, result.stderr
     slug = result.stdout.strip()
     assert ".." not in slug
@@ -672,8 +685,7 @@ def test_render_jmeter_script_uses_results_dir_and_slug_resolvers(tmp_path: Path
     script_path = tmp_path / "scripts" / "run-jmeter.sh"
     content = script_path.read_text(encoding="utf-8")
 
-    assert "resolve_environment_slug() {" in content
-    assert "resolve_scenario_slug() {" in content
+    assert "resolve_test_case() {" in content
     assert "json_escape() {" in content
     assert 'local results_dir="run-output/${environment_slug}_${scenario_slug}"' in content
     assert '-l "$results_dir/results.jtl"' in content
@@ -712,7 +724,7 @@ exit 0
     env["PATH"] = f"{stub_bin}:{env['PATH']}"
 
     result = subprocess.run(
-        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke"],
+        ["bash", str(script_path), "--test-case", "qa: checkout_smoke"],
         capture_output=True,
         text=True,
         env=env,
@@ -755,7 +767,7 @@ def test_render_jmeter_script_writes_failing_run_summary_and_propagates_exit_cod
     env["PATH"] = f"{stub_bin}:{env['PATH']}"
 
     result = subprocess.run(
-        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke"],
+        ["bash", str(script_path), "--test-case", "qa: checkout_smoke"],
         capture_output=True,
         text=True,
         env=env,
@@ -781,7 +793,7 @@ def test_render_jmeter_script_no_run_summary_on_precheck_failure(tmp_path: Path)
     script_path = tmp_path / "scripts" / "run-jmeter.sh"
 
     result = subprocess.run(
-        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke"],
+        ["bash", str(script_path), "--test-case", "qa: checkout_smoke"],
         capture_output=True,
         text=True,
         cwd=tmp_path,
@@ -812,7 +824,7 @@ exit 0
     (stub_bin / "docker").chmod(0o755)
 
     config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
-    config["catalog"]["scenarios"] = [
+    config["catalog"]["environments"][0]["scenarios"] = [
         {"key": "checkout_smoke", "identifier": "SC-1"},
         {"key": "checkout_full", "identifier": "SC-2"},
     ]
@@ -825,7 +837,7 @@ exit 0
 
     for scenario in ("checkout_smoke", "checkout_full"):
         result = subprocess.run(
-            ["bash", str(script_path), "--environment", "qa", "--scenario", scenario],
+            ["bash", str(script_path), "--test-case", f"qa: {scenario}"],
             capture_output=True,
             text=True,
             env=env,
@@ -862,7 +874,7 @@ exit 0
     env["PATH"] = f"{stub_bin}:{env['PATH']}"
 
     result = subprocess.run(
-        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke"],
+        ["bash", str(script_path), "--test-case", "qa: checkout_smoke"],
         capture_output=True,
         text=True,
         env=env,
@@ -894,7 +906,7 @@ def test_render_loadrunner_script_writes_failing_run_summary_and_propagates_exit
     env["PATH"] = f"{stub_bin}:{env['PATH']}"
 
     result = subprocess.run(
-        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke"],
+        ["bash", str(script_path), "--test-case", "qa: checkout_smoke"],
         capture_output=True,
         text=True,
         env=env,
@@ -918,7 +930,7 @@ def test_render_loadrunner_script_no_run_summary_on_precheck_failure(tmp_path: P
     script_path = tmp_path / "scripts" / "run-loadrunner_professional.sh"
 
     result = subprocess.run(
-        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke"],
+        ["bash", str(script_path), "--test-case", "qa: checkout_smoke"],
         capture_output=True,
         text=True,
         cwd=tmp_path,
@@ -978,7 +990,7 @@ esac
     env["BLAZEMETER_API_KEY_SECRET"] = "secret"
 
     result = subprocess.run(
-        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke", "--timeout-minutes", "1"],
+        ["bash", str(script_path), "--test-case", "qa: checkout_smoke", "--timeout-minutes", "1"],
         capture_output=True,
         text=True,
         env=env,
@@ -1048,7 +1060,7 @@ esac
     env["BLAZEMETER_API_KEY_SECRET"] = "secret"
 
     result = subprocess.run(
-        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke", "--timeout-minutes", "1"],
+        ["bash", str(script_path), "--test-case", "qa: checkout_smoke", "--timeout-minutes", "1"],
         capture_output=True,
         text=True,
         env=env,
@@ -1109,7 +1121,7 @@ esac
     env["BLAZEMETER_API_KEY_SECRET"] = "secret"
 
     result = subprocess.run(
-        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke", "--timeout-minutes", "1"],
+        ["bash", str(script_path), "--test-case", "qa: checkout_smoke", "--timeout-minutes", "1"],
         capture_output=True,
         text=True,
         env=env,
@@ -1169,7 +1181,7 @@ esac
     # the "never reached a terminal status" branch exactly as a real
     # timeout would reach it.
     result = subprocess.run(
-        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke", "--timeout-minutes", "0"],
+        ["bash", str(script_path), "--test-case", "qa: checkout_smoke", "--timeout-minutes", "0"],
         capture_output=True,
         text=True,
         env=env,
@@ -1237,7 +1249,7 @@ esac
     env["BLAZEMETER_API_KEY_SECRET"] = "secret"
 
     result = subprocess.run(
-        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke", "--timeout-minutes", "1"],
+        ["bash", str(script_path), "--test-case", "qa: checkout_smoke", "--timeout-minutes", "1"],
         capture_output=True,
         text=True,
         env=env,
@@ -1272,7 +1284,7 @@ exit 0
 
     hostile_scenario_key = "smoke\ntest\tcase"
     config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
-    config["catalog"]["scenarios"] = [
+    config["catalog"]["environments"][0]["scenarios"] = [
         {"key": hostile_scenario_key, "identifier": "SC-1"}
     ]
     package = build_generic_package(config)
@@ -1283,7 +1295,7 @@ exit 0
     env["PATH"] = f"{stub_bin}:{env['PATH']}"
 
     result = subprocess.run(
-        ["bash", str(script_path), "--environment", "qa", "--scenario", hostile_scenario_key],
+        ["bash", str(script_path), "--test-case", f"qa: {hostile_scenario_key}"],
         capture_output=True,
         text=True,
         env=env,
@@ -1324,7 +1336,7 @@ exit 0
     jmeter_env = dict(os.environ)
     jmeter_env["PATH"] = f"{jmeter_stub_bin}:{jmeter_env['PATH']}"
     jmeter_result = subprocess.run(
-        ["bash", str(jmeter_dir / "scripts" / "run-jmeter.sh"), "--environment", "qa", "--scenario", "checkout_smoke"],
+        ["bash", str(jmeter_dir / "scripts" / "run-jmeter.sh"), "--test-case", "qa: checkout_smoke"],
         capture_output=True,
         text=True,
         env=jmeter_env,
@@ -1360,7 +1372,7 @@ exit 0
         [
             "bash",
             str(loadrunner_dir / "scripts" / "run-loadrunner_professional.sh"),
-            "--environment", "qa", "--scenario", "checkout_smoke",
+            "--test-case", "qa: checkout_smoke",
         ],
         capture_output=True,
         text=True,
@@ -1421,7 +1433,7 @@ esac
         [
             "bash",
             str(blazemeter_dir / "scripts" / "run-blazemeter.sh"),
-            "--environment", "qa", "--scenario", "checkout_smoke", "--timeout-minutes", "1",
+            "--test-case", "qa: checkout_smoke", "--timeout-minutes", "1",
         ],
         capture_output=True,
         text=True,
@@ -1460,7 +1472,7 @@ exit 0
     env["BLAZEMETER_API_KEY_SECRET"] = "secret"
 
     result = subprocess.run(
-        ["bash", str(script_path), "--environment", "qa", "--scenario", "checkout_smoke", "--timeout-minutes", "1"],
+        ["bash", str(script_path), "--test-case", "qa: checkout_smoke", "--timeout-minutes", "1"],
         capture_output=True,
         text=True,
         env=env,
@@ -1529,7 +1541,7 @@ def _run(script_path: Path, args: list[str], env: dict, cwd: Path) -> subprocess
     return subprocess.run(["bash", str(script_path), *args], capture_output=True, text=True, env=env, cwd=cwd)
 
 
-_QA = ["--environment", "qa", "--scenario", "checkout_smoke"]
+_QA = ["--test-case", "qa: checkout_smoke"]
 _BLAZEMETER_CONNECTION = {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"}
 
 
@@ -1605,7 +1617,7 @@ def test_jmeter_script_stops_on_todo_test_plan_path(tmp_path: Path) -> None:
 
 def test_jmeter_script_stops_on_todo_scenario_identifier(tmp_path: Path) -> None:
     config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
-    config["catalog"]["scenarios"] = [{"key": "checkout_smoke", "identifier": "TODO"}]
+    config["catalog"]["environments"][0]["scenarios"] = [{"key": "checkout_smoke", "identifier": "TODO"}]
     script_path = _render(tmp_path, config)
     env = _stub_bin_with(tmp_path, docker=_logging_docker(tmp_path))
 
@@ -1702,7 +1714,7 @@ def test_loadrunner_run_summary_has_test_type_but_no_load_numbers(tmp_path: Path
 
 def test_loadrunner_script_stops_on_todo_scenario_identifier(tmp_path: Path) -> None:
     config = _base_config("loadrunner_professional", {"wlrun_path": "wlrun"})
-    config["catalog"]["scenarios"] = [{"key": "checkout_smoke", "identifier": "TODO"}]
+    config["catalog"]["environments"][0]["scenarios"] = [{"key": "checkout_smoke", "identifier": "TODO"}]
     script_path = _render(tmp_path, config)
     env = _stub_bin_with(tmp_path, wlrun=f'touch "{tmp_path / "wlrun-called"}"\n')
 

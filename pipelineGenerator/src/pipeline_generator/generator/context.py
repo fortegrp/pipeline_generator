@@ -5,10 +5,10 @@ from pipeline_generator.config.schema import LOAD_PROFILE_FIELDS, LOAD_PROFILE_T
 from pipeline_generator.generator.generic_model import (
     AutomatedJobSpec,
     GenericPipelinePackage,
-    InputOption,
     LoadInput,
     ManualPipelineSpec,
-    PipelineInput,
+    RunTarget,
+    run_target_selector,
 )
 
 
@@ -23,23 +23,21 @@ def build_generic_package(config: dict) -> GenericPipelinePackage:
     setup = config["setup"]
     cicd_type = config["cicd"]["type"]
     tool_type = config["tool"]["type"]
-    environments = [
-        InputOption(value=item["key"], identifier=item.get("identifier", TODO_VALUE))
-        for item in config["catalog"]["environments"]
-    ]
-    scenarios = [
-        InputOption(value=item["key"], identifier=item.get("identifier", TODO_VALUE))
-        for item in config["catalog"]["scenarios"]
+    run_targets = [
+        RunTarget(
+            environment_key=env["key"],
+            environment_identifier=env.get("identifier", TODO_VALUE),
+            scenario_key=scenario["key"],
+            scenario_identifier=scenario.get("identifier", TODO_VALUE),
+        )
+        for env in config["catalog"]["environments"]
+        for scenario in env.get("scenarios", [])
     ]
 
     manual_pipeline = None
     if setup["generation_mode"] in {"manual_only", "both"} and config["manual_pipeline"]["enabled"]:
         manual_pipeline = ManualPipelineSpec(
             name=config["manual_pipeline"]["name"],
-            inputs=[
-                PipelineInput("environment", "Environment", "dropdown", environments),
-                PipelineInput("scenario", "Scenario", "dropdown", scenarios),
-            ],
             timeout_minutes=int(config["manual_pipeline"]["timeout_minutes"]),
         )
 
@@ -52,8 +50,7 @@ def build_generic_package(config: dict) -> GenericPipelinePackage:
                 AutomatedJobSpec(
                     name=job["name"],
                     timeout_minutes=int(job.get("timeout_minutes", 240)),
-                    environment_ref=job["environment_ref"],
-                    scenario_ref=job["scenario_ref"],
+                    test_case=run_target_selector(job["environment_ref"], job["scenario_ref"]),
                 )
             )
 
@@ -67,7 +64,6 @@ def build_generic_package(config: dict) -> GenericPipelinePackage:
         tool_type=tool_type,
         manual_pipeline=manual_pipeline,
         automated_jobs=automated_jobs,
-        environments=environments,
-        scenarios=scenarios,
+        run_targets=run_targets,
         load_inputs=load_inputs,
     )

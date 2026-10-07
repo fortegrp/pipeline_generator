@@ -12,8 +12,7 @@ def _config() -> dict:
         "tool": {"type": "jmeter", "connection": {"test_plan_path": "plan.jmx", "docker_image": ""}},
         "pre_run_checks": [],
         "catalog": {
-            "environments": [{"key": "qa", "name": "QA", "identifier": "env-qa"}],
-            "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "SC-1"}],
+            "environments": [{"key": "qa", "name": "QA", "identifier": "env-qa", "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "SC-1"}]}],
         },
         "manual_pipeline": {"enabled": True, "name": "Performance Manual Run", "timeout_minutes": 120},
         "automated_jobs": [
@@ -41,16 +40,15 @@ def test_render_jenkins_writes_manual_and_automated_jenkinsfiles(tmp_path: Path)
 
     manual_content = manual_path.read_text(encoding="utf-8")
     assert "./scripts/run-jmeter.sh" in manual_content
-    assert '--environment "$ENVIRONMENT" --scenario "$SCENARIO"' in manual_content
-    assert "'qa'," in manual_content
-    assert "'checkout_smoke'," in manual_content
+    assert '--test-case "$TEST_CASE"' in manual_content
+    assert "name: 'TEST_CASE'" in manual_content
+    assert "'qa: checkout_smoke'," in manual_content
     assert "timeout(time: 120, unit: 'MINUTES')" in manual_content
     assert "pipeline-generator" not in manual_content
 
     automated_content = automated_path.read_text(encoding="utf-8")
-    assert "ENVIRONMENT = 'qa'" in automated_content
-    assert "SCENARIO = 'checkout_smoke'" in automated_content
-    assert './scripts/run-jmeter.sh --environment "$ENVIRONMENT" --scenario "$SCENARIO"' in automated_content
+    assert "TEST_CASE = 'qa: checkout_smoke'" in automated_content
+    assert './scripts/run-jmeter.sh --test-case "$TEST_CASE"' in automated_content
     assert "timeout(time: 60, unit: 'MINUTES')" in automated_content
     assert "pipeline-generator" not in automated_content
 
@@ -64,8 +62,7 @@ def test_render_jenkins_escapes_adversarial_values(tmp_path: Path) -> None:
         "tool": {"type": "jmeter", "connection": {"test_plan_path": "plan.jmx", "docker_image": ""}},
         "pre_run_checks": [],
         "catalog": {
-            "environments": [{"key": nasty_env_value, "name": "QA", "identifier": "env-nasty"}],
-            "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "SC-1"}],
+            "environments": [{"key": nasty_env_value, "name": "QA", "identifier": "env-nasty", "scenarios": [{"key": "checkout_smoke", "name": "Checkout Smoke", "identifier": "SC-1"}]}],
         },
         "manual_pipeline": {"enabled": True, "name": "Performance Manual Run", "timeout_minutes": 30},
         "automated_jobs": [
@@ -94,8 +91,8 @@ def test_render_jenkins_escapes_adversarial_values(tmp_path: Path) -> None:
     # The hostile environment value must appear only inside a properly
     # escaped single-quoted Groovy string, never able to close the `choice`
     # literal's quote early.
-    assert groovy_squote(nasty_env_value) in manual_content
-    assert '--environment "$ENVIRONMENT" --scenario "$SCENARIO"' in manual_content
+    assert groovy_squote(f"{nasty_env_value}: checkout_smoke") in manual_content
+    assert '--test-case "$TEST_CASE"' in manual_content
 
     jenkins_dir = tmp_path / "jenkins"
     automated_files = [p for p in jenkins_dir.iterdir() if p.name.startswith("Jenkinsfile.performance-automated-")]
@@ -104,8 +101,8 @@ def test_render_jenkins_escapes_adversarial_values(tmp_path: Path) -> None:
     # environment_ref (the adversarial value here) must be delivered via the
     # environment{} block, Groovy-escaped, never spliced directly into the
     # sh command text.
-    assert f"ENVIRONMENT = {groovy_squote(nasty_env_value)}" in automated_content
-    assert './scripts/run-jmeter.sh --environment "$ENVIRONMENT" --scenario "$SCENARIO"' in automated_content
+    assert f"TEST_CASE = {groovy_squote(f'{nasty_env_value}: checkout_smoke')}" in automated_content
+    assert './scripts/run-jmeter.sh --test-case "$TEST_CASE"' in automated_content
 
 
 def test_render_jenkins_includes_timeout_flag_for_blazemeter(tmp_path: Path) -> None:
