@@ -243,14 +243,16 @@ resuming. For each new job you enter:
 ### Step 7 — Pre-run checks
 
 One screen listing the checks applicable to whichever tool you picked in
-Step 2 — JMeter sees 1 (`verify_scenario_exists`); LoadRunner Professional
-sees 3 (`verify_controller_access`, `verify_scenario_exists`,
-`verify_load_generators_connected`); BlazeMeter sees 3 different ones
+Step 2 — JMeter sees 2 (`verify_scenario_exists`, `verify_docker_available`);
+LoadRunner Professional sees 2 (`verify_controller_access`,
+`verify_scenario_exists`); BlazeMeter sees 3 different ones
 (`verify_host_reachable`, `verify_project_exists`, `verify_scenario_exists`)
 — BlazeMeter's real failure modes don't match LoadRunner's
-controller-flavored vocabulary, so it gets its own. Type comma-separated
-numbers to select specific ones, `all`, `none`, or just press Enter to keep
-whatever was already enabled (useful when resuming).
+controller-flavored vocabulary, so it gets its own. Every check offered here
+is actually implemented (no dead options that silently do nothing when
+selected). Type comma-separated numbers to select specific ones, `all`,
+`none`, or just press Enter to keep whatever was already enabled (useful
+when resuming).
 
 ### After Step 7
 
@@ -303,7 +305,6 @@ catalog:
 pre_run_checks:
   - verify_controller_access
   - verify_scenario_exists
-  - verify_load_generators_connected
 
 readme:
   include_manual_usage: true
@@ -612,7 +613,7 @@ all three tools, and `generate` writes a real, working
 
 | Tool | Auth model | Connection fields | Precheck vocabulary | Generated script |
 |---|---|---|---|---|
-| **LoadRunner Professional** | `none` (runs on a controller-adjacent agent) | optional `wlrun_path` | `verify_controller_access`, `verify_scenario_exists`, `verify_load_generators_connected` (TODO comment only) | Real and complete — runs `wlrun` locally; no remote credentials managed by this script; needs a self-hosted runner (see above). |
+| **LoadRunner Professional** | `none` (runs on a controller-adjacent agent) | optional `wlrun_path` | `verify_controller_access`, `verify_scenario_exists` | Real and complete — runs `wlrun` locally; no remote credentials managed by this script; needs a self-hosted runner (see above). |
 | **BlazeMeter** | Remote (`api_token`) | `base_url`, `workspace_id`, `project_id` | `verify_host_reachable`, `verify_project_exists`, `verify_scenario_exists` | Real and complete — drives BlazeMeter's REST API; needs `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET` set; two API-surface details need live-account verification (see above). |
 | **JMeter** | `none` (runs in a container on the agent/runner) | `test_plan_path`, optional `docker_image` (default `justb4/jmeter:5.6.3`) | `verify_scenario_exists`, `verify_docker_available` | Real and complete — no remote API or credentials needed, runs via `docker run`; needs Docker installed on the agent/runner (not a local JMeter install). |
 

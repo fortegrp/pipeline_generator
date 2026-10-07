@@ -4,6 +4,15 @@ All notable changes to `pipeline-generator` are documented here.
 
 ## [Unreleased]
 
+- Removed the `verify_load_generators_connected` pre-run check (offered
+  for LoadRunner Professional) from `PRE_RUN_CHECKS` and
+  `PRE_RUN_CHECKS_BY_TOOL`. Same issue as `collect_results` before it: it
+  was offered as a real option in the wizard but only ever rendered as a
+  dead `# TODO precheck: ...` comment — it would need Controller-side
+  load-generator host-status querying with no local CLI equivalent
+  available to `wlrun`, so it was never going to become real. Every
+  pre-run check now offered by the wizard is actually implemented for the
+  tool(s) it's offered for.
 - Wizard's environment/scenario identifier prompt no longer says "remote
   identifier" for every tool — that was only accurate for BlazeMeter (a
   real Test ID on BlazeMeter's servers). It's now tool-specific:

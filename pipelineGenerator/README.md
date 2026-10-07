@@ -280,7 +280,6 @@ automated_jobs:
 pre_run_checks:
   - verify_controller_access
   - verify_scenario_exists
-  - verify_load_generators_connected
 ```
 
 `cicd.type` supports `github_actions`, `azure_devops`, and `jenkins`.

@@ -67,18 +67,19 @@ Implemented:
 
 Not implemented yet:
 
-- Real pre-run checks beyond what's already implemented per tool (JMeter's
-  `verify_scenario_exists`; LoadRunner Professional's
-  `verify_controller_access`/`verify_scenario_exists`; BlazeMeter's
-  `verify_host_reachable`/`verify_project_exists`/`verify_scenario_exists`)
-  — every other configured check, for every tool, is currently only a
-  `# TODO precheck: ...` comment (LoadRunner's
-  `verify_load_generators_connected` needs Controller-side load-generator
-  host-status querying with no local CLI equivalent). The `collect_results`
-  check was removed from the schema entirely — it was never implemented for
-  any tool and, as a pre-*run* check, was miscategorized from the start
-  (collecting results is a post-run action).
 - Strong schema enforcement.
+
+Every value in `PRE_RUN_CHECKS` is now actually implemented for the tool(s)
+it's offered for — JMeter's `verify_scenario_exists`/`verify_docker_available`;
+LoadRunner Professional's `verify_controller_access`/`verify_scenario_exists`;
+BlazeMeter's `verify_host_reachable`/`verify_project_exists`/
+`verify_scenario_exists`. Two checks that used to be offered but only ever
+rendered as a dead `# TODO precheck: ...` comment were removed rather than
+left as permanent dead weight: `collect_results` (never implemented for any
+tool, and miscategorized from the start — collecting results is a post-run
+action, not a pre-run check) and LoadRunner's `verify_load_generators_connected`
+(would need Controller-side load-generator host-status querying with no
+local CLI equivalent for `wlrun`).
 
 ## Supported Platforms and Tools
 
@@ -807,10 +808,12 @@ Tasks:
   authenticated, workspace-scoped `GET /api/v4/projects/<id>` call).
 - [x] `verify_scenario_exists` is implemented for BlazeMeter (an
   authenticated `GET /api/v4/tests/<id>` call).
-- Implement `verify_load_generators_connected` in the generated LoadRunner
-  Professional script (currently a `# TODO precheck: ...` comment only —
-  needs Controller-side load-generator host-status querying with no local
-  CLI equivalent available to `wlrun`).
+- [x] Resolved by removal: `verify_load_generators_connected` needed
+  Controller-side load-generator host-status querying with no local CLI
+  equivalent available to `wlrun`, so it was never going to be implemented
+  as a local precheck. Dropped from `PRE_RUN_CHECKS` and
+  `PRE_RUN_CHECKS_BY_TOOL["loadrunner_professional"]` rather than kept as
+  a selectable option that silently does nothing.
 - [x] Resolved by removal: `collect_results` was never implemented for any
   tool and, as a pre-*run* check, was miscategorized (collecting results
   happens after the run). Dropped from `PRE_RUN_CHECKS` and every tool's

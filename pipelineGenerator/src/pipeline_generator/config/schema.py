@@ -27,7 +27,6 @@ GENERATION_MODES = (
 PRE_RUN_CHECKS = (
     "verify_controller_access",
     "verify_scenario_exists",
-    "verify_load_generators_connected",
     "verify_host_reachable",
     "verify_project_exists",
     "verify_docker_available",
@@ -38,7 +37,6 @@ PRE_RUN_CHECKS_BY_TOOL = {
     "loadrunner_professional": (
         "verify_controller_access",
         "verify_scenario_exists",
-        "verify_load_generators_connected",
     ),
     "blazemeter": (
         "verify_host_reachable",

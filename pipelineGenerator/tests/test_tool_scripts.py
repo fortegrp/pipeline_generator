@@ -599,11 +599,11 @@ def test_render_loadrunner_script_sanitizes_results_dir_from_hostile_catalog_key
     assert syntax_check.returncode == 0, syntax_check.stderr
 
 
-def test_render_loadrunner_script_todo_comments_for_unhandled_checks(tmp_path: Path) -> None:
+def test_render_loadrunner_script_no_todo_comments_for_its_checks(tmp_path: Path) -> None:
     config = _base_config(
         "loadrunner_professional",
         {"wlrun_path": "wlrun"},
-        checks=["verify_controller_access", "verify_scenario_exists", "verify_load_generators_connected"],
+        checks=["verify_controller_access", "verify_scenario_exists"],
     )
     package = build_generic_package(config)
 
@@ -611,12 +611,9 @@ def test_render_loadrunner_script_todo_comments_for_unhandled_checks(tmp_path: P
     script_path = tmp_path / "scripts" / "run-loadrunner_professional.sh"
     content = script_path.read_text(encoding="utf-8")
 
-    # The two implemented checks get real guards, not TODO comments.
+    # Both checks are implemented -- real guards, not TODO comments.
     assert "# TODO precheck: verify_controller_access" not in content
     assert "# TODO precheck: verify_scenario_exists" not in content
-    # The unimplemented check gets a TODO comment instead of silently
-    # vanishing.
-    assert "# TODO precheck: verify_load_generators_connected" in content
 
     syntax_check = subprocess.run(["bash", "-n", str(script_path)], capture_output=True, text=True)
     assert syntax_check.returncode == 0, syntax_check.stderr
@@ -626,7 +623,7 @@ def test_render_jmeter_script_todo_comments_for_unhandled_checks(tmp_path: Path)
     config = _base_config(
         "jmeter",
         {"test_plan_path": "plan.jmx", "docker_image": ""},
-        checks=["verify_scenario_exists", "verify_controller_access", "verify_load_generators_connected"],
+        checks=["verify_scenario_exists", "verify_controller_access"],
     )
     package = build_generic_package(config)
 
@@ -635,8 +632,10 @@ def test_render_jmeter_script_todo_comments_for_unhandled_checks(tmp_path: Path)
     content = script_path.read_text(encoding="utf-8")
 
     assert "# TODO precheck: verify_scenario_exists" not in content
+    # verify_controller_access is a valid enum value but not one JMeter's
+    # script handles -- it gets a TODO comment instead of silently
+    # vanishing.
     assert "# TODO precheck: verify_controller_access" in content
-    assert "# TODO precheck: verify_load_generators_connected" in content
 
     syntax_check = subprocess.run(["bash", "-n", str(script_path)], capture_output=True, text=True)
     assert syntax_check.returncode == 0, syntax_check.stderr
