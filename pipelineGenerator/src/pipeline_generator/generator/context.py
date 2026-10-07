@@ -65,5 +65,6 @@ def build_generic_package(config: dict) -> GenericPipelinePackage:
         manual_pipeline=manual_pipeline,
         automated_jobs=automated_jobs,
         run_targets=run_targets,
+        runner=str(config["cicd"].get("runner") or ""),
         load_inputs=load_inputs,
     )

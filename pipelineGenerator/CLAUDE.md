@@ -113,6 +113,13 @@ Pipeline: **customer YAML → validate → generic pipeline model → CI/CD rend
   same ID and silently overwrite each other's generated folder. Once
   assigned, resuming a draft never regenerates it, even if CI/CD or tool
   changes on that resume.
+- `cicd.runner` (one per setup) picks where pipelines run: GitHub
+  `runs-on` labels (comma-separated), Azure self-hosted pool name, Jenkins
+  agent label; blank = hosted default (`ubuntu-latest` / `agent any`). It's
+  required for LoadRunner (validator warning; wizard default `TODO`), since
+  `wlrun` must run on the Controller-adjacent agent. Steps always invoke
+  the script with bash (`shell: bash`, Azure `bash:` step, Jenkins `sh`),
+  because Windows agents otherwise use PowerShell/cmd.
 - `generator/` — `context.py` reads validated config and builds a
   `GenericPipelinePackage` (`generic_model.py`): a CI/CD-agnostic
   representation of the manual pipeline (inputs, timeout, run command) and

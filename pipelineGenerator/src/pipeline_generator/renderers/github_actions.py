@@ -28,7 +28,9 @@ def render_github_actions(config: dict, package: GenericPipelinePackage, setup_d
     if package.automated_jobs:
         for job in package.automated_jobs:
             automated_path = workflow_dir / f"performance-automated-{safe_filename_component(job.name)}.yml"
-            automated_path.write_text(_render_automated_workflow(job, package.tool_type), encoding="utf-8")
+            automated_path.write_text(
+                _render_automated_workflow(job, package.tool_type, package.runner), encoding="utf-8"
+            )
             outputs.append(str(automated_path))
 
     return outputs
@@ -78,13 +80,14 @@ on:
 
 jobs:
   run-performance-test:
-    runs-on: ubuntu-latest
+    runs-on: {_runs_on(package.runner)}
     timeout-minutes: {timeout}
     steps:
       - uses: actions/checkout@v4
       - name: Run performance wrapper
         env:
           TEST_CASE: ${{{{ github.event.inputs.test_case }}}}{load_env}{secret_env}
+        shell: bash
         run: >
           ./scripts/run-{package.tool_type}.sh
           --test-case "$TEST_CASE"{load_flag_text}{timeout_flag}
@@ -101,7 +104,16 @@ def _secret_env(tool_type: str) -> str:
     return "".join(f"\n          {name}: ${{{{ secrets.{name} }}}}" for name in secret_names(tool_type))
 
 
-def _render_automated_workflow(job: AutomatedJobSpec, tool_type: str) -> str:
+def _runs_on(runner: str) -> str:
+    labels = [label.strip() for label in runner.split(",") if label.strip()]
+    if not labels:
+        return "ubuntu-latest"
+    if len(labels) == 1:
+        return yaml_dquote(labels[0])
+    return "[" + ", ".join(yaml_dquote(label) for label in labels) + "]"
+
+
+def _render_automated_workflow(job: AutomatedJobSpec, tool_type: str, runner: str) -> str:
     job_id = _safe_job_id(job.name)
     timeout_flag = blazemeter_timeout_flag(tool_type, job.timeout_minutes, separator="\n          ")
     names = secret_names(tool_type)
@@ -119,11 +131,12 @@ on:
 
 jobs:
   {job_id}:
-    runs-on: ubuntu-latest
+    runs-on: {_runs_on(runner)}
     timeout-minutes: {job.timeout_minutes}
     steps:
       - uses: actions/checkout@v4
       - name: Run performance wrapper{step_env}
+        shell: bash
         run: >
           ./scripts/run-{tool_type}.sh
           --test-case {shell_quote(job.test_case)}{timeout_flag}

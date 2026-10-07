@@ -457,3 +457,20 @@ def test_validation_duplicate_environment_warning_says_to_merge() -> None:
     warning = next(w for w in result.warnings if "duplicate" in w.lower())
     assert "merge" in warning
     assert "only the first is ever reachable" not in warning
+
+
+def test_validation_warns_when_loadrunner_has_no_runner() -> None:
+    config = _complete_jmeter_config()
+    config["tool"] = {"type": "loadrunner_professional", "connection": {}}
+    config["cicd"]["runner"] = ""
+
+    result = validate_config(config)
+
+    assert any(w.startswith("cicd.runner is missing") for w in result.warnings)
+
+
+def test_validation_does_not_require_runner_for_jmeter() -> None:
+    config = _complete_jmeter_config()
+    config["cicd"]["runner"] = ""
+
+    assert not any("cicd.runner" in w for w in validate_config(config).warnings)

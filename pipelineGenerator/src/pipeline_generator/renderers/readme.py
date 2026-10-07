@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pipeline_generator.config.placeholders import TODO_VALUE
+from pipeline_generator.config.placeholders import TODO_VALUE, is_placeholder
 from pipeline_generator.config.schema import DEFAULT_JMETER_DOCKER_IMAGE, JENKINS_BLAZEMETER_CREDENTIALS_ID
 from pipeline_generator.generator.generic_model import AutomatedJobSpec, GenericPipelinePackage
 from pipeline_generator.renderers.quoting import safe_filename_component
@@ -24,8 +24,13 @@ _BLAZEMETER_SECRET_LINES = {
 }
 
 
-def _todo_lines(tool_type: str, cicd_type: str, script_name: str) -> list[str]:
+def _todo_lines(tool_type: str, cicd_type: str, runner: str, script_name: str) -> list[str]:
     lines = ["- Replace TODO placeholders in `customer.yaml`."]
+    if tool_type == "loadrunner_professional" and is_placeholder(runner):
+        lines.append(
+            "- Set `cicd.runner` to the runner label / agent pool / agent label of the Windows machine next to "
+            "your LoadRunner Controller (with `wlrun` and Git for Windows' `bash` on `PATH`), then regenerate."
+        )
     if tool_type == "blazemeter":
         lines.append(
             _BLAZEMETER_SECRET_LINES.get(
@@ -218,8 +223,8 @@ def _troubleshooting_lines(tool_type: str, script_name: str) -> list[str]:
     elif tool_type == "loadrunner_professional":
         lines.append(
             "- This pipeline's CI/CD job must run on an agent co-located with the LoadRunner Controller "
-            "(`wlrun` must be on `PATH` there) — retarget the generated pipeline's runner/agent/pool "
-            "before use."
+            "(`wlrun` must be on `PATH` there) — that's what `cicd.runner` targets. The step runs the "
+            "script with bash, so a Windows agent needs Git for Windows (or another `bash` on `PATH`)."
         )
         lines.append(
             "- `wlrun`'s exit code is known to be unreliable on some LoadRunner versions/configurations "
@@ -246,7 +251,7 @@ def render_setup_readme(config: dict, package: GenericPipelinePackage) -> str:
         "",
         "## Remaining TODOs",
         "",
-        *_todo_lines(tool_type, cicd_type, script_name),
+        *_todo_lines(tool_type, cicd_type, package.runner, script_name),
         *_load_todo_lines(package),
         "",
         "## Connection Details",

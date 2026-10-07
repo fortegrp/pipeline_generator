@@ -4,6 +4,7 @@ setup:
   generation_mode: both
 cicd:
   type: github_actions
+  runner: self-hosted, windows, loadrunner
 tool:
   type: loadrunner_professional
   connection:

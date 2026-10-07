@@ -438,8 +438,8 @@ whatever machine the CI/CD job executes on:
 
 All three tools now call a real remote/local execution path — see
 "BlazeMeter and LoadRunner Real Execution" below for the two remaining
-known limitations neither script has closed yet (a CI/CD runner-targeting
-gap for LoadRunner, and unverified API-surface assumptions for BlazeMeter).
+known limitation still open (unverified API-surface assumptions for
+BlazeMeter); LoadRunner's runner targeting is now `cicd.runner`.
 
 ## Current Examples
 
@@ -574,12 +574,10 @@ execution layer at all. In its place, `generate` writes a
   combination they have a file for. `wlrun`'s exit code is known to be
   unreliable on some LoadRunner versions/configurations (can return 0 on a
   failed scenario); nonzero is still treated as failure as the best local
-  signal available. **Known limitation**: the generated CI/CD pipeline
-  files default to hosted runners (`ubuntu-latest`, a Microsoft-hosted
-  Azure pool) that can't run `wlrun` — a customer must hand-retarget the
-  generated pipeline to a self-hosted, controller-adjacent agent before
-  this actually works (see the user guide's section 10 caveat and
-  "Recommended Next Work" above for the follow-up).
+  signal available. The generated pipelines target the controller-adjacent
+  agent via `cicd.runner` (GitHub `runs-on` labels, Azure agent pool,
+  Jenkins agent label — required for LoadRunner, a draft until set) and
+  run the script with bash (`shell: bash` / `bash:` step / `sh`).
 - **BlazeMeter is also real, working execution** — resolved (see
   `docs/superpowers/specs/
   2026-09-09-blazemeter-real-api-execution-design.md` for the design). It
@@ -957,9 +955,8 @@ considered ready for executing tests when:
 
 - [x] All three generated scripts can start and run a test for real —
   resolved: JMeter and LoadRunner Professional run their tool directly;
-  BlazeMeter drives its REST API. LoadRunner's real-world usability still
-  depends on a CI/CD runner-targeting hand-edit (see "Recommended Next
-  Work" above); BlazeMeter's API-surface assumptions still need
+  BlazeMeter drives its REST API. LoadRunner targets its agent via
+  `cicd.runner`; BlazeMeter's API-surface assumptions still need
   verification against a live account (see "BlazeMeter and LoadRunner
   Real Execution" above).
 - [x] Failed runs produce clear summary output — resolved: all three tools

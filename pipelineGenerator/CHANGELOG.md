@@ -4,6 +4,17 @@ All notable changes to `pipeline-generator` are documented here.
 
 ## [Unreleased]
 
+- New `cicd.runner` picks where generated pipelines run: GitHub Actions
+  `runs-on` labels (comma-separated), an Azure DevOps self-hosted agent
+  pool, or a Jenkins agent label; blank keeps the hosted default
+  (`ubuntu-latest` / `agent any`). The wizard asks it in Step 2. It's
+  required for LoadRunner Professional (wizard default `TODO`, validator
+  warning, README TODO), whose pipelines previously targeted hosted runners
+  that can't run `wlrun` and needed a hand-edit. Generated steps now always
+  run the script with bash — `shell: bash` on GitHub and a `bash:` step on
+  Azure (previously `script:`, i.e. cmd.exe on Windows agents) — so a
+  Windows agent needs Git for Windows' `bash`.
+
 - BlazeMeter credentials are now wired into every generated pipeline.
   Previously no pipeline passed `BLAZEMETER_API_KEY_ID`/
   `BLAZEMETER_API_KEY_SECRET` to the script, so every BlazeMeter run

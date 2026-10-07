@@ -59,4 +59,5 @@ class GenericPipelinePackage:
     manual_pipeline: ManualPipelineSpec | None = None
     automated_jobs: list[AutomatedJobSpec] = field(default_factory=list)
     run_targets: list[RunTarget] = field(default_factory=list)
+    runner: str = ""  # cicd.runner as written; "" = the platform's hosted default
     load_inputs: list[LoadInput] = field(default_factory=list)

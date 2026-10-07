@@ -26,7 +26,9 @@ def render_jenkins(config: dict, package: GenericPipelinePackage, setup_dir: Pat
     if package.automated_jobs:
         for job in package.automated_jobs:
             automated_path = jenkins_dir / f"Jenkinsfile.performance-automated-{safe_filename_component(job.name)}"
-            automated_path.write_text(_render_automated_job(job, package.tool_type), encoding="utf-8")
+            automated_path.write_text(
+                _render_automated_job(job, package.tool_type, package.runner), encoding="utf-8"
+            )
             outputs.append(str(automated_path))
 
     return outputs
@@ -46,7 +48,7 @@ def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
     )
     load_flag_text = load_flags(package.load_inputs)
     return f"""pipeline {{
-    agent any
+    {_agent(package.runner)}
     parameters {{
         choice(
             name: 'TEST_CASE',
@@ -92,10 +94,14 @@ def _run_step(tool_type: str, sh_line: str) -> str:
     )
 
 
-def _render_automated_job(job: AutomatedJobSpec, tool_type: str) -> str:
+def _agent(runner: str) -> str:
+    return f"agent {{ label {groovy_squote(runner)} }}" if runner else "agent any"
+
+
+def _render_automated_job(job: AutomatedJobSpec, tool_type: str, runner: str) -> str:
     timeout_flag = blazemeter_timeout_flag(tool_type, job.timeout_minutes)
     return f"""pipeline {{
-    agent any
+    {_agent(runner)}
     environment {{
         TEST_CASE = {groovy_squote(job.test_case)}
     }}

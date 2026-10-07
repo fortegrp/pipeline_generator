@@ -4,6 +4,7 @@ setup:
   generation_mode: both
 cicd:
   type: jenkins
+  runner: loadrunner-controller
 tool:
   type: loadrunner_professional
   connection:

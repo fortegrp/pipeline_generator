@@ -84,7 +84,7 @@ def test_readme_mentions_loadrunner_agent_caveat() -> None:
     readme = render_setup_readme(config, package)
 
     assert "co-located with the LoadRunner" in readme
-    assert "retarget the generated pipeline's runner/agent/pool" in readme
+    assert "that's what `cicd.runner` targets" in readme
 
 
 def test_readme_mentions_run_summary_json_for_every_tool() -> None:
@@ -119,7 +119,7 @@ def test_readme_todos_are_trimmed_to_must_fill_ins() -> None:
     todos = _section(readme, "Remaining TODOs")
 
     assert "co-located with the LoadRunner" not in todos
-    assert "retarget the generated pipeline's runner/agent/pool" not in todos
+    assert "that's what `cicd.runner` targets" not in todos
 
 
 def test_readme_troubleshooting_section_has_moved_caveats() -> None:
@@ -139,7 +139,7 @@ def test_readme_troubleshooting_section_has_moved_caveats() -> None:
     troubleshooting = _section(readme, "Troubleshooting")
 
     assert "co-located with the LoadRunner" in troubleshooting
-    assert "retarget the generated pipeline's runner/agent/pool" in troubleshooting
+    assert "that's what `cicd.runner` targets" in troubleshooting
     assert "exit code is known to be unreliable" in troubleshooting
 
 
@@ -354,3 +354,13 @@ def test_readme_tells_azure_users_where_automated_job_secrets_live() -> None:
     automated = _section(readme, "Automated Job Integration")
     assert "under `jobs:`" in automated
     assert "`template:` step" not in automated
+
+
+def test_readme_lists_missing_loadrunner_runner_as_todo() -> None:
+    config = _base_config("loadrunner_professional", {"wlrun_path": "wlrun"})
+    config["cicd"]["runner"] = ""
+
+    todos = _section(render_setup_readme(config, build_generic_package(config)), "Remaining TODOs")
+
+    assert "`cicd.runner`" in todos
+    assert "Git for Windows" in todos

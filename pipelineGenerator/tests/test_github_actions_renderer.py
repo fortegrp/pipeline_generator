@@ -250,3 +250,27 @@ def test_render_github_actions_jmeter_has_no_blazemeter_secrets(tmp_path: Path) 
 
     for path in (tmp_path / ".github" / "workflows").iterdir():
         assert "BLAZEMETER" not in path.read_text()
+
+
+def _all_workflows(tmp_path: Path) -> list[dict]:
+    return [yaml.safe_load(p.read_text()) for p in sorted((tmp_path / ".github" / "workflows").iterdir())]
+
+
+def test_render_github_actions_defaults_to_hosted_ubuntu_and_bash(tmp_path: Path) -> None:
+    config = _config()
+    render_github_actions(config, build_generic_package(config), tmp_path)
+
+    for doc in _all_workflows(tmp_path):
+        job = next(iter(doc["jobs"].values()))
+        assert job["runs-on"] == "ubuntu-latest"
+        # Explicit bash: a Windows runner would otherwise run the step in PowerShell.
+        assert job["steps"][1]["shell"] == "bash"
+
+
+def test_render_github_actions_targets_configured_runner_labels(tmp_path: Path) -> None:
+    config = _config()
+    config["cicd"]["runner"] = "self-hosted, windows, lr-controller"
+    render_github_actions(config, build_generic_package(config), tmp_path)
+
+    for doc in _all_workflows(tmp_path):
+        assert next(iter(doc["jobs"].values()))["runs-on"] == ["self-hosted", "windows", "lr-controller"]

@@ -4,6 +4,7 @@ setup:
   generation_mode: both
 cicd:
   type: azure_devops
+  runner: LoadRunner Agents
 tool:
   type: loadrunner_professional
   connection:

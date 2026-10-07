@@ -187,3 +187,22 @@ def test_render_jenkins_jmeter_has_no_credentials_block(tmp_path: Path) -> None:
 
     for path in (tmp_path / "jenkins").iterdir():
         assert "withCredentials" not in path.read_text()
+
+
+def test_render_jenkins_defaults_to_any_agent(tmp_path: Path) -> None:
+    config = _config()
+    render_jenkins(config, build_generic_package(config), tmp_path)
+
+    for path in (tmp_path / "jenkins").iterdir():
+        assert "    agent any\n" in path.read_text()
+
+
+def test_render_jenkins_targets_configured_agent_label(tmp_path: Path) -> None:
+    config = _config()
+    config["cicd"]["runner"] = "lr-controller && windows"
+    render_jenkins(config, build_generic_package(config), tmp_path)
+
+    for path in (tmp_path / "jenkins").iterdir():
+        text = path.read_text()
+        assert "agent { label 'lr-controller && windows' }" in text
+        assert "agent any" not in text

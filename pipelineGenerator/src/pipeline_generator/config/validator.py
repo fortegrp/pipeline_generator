@@ -215,6 +215,12 @@ def validate_config(config: dict) -> ValidationResult:
             if is_placeholder(value):
                 result.warnings.append(f"tool.connection.{key} is missing for JMeter.")
 
+    if tool_type == "loadrunner_professional" and is_placeholder(cicd.get("runner")):
+        result.warnings.append(
+            "cicd.runner is missing -- LoadRunner Professional must run on an agent co-located with the "
+            "Controller, not the platform's hosted default."
+        )
+
     load_profile = _as_dict(config.get("load_profile", {}), "load_profile", result)
     test_type = load_profile.get("test_type")
     if test_type is not None and not (isinstance(test_type, str) and re.fullmatch(TEST_TYPE_PATTERN, test_type)):

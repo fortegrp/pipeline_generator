@@ -272,6 +272,7 @@ setup:
   generation_mode: both
 cicd:
   type: github_actions
+  runner: self-hosted, windows, loadrunner   # runs-on labels; blank = ubuntu-latest
 tool:
   type: loadrunner_professional
   connection:
@@ -333,10 +334,6 @@ are under [`examples/`](examples/).
 
 ## Recommended Next Work
 
-- Add configurable CI/CD runner/agent targeting for LoadRunner Professional
-  setups (generated pipelines default to hosted runners that can't reach a
-  LoadRunner Controller; today this requires a manual hand-edit after
-  generation — see the user guide's section 10 caveat)
 - Verify BlazeMeter's exact status-string vocabulary and report endpoint
   against a live account (flagged as best-understanding in
   `renderers/scripts.py` and the generated setup README)

@@ -28,7 +28,9 @@ def render_azure_devops(config: dict, package: GenericPipelinePackage, setup_dir
     if package.automated_jobs:
         for job in package.automated_jobs:
             automated_path = azure_dir / f"performance-automated-{safe_filename_component(job.name)}.yml"
-            automated_path.write_text(_render_automated_job(job, package.tool_type), encoding="utf-8")
+            automated_path.write_text(
+                _render_automated_job(job, package.tool_type, package.runner), encoding="utf-8"
+            )
             outputs.append(str(automated_path))
 
     return outputs
@@ -77,10 +79,10 @@ jobs:
   - job: run_performance_test
     timeoutInMinutes: {package.manual_pipeline.timeout_minutes}
     pool:
-      vmImage: ubuntu-latest
+      {_pool(package.runner)}
     steps:
       - checkout: self
-      - script: >
+      - bash: >
           ./scripts/run-{package.tool_type}.sh
           --test-case "$TEST_CASE"{load_flag_text}{timeout_flag}
         env:
@@ -105,7 +107,12 @@ def _secret_env_block(tool_type: str) -> str:
     return f"\n        env:{secret_env}" if secret_env else ""
 
 
-def _render_automated_job(job: AutomatedJobSpec, tool_type: str) -> str:
+def _pool(runner: str) -> str:
+    # Blank = Microsoft-hosted ubuntu-latest; otherwise a self-hosted agent pool.
+    return f"name: {yaml_dquote(runner)}" if runner else "vmImage: ubuntu-latest"
+
+
+def _render_automated_job(job: AutomatedJobSpec, tool_type: str, runner: str) -> str:
     job_id = _safe_job_id(job.name)
     timeout_flag = blazemeter_timeout_flag(tool_type, job.timeout_minutes, separator="\n          ")
     return f"""parameters: []
@@ -114,10 +121,10 @@ jobs:
   - job: {job_id}
     timeoutInMinutes: {job.timeout_minutes}
     pool:
-      vmImage: ubuntu-latest
+      {_pool(runner)}
     steps:
       - checkout: self
-      - script: >
+      - bash: >
           ./scripts/run-{tool_type}.sh
           --test-case {shell_quote(job.test_case)}{timeout_flag}{_secret_env_block(tool_type)}
         displayName: Run performance wrapper

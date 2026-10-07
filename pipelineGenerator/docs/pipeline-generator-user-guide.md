@@ -147,6 +147,22 @@ switch CI/CD platform or tool on that resume. You can still hand-edit
 readable; it's made filesystem-safe automatically when `generate` runs
 regardless of what it's set to.
 
+Then the wizard asks **which runner/agent runs the pipeline** (`cicd.runner`):
+
+| CI/CD | What to enter | Blank means |
+|---|---|---|
+| GitHub Actions | `runs-on` labels, comma-separated (e.g. `self-hosted, windows, loadrunner`) | GitHub-hosted `ubuntu-latest` |
+| Azure DevOps | a self-hosted agent pool name (e.g. `LoadRunner Agents`) | Microsoft-hosted `ubuntu-latest` |
+| Jenkins | an agent label expression (e.g. `loadrunner-controller`) | `agent any` |
+
+JMeter and BlazeMeter are fine on the hosted default. **LoadRunner
+Professional** runs `wlrun` on the agent itself, so it must target the
+Windows machine next to your Controller; its default is `TODO`, and the
+setup stays a draft until it's set. Generated steps always run the script
+with **bash** (`shell: bash` on GitHub, a `bash:` step on Azure, `sh` on
+Jenkins), so a Windows agent needs Git for Windows (or another `bash` on
+`PATH`).
+
 ### Step 3 — Tool connection details
 
 Depends on which tool you picked in Step 2:
@@ -672,15 +688,10 @@ all three tools, and `generate` writes a real, working
   `docs/superpowers/specs/
   2026-09-09-loadrunner-local-agent-execution-design.md` for the full
   design and why other execution strategies (SSH/WinRM remoting, LoadRunner
-  Enterprise's REST API) were rejected. **Known limitation:** the generated
-  CI/CD pipeline files themselves currently target a hosted runner/pool by
-  default (`ubuntu-latest` for GitHub Actions, a Microsoft-hosted pool for
-  Azure DevOps) — none of these can run `wlrun`. Before a LoadRunner
-  Professional setup will actually work, you must hand-edit the generated
-  pipeline to target a self-hosted agent that's co-located with the
-  Controller (Jenkins' `agent any` is closest to workable already, but
-  still needs a Windows-capable shell step). This retargeting isn't
-  automated yet — see the generated setup README's "Remaining TODOs".
+  Enterprise's REST API) were rejected. The generated pipelines target that
+  agent through `cicd.runner` (wizard Step 2: GitHub `runs-on` labels,
+  Azure agent pool, Jenkins agent label) and run the script with bash, so
+  the agent needs Git for Windows' `bash` on `PATH` alongside `wlrun`.
 - **BlazeMeter.** The generated script authenticates via
   `BLAZEMETER_API_KEY_ID`/`BLAZEMETER_API_KEY_SECRET`, optionally verifies
   host reachability / project existence / test existence, starts a test
@@ -866,9 +877,6 @@ Worth knowing going in:
   documentation.** The status-string vocabulary and report endpoint are
   this design's best understanding of the BlazeMeter API v4 (section 10)
   — verify against a real account before relying on this in production.
-- **LoadRunner Professional's generated pipelines need manual
-  runner-retargeting.** They default to hosted runners that can't reach a
-  LoadRunner Controller (section 10) — this isn't automated yet.
 - **Renderer output is escaped/safe, but not schema-validated beyond
   YAML/Groovy syntax.** A generated workflow will parse correctly and won't
   let a hostile config value break out of its intended context, but the

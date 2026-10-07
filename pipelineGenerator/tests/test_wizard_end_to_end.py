@@ -13,6 +13,7 @@ def test_run_wizard_full_flow_produces_expected_config(tmp_path: Path, monkeypat
             "",  # generation mode -> default both
             "",  # cicd platform -> default github_actions
             "3",  # performance tool -> jmeter
+            "",  # runner -> blank (hosted default)
             "performance/checkout.jmx",  # jmeter test plan path
             "",  # docker image -> blank (uses default)
             "",  # test type label -> default load
@@ -89,7 +90,7 @@ def test_step_cicd_and_tool_preserves_existing_setup_id_on_resume(
     config["setup"]["id"] = "already-assigned-id"
     config["cicd"]["type"] = "github_actions"
     config["tool"]["type"] = "jmeter"
-    responses = iter(["", "2"])  # cicd -> keep default, tool -> switch to blazemeter
+    responses = iter(["", "2", ""])  # cicd -> keep default, tool -> switch to blazemeter, runner -> blank
     monkeypatch.setattr("builtins.input", lambda *_: next(responses))
 
     _step_cicd_and_tool(config, tmp_path / "draft.yaml")
@@ -197,3 +198,28 @@ def test_automated_job_with_todo_scenario_keeps_config_a_draft() -> None:
     ]
 
     assert _is_incomplete(config) is True
+
+
+def test_step_cicd_and_tool_asks_runner_with_todo_default_for_loadrunner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = merged_base_config(None)
+    responses = iter(["", "1", ""])  # github, loadrunner (option 1), blank runner keeps default
+    monkeypatch.setattr("builtins.input", lambda *_: next(responses))
+
+    _step_cicd_and_tool(config, tmp_path / "draft.yaml")
+
+    assert config["tool"]["type"] == "loadrunner_professional"
+    assert config["cicd"]["runner"] == "TODO"
+
+
+def test_step_cicd_and_tool_runner_defaults_blank_for_jmeter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = merged_base_config(None)
+    responses = iter(["", "3", "my-runner"])
+    monkeypatch.setattr("builtins.input", lambda *_: next(responses))
+
+    _step_cicd_and_tool(config, tmp_path / "draft.yaml")
+
+    assert config["cicd"]["runner"] == "my-runner"

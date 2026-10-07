@@ -55,6 +55,18 @@ CATALOG_IDENTIFIER_PROMPTS = {
     },
 }
 
+RUNNER_LABELS = {
+    "github_actions": "Runner labels for runs-on, comma-separated",
+    "azure_devops": "Self-hosted agent pool name",
+    "jenkins": "Jenkins agent label",
+}
+
+RUNNER_HINTS = {
+    "github_actions": "Which runner should run the pipeline? Blank uses GitHub-hosted ubuntu-latest.",
+    "azure_devops": "Which agent pool should run the pipeline? Blank uses Microsoft-hosted ubuntu-latest.",
+    "jenkins": "Which Jenkins agent should run the pipeline? Blank uses any agent.",
+}
+
 GENERATION_MODE_HINTS = {
     "manual_only": (
         "A human triggers this on demand (e.g. a button, GitHub's workflow_dispatch), "
@@ -103,7 +115,20 @@ def _step_cicd_and_tool(config: dict, output_path: Path) -> None:
     )
     if config["setup"]["id"] == TODO_VALUE:
         config["setup"]["id"] = generate_unique_setup_id(config["cicd"]["type"], config["tool"]["type"])
+    _prompt_runner(config)
     save_config(output_path, config)
+
+
+def _prompt_runner(config: dict) -> None:
+    loadrunner = config["tool"]["type"] == "loadrunner_professional"
+    print(RUNNER_HINTS[config["cicd"]["type"]])
+    if loadrunner:
+        print(
+            "  LoadRunner runs wlrun on the agent itself: target the Windows machine next to your Controller "
+            "(it also needs bash, e.g. Git for Windows). Leave TODO if you don't know it yet."
+        )
+    default = config["cicd"].get("runner") or (TODO_VALUE if loadrunner else "")
+    config["cicd"]["runner"] = prompt_text(RUNNER_LABELS[config["cicd"]["type"]], default=default)
 
 
 def _step_connection(config: dict, output_path: Path) -> None:

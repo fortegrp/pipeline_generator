@@ -106,6 +106,7 @@ def base_config() -> dict:
         },
         "cicd": {
             "type": TODO_VALUE,
+            "runner": "",  # blank = the platform's hosted default
         },
         "tool": {
             "type": TODO_VALUE,

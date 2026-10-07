@@ -53,7 +53,7 @@ def test_render_azure_devops_writes_valid_pipelines(tmp_path: Path) -> None:
     assert run_step["env"]["TEST_CASE"] == "${{ parameters.test_case }}"
     assert "./scripts/run-jmeter.sh" in manual_text
     assert '--test-case "$TEST_CASE"' in manual_text
-    assert "parameters.test_case" not in run_step["script"]
+    assert "parameters.test_case" not in run_step["bash"]
     assert "pipeline-generator" not in manual_text
 
     automated_text = automated_path.read_text(encoding="utf-8")
@@ -152,8 +152,8 @@ def test_render_azure_devops_manual_pipeline_exposes_load_parameters(tmp_path: P
     assert parameters["test_type"]["default"] == "load"
     step = doc["jobs"][0]["steps"][1]
     assert step["env"]["USERS"] == "${{ parameters.users }}"
-    assert '--users "$USERS"' in step["script"]
-    assert "parameters.users" not in step["script"]
+    assert '--users "$USERS"' in step["bash"]
+    assert "parameters.users" not in step["bash"]
 
 
 def test_render_azure_devops_loadrunner_manual_pipeline_has_only_test_type(tmp_path: Path) -> None:
@@ -205,3 +205,28 @@ def test_render_azure_devops_jmeter_has_no_blazemeter_secrets(tmp_path: Path) ->
 
     for path in (tmp_path / "azure").iterdir():
         assert "BLAZEMETER" not in path.read_text()
+
+
+def _all_pipelines(tmp_path: Path) -> list[dict]:
+    return [yaml.safe_load(p.read_text()) for p in sorted((tmp_path / "azure").iterdir())]
+
+
+def test_render_azure_devops_defaults_to_hosted_ubuntu_and_bash_step(tmp_path: Path) -> None:
+    config = _config()
+    render_azure_devops(config, build_generic_package(config), tmp_path)
+
+    for doc in _all_pipelines(tmp_path):
+        job = doc["jobs"][0]
+        assert job["pool"] == {"vmImage": "ubuntu-latest"}
+        # A bash step, not script: (which is cmd.exe on Windows agents).
+        assert "bash" in job["steps"][1]
+        assert "script" not in job["steps"][1]
+
+
+def test_render_azure_devops_targets_configured_agent_pool(tmp_path: Path) -> None:
+    config = _config()
+    config["cicd"]["runner"] = "LoadRunner Agents"
+    render_azure_devops(config, build_generic_package(config), tmp_path)
+
+    for doc in _all_pipelines(tmp_path):
+        assert doc["jobs"][0]["pool"] == {"name": "LoadRunner Agents"}

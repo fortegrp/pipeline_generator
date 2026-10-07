@@ -109,3 +109,12 @@ def test_build_generic_package_builds_one_target_per_defined_pair_in_catalog_ord
 
     assert [t.selector for t in package.run_targets] == ["qa: checkout_smoke", "qa: browse", "staging: checkout_smoke"]
     assert package.run_targets[2].scenario_identifier == "SC-3"
+
+
+def test_build_generic_package_carries_runner() -> None:
+    config = _config()
+    config["cicd"]["runner"] = "lr-controller"
+
+    assert build_generic_package(config).runner == "lr-controller"
+    del config["cicd"]["runner"]
+    assert build_generic_package(config).runner == ""
