@@ -103,8 +103,9 @@ Pipeline: **customer YAML → validate → generic pipeline model → CI/CD rend
   (JMeter, BlazeMeter) — users/ramp-up/duration/throughput via
   `prompt_int_or_todo` (accepts `TODO`); LoadRunner's load shape comes from
   its `.lrs`, so it's never asked. `_is_incomplete` keeps the config
-  `incomplete: true` while any validation warning remains (not just a
-  missing required field), so a config with TODOs still generates.
+  `incomplete: true` while any "... is missing" warning remains (a TODO
+  value anywhere, not just a required field), so a config with TODOs still
+  generates — other warnings still block `generate` on a complete config.
   `id_builder.py` builds the setup ID from `cicd_type + tool_type`, and the
   wizard assigns it silently the moment both are chosen (no separate
   prompt) via `generate_unique_setup_id()`, which appends a short random
@@ -233,7 +234,9 @@ turns `load_profile` into `GenericPipelinePackage.load_inputs`
 for every tool, plus the four numbers for JMeter/BlazeMeter. Scripts bake
 each default as a `local` and accept the matching `--flag` override,
 `require_number`-checking the numeric ones; JMeter passes them as `-J`
-properties (plus derived `duration_seconds`/`throughput_per_minute`),
+properties (plus derived `duration_seconds` = ramp-up + duration, since
+JMeter's thread lifetime includes ramp-up, and `throughput_per_minute`);
+`require_number` rejects leading zeros (bash reads `08` as octal);
 BlazeMeter `PATCH`es `overrideExecutions` onto the test before starting it
 (body built with `printf`, not `jq` — values are already validated
 numbers, and the tests' fake `jq` only knows the script's read filters).

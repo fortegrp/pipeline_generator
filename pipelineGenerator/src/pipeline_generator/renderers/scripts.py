@@ -106,8 +106,10 @@ def _render_guard_helpers() -> str:
 
 require_number() {
   require_value "$1" "$2"
+  # Leading zeros are rejected: bash arithmetic reads 08/09 as octal, and
+  # "08" isn't valid in run-summary.json or the BlazeMeter request body.
   case "$2" in
-    *[!0-9]*) echo "ERROR: $1 must be a whole number, got: $2" >&2; exit 1 ;;
+    *[!0-9]*|0[0-9]*) echo "ERROR: $1 must be a whole number, got: $2" >&2; exit 1 ;;
   esac
 }"""
 
@@ -269,7 +271,7 @@ main() {{
     -n -t "$test_plan_path" -l "$results_dir/results.jtl" -e -o "$results_dir/report" \\
     -Jenvironment="$environment_identifier" -Jscenario="$scenario_identifier" \\
     -Jtest_type="$test_type" -Jusers="$users" -Jramp_up_seconds="$ramp_up_seconds" \\
-    -Jduration_seconds="$((duration_minutes * 60))" \\
+    -Jduration_seconds="$((ramp_up_seconds + duration_minutes * 60))" \\
     -Jthroughput_rps="$throughput_rps" -Jthroughput_per_minute="$((throughput_rps * 60))"; then
     run_status=1
   fi

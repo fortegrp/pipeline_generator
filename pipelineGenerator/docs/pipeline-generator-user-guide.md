@@ -179,7 +179,7 @@ scenario combination), rather than a remote name — see section 10 for why.
 
 | Prompt | Asked for | Notes |
 |---|---|---|
-| `Test type label` | every tool | Free text (`load`, `stress`, `soak`, `spike`, …), default `load`. Only a label: passed to your test script (`-Jtest_type` for JMeter) and recorded in `run-summary.json`; it never changes how the test runs. |
+| `Test type label` | every tool | Short single-line label (`load`, `stress`, `soak`, `spike`, …; letters, digits, spaces, `_.-`, up to 64), default `load`. Only a label: passed to your test script (`-Jtest_type` for JMeter) and recorded in `run-summary.json`; it never changes how the test runs. |
 | `Number of users` | JMeter, BlazeMeter | Whole number ≥ 1. |
 | `Ramp-up (seconds)` | JMeter, BlazeMeter | Whole number ≥ 0. |
 | `Duration at full load (minutes)` | JMeter, BlazeMeter | Whole number ≥ 1 — the steady-state/hold time after ramp-up. |
@@ -196,7 +196,8 @@ How the values reach the tool:
 - **JMeter** — passed as `-J` properties your `.jmx` must read:
   `${__P(users,1)}` (Number of Threads), `${__P(ramp_up_seconds,0)}`
   (Ramp-up), `${__P(duration_seconds,60)}` (Thread Group → Specify thread
-  lifetime → Duration; derived from minutes), `${__P(throughput_per_minute,0)}`
+  lifetime → Duration; = ramp-up + duration at full load, because JMeter's
+  thread lifetime includes the ramp-up), `${__P(throughput_per_minute,0)}`
   (Constant Throughput Timer; derived from req/s), `${__P(throughput_rps,0)}`
   and `${__P(test_type)}`.
 - **BlazeMeter** — applied to the test with one API call

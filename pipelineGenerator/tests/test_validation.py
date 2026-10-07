@@ -325,3 +325,22 @@ def test_validation_warns_when_automated_job_timeout_is_shorter_than_test() -> N
     result = validate_config(config)
 
     assert any("automated job 'nightly' timeout" in warning for warning in result.warnings)
+
+
+def test_validation_errors_on_multiline_or_non_string_test_type() -> None:
+    for bad in ("load\nstress", "x" * 65, ["load"], "it's"):
+        config = _complete_jmeter_config()
+        config["load_profile"]["test_type"] = bad
+
+        result = validate_config(config)
+
+        assert any("load_profile.test_type" in error for error in result.errors), bad
+
+
+def test_validation_accepts_simple_test_type_label() -> None:
+    config = _complete_jmeter_config()
+    config["load_profile"]["test_type"] = "soak test-2.1"
+
+    result = validate_config(config)
+
+    assert not any("test_type" in message for message in result.errors + result.warnings)

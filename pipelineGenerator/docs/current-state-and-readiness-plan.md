@@ -298,7 +298,8 @@ trigger inputs).
   -l run-output/<environment_slug>_<scenario_slug>/results.jtl -e -o
   run-output/<environment_slug>_<scenario_slug>/report
   -Jenvironment=... -Jscenario=... -Jtest_type=... -Jusers=...
-  -Jramp_up_seconds=... -Jduration_seconds=... -Jthroughput_rps=...
+  -Jramp_up_seconds=... -Jduration_seconds=<ramp-up + duration>
+  -Jthroughput_rps=...
   -Jthroughput_per_minute=...` for real. The whole working directory is
   bind-mounted at `/workspace` so relative-path CSV data sets/fragments
   still resolve, and results land directly on the host filesystem.

@@ -184,7 +184,7 @@ automated jobs, pre-run checks), saving progress to `--output` after each
 section. A few things
 about how it behaves:
 
-- **Test parameters.** A test type label (e.g. `load`, `soak` — passed to
+- **Test parameters.** A short test type label (e.g. `load`, `soak` — passed to
   your test script and recorded in `run-summary.json`, never changes
   behavior) for every tool; for JMeter and BlazeMeter also users, ramp-up
   (seconds), duration (minutes) and throughput (requests/second, `0` = no
@@ -210,8 +210,7 @@ about how it behaves:
 ## Draft vs. Complete Setups (the `incomplete` flag)
 
 Every config has a top-level `incomplete: true|false` flag — the wizard sets
-it to `true` while anything is still `TODO` (or any validation warning
-remains), and it can also be set by hand. A draft still generates a full
+it to `true` while any value is still `TODO`, and it can also be set by hand. A draft still generates a full
 package: the generated script then refuses to run while a value it needs
 is `TODO`, printing the exact `customer.yaml` field to fill (e.g.
 `ERROR: load_profile.users is not set (still TODO)`).

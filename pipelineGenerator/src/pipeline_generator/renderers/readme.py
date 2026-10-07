@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pipeline_generator.config.placeholders import TODO_VALUE
 from pipeline_generator.config.schema import DEFAULT_JMETER_DOCKER_IMAGE
 from pipeline_generator.generator.generic_model import AutomatedJobSpec, GenericPipelinePackage
 from pipeline_generator.renderers.quoting import safe_filename_component
@@ -37,7 +38,8 @@ def _load_profile_lines(package: GenericPipelinePackage, script_name: str) -> li
                 "",
                 "- Thread Group → Number of Threads: `${__P(users,1)}`",
                 "- Thread Group → Ramp-up period: `${__P(ramp_up_seconds,0)}`",
-                "- Thread Group → Specify thread lifetime → Duration: `${__P(duration_seconds,60)}`",
+                "- Thread Group → Specify thread lifetime → Duration: `${__P(duration_seconds,60)}` "
+                "(ramp-up + duration at full load, since JMeter's lifetime includes the ramp-up)",
                 "- Constant Throughput Timer → Target throughput (per minute): `${__P(throughput_per_minute,0)}` "
                 "(`${__P(throughput_rps,0)}` is also available)",
                 "- Test type label, if your plan uses it: `${__P(test_type)}`",
@@ -60,7 +62,7 @@ def _load_todo_lines(package: GenericPipelinePackage) -> list[str]:
     return [
         f"- Fill `load_profile.{item.name}` in `customer.yaml` (the generated script stops while it's TODO)."
         for item in package.load_inputs
-        if item.default == "TODO"
+        if item.default == TODO_VALUE
     ]
 
 

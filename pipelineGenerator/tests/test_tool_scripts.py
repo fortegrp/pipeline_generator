@@ -1545,7 +1545,7 @@ def test_jmeter_script_passes_load_profile_as_properties(tmp_path: Path) -> None
         "-Jtest_type=load",
         "-Jusers=10",
         "-Jramp_up_seconds=30",
-        "-Jduration_seconds=300",
+        "-Jduration_seconds=330",  # JMeter thread lifetime includes ramp-up: 30s + 5min
         "-Jthroughput_rps=2",
         "-Jthroughput_per_minute=120",
     ):
@@ -1711,3 +1711,15 @@ def test_loadrunner_script_stops_on_todo_scenario_identifier(tmp_path: Path) -> 
     assert result.returncode == 1
     assert "scenario identifier for checkout_smoke is not set" in result.stderr
     assert not (tmp_path / "wlrun-called").exists()
+
+
+def test_jmeter_script_rejects_leading_zero_load_flag(tmp_path: Path) -> None:
+    # bash arithmetic would read 08/09 as (invalid) octal, and "08" is not valid JSON.
+    script_path = _render(tmp_path, _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""}))
+    env = _stub_bin_with(tmp_path, docker=_logging_docker(tmp_path))
+
+    result = _run(script_path, [*_QA, "--users", "08"], env, tmp_path)
+
+    assert result.returncode == 1
+    assert "load_profile.users must be a whole number" in result.stderr
+    assert not (tmp_path / "docker-args").exists()

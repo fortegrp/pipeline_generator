@@ -4,6 +4,12 @@ All notable changes to `pipeline-generator` are documented here.
 
 ## [Unreleased]
 
+- **Breaking:** JMeter and BlazeMeter configs now need a filled
+  `load_profile` (`users`, `ramp_up_seconds`, `duration_minutes`,
+  `throughput_rps`). An existing `incomplete: false` config without it
+  fails `generate` with `load_profile.* is missing` warnings — add the
+  section (or run `wizard --resume`). BlazeMeter runs now always apply
+  these values to the test.
 - Added test parameters. New `load_profile` config section: `test_type`
   (free-text label, every tool) and, for JMeter and BlazeMeter, `users`,
   `ramp_up_seconds`, `duration_minutes`, `throughput_rps` (`0` = no cap).
@@ -15,7 +21,8 @@ All notable changes to `pipeline-generator` are documented here.
   `--throughput-rps`/`--test-type`; the manual pipeline (all three CI/CD
   platforms) exposes them as pre-filled trigger inputs delivered via env
   vars; automated jobs use the config values. JMeter receives them as
-  `-J` properties (plus derived `duration_seconds` and
+  `-J` properties (plus derived `duration_seconds` = ramp-up + duration,
+  since JMeter's thread lifetime includes the ramp-up, and
   `throughput_per_minute`) that the `.jmx` reads via `${__P(...)}` — the
   generated README lists them. BlazeMeter applies them with
   `PATCH /api/v4/tests/<id>` (`overrideExecutions`) before starting; this
@@ -24,15 +31,17 @@ All notable changes to `pipeline-generator` are documented here.
   `ramp_up_seconds`, `duration_minutes`, `throughput_rps` (numbers are
   `null` for LoadRunner, keeping one shared key set). The validator warns
   on TODO load values (JMeter/BlazeMeter only), errors on out-of-range
-  ones, and warns when a pipeline timeout isn't longer than ramp-up +
-  duration.
+  ones (including leading zeros at run time), requires `test_type` to be a
+  short single-line label, and warns when a pipeline timeout isn't longer
+  than ramp-up + duration.
 - Generated scripts now stop before any pre-run check or tool call when a
   value they need is still `TODO` (connection fields, the resolved catalog
   identifier, load values), with one line naming the `customer.yaml` field
   — instead of handing the literal string `TODO` to the tool.
-- The wizard now keeps a config `incomplete: true` while any validation
-  warning remains (e.g. a TODO test plan path or load value), not only
-  while a required field is missing. Previously such a config was saved as
+- The wizard now keeps a config `incomplete: true` while any value is
+  still missing/TODO (e.g. a TODO test plan path or load value), not only
+  while a required field is missing. Other warnings (a too-short timeout,
+  a duplicate key) still block `generate` on a complete config. Previously such a config was saved as
   `incomplete: false` and `generate` then refused it.
 
 - Removed the `verify_load_generators_connected` pre-run check (offered

@@ -151,3 +151,18 @@ def test_config_with_todo_load_value_stays_incomplete() -> None:
     config["cicd"]["type"] = "github_actions"
 
     assert _is_incomplete(config) is True
+
+
+def test_config_with_non_todo_warning_is_not_marked_incomplete() -> None:
+    # A real misconfiguration (timeout shorter than the test) must keep blocking
+    # `generate` -- only missing/TODO values make a config a draft.
+    config = _jmeter_config()
+    config["setup"]["id"] = "some-setup"
+    config["cicd"]["type"] = "github_actions"
+    config["tool"]["connection"] = {"test_plan_path": "plan.jmx", "docker_image": ""}
+    config["catalog"]["environments"] = [{"key": "qa", "identifier": "env-qa"}]
+    config["catalog"]["scenarios"] = [{"key": "checkout_smoke", "identifier": "SC-1"}]
+    config["load_profile"].update({"users": 10, "ramp_up_seconds": 0, "duration_minutes": 60, "throughput_rps": 0})
+    config["manual_pipeline"]["timeout_minutes"] = 30
+
+    assert _is_incomplete(config) is False

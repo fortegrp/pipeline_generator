@@ -324,10 +324,12 @@ def _print_summary(config: dict) -> None:
 
 
 def _is_incomplete(config: dict) -> bool:
-    # Any remaining warning (e.g. a TODO test plan path or load value) keeps the
-    # config a draft, so `generate` still produces the package; the generated
-    # script's TODO guard then stops the run naming the exact field to fill.
+    # A TODO value anywhere (e.g. test plan path, load value) keeps the config a
+    # draft, so `generate` still produces the package and the generated
+    # script's TODO guard stops the run naming the field to fill. Only "is
+    # missing" warnings count: real misconfigurations (a too-short timeout, a
+    # duplicate key) must keep blocking `generate`.
     values_to_check = [value for _, value in required_field_values(config)]
     if any(value in {"", TODO_VALUE, None} for value in values_to_check):
         return True
-    return bool(validate_config(config).warnings)
+    return any(" is missing" in warning for warning in validate_config(config).warnings)

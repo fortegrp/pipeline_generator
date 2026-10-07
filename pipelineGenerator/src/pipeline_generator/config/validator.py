@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 
@@ -9,6 +10,7 @@ from pipeline_generator.config.schema import (
     LOAD_PROFILE_FIELDS,
     LOAD_PROFILE_MINIMUMS,
     LOAD_PROFILE_TOOLS,
+    TEST_TYPE_PATTERN,
     PRE_RUN_CHECKS,
     SUPPORTED_CICD,
     SUPPORTED_TOOLS,
@@ -188,6 +190,12 @@ def validate_config(config: dict) -> ValidationResult:
                 result.warnings.append(f"tool.connection.{key} is missing for JMeter.")
 
     load_profile = _as_dict(config.get("load_profile", {}), "load_profile", result)
+    test_type = load_profile.get("test_type")
+    if test_type is not None and not (isinstance(test_type, str) and re.fullmatch(TEST_TYPE_PATTERN, test_type)):
+        result.errors.append(
+            f"load_profile.test_type must be a single-line label of up to 64 letters, digits, spaces, "
+            f"'_', '.' or '-', got: {test_type!r}"
+        )
     if tool_type in LOAD_PROFILE_TOOLS:
         for name in LOAD_PROFILE_FIELDS:
             value = load_profile.get(name)

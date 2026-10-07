@@ -50,6 +50,9 @@ LOAD_PROFILE_MINIMUMS = {"users": 1, "ramp_up_seconds": 0, "duration_minutes": 1
 # LoadRunner Professional is deliberately absent: wlrun has no CLI for
 # Vusers/schedule, so its load shape always comes from the .lrs itself.
 LOAD_PROFILE_TOOLS = ("jmeter", "blazemeter")
+# test_type reaches YAML, Groovy and shell as free text, so keep it a short,
+# single-line label.
+TEST_TYPE_PATTERN = r"[A-Za-z0-9 _.-]{0,64}"
 LOAD_PROFILE_LABELS = {
     "test_type": "Test type label (e.g. load, stress, soak, spike)",
     "users": "Number of users",
