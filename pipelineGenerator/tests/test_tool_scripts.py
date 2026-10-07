@@ -1735,3 +1735,17 @@ def test_jmeter_script_rejects_leading_zero_load_flag(tmp_path: Path) -> None:
     assert result.returncode == 1
     assert "load_profile.users must be a whole number" in result.stderr
     assert not (tmp_path / "docker-args").exists()
+
+
+def test_blazemeter_script_rejects_unexpanded_azure_secret_macro(tmp_path: Path) -> None:
+    # Azure leaves an undefined $(VAR) macro as literal text, which would pass
+    # the "must be set" check and then fail later with a misleading 401.
+    script_path = _render(tmp_path, _base_config("blazemeter", _BLAZEMETER_CONNECTION))
+    env = _stub_bin_with(tmp_path, curl=_logging_curl(tmp_path), jq=_FAKE_JQ)
+    env["BLAZEMETER_API_KEY_ID"] = "$(BLAZEMETER_API_KEY_ID)"
+
+    result = _run(script_path, [*_QA, "--timeout-minutes", "1"], env, tmp_path)
+
+    assert result.returncode == 1
+    assert "BLAZEMETER_API_KEY_ID is not defined" in result.stderr
+    assert not (tmp_path / "curl-log").exists()

@@ -345,3 +345,12 @@ def test_readme_no_longer_asks_to_fill_secret_names_in_pipeline_files() -> None:
     todos = _section(render_setup_readme(config, build_generic_package(config)), "Remaining TODOs")
 
     assert "Fill secret variable names" not in todos
+
+
+def test_readme_tells_azure_users_where_automated_job_secrets_live() -> None:
+    readme = _blazemeter_readme("azure_devops")
+
+    assert "pipeline that includes the template" in _section(readme, "Remaining TODOs")
+    automated = _section(readme, "Automated Job Integration")
+    assert "under `jobs:`" in automated
+    assert "`template:` step" not in automated

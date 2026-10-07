@@ -13,7 +13,8 @@ _BLAZEMETER_SECRET_LINES = {
     ),
     "azure_devops": (
         "- Create secret pipeline variables `BLAZEMETER_API_KEY_ID` and `BLAZEMETER_API_KEY_SECRET` "
-        "(or link a variable group with them); the generated pipelines map them into the run step."
+        "(or link a variable group with them) on the manual pipeline, and for automated jobs on the "
+        "pipeline that includes the template; the generated files map them into the run step."
     ),
     "jenkins": (
         f"- Create a Jenkins **Username with password** credential with ID `{JENKINS_BLAZEMETER_CREDENTIALS_ID}` "
@@ -147,8 +148,9 @@ def _automated_job_lines(cicd_type: str, tool_type: str, job: AutomatedJobSpec) 
         ]
     if cicd_type == "azure_devops":
         return [
-            f"- **{job.name}**: reference the generated `azure/performance-automated-{job_slug}.yml` "
-            "template from your deployment pipeline with a `template:` step.",
+            f"- **{job.name}**: include the generated `azure/performance-automated-{job_slug}.yml` "
+            "jobs template from your deployment pipeline under `jobs:` "
+            f"(`- template: azure/performance-automated-{job_slug}.yml`).",
         ]
     if cicd_type == "jenkins":
         return [

@@ -350,6 +350,18 @@ main() {{
   fi
   : "${{BLAZEMETER_API_KEY_ID:?BLAZEMETER_API_KEY_ID must be set}}"
   : "${{BLAZEMETER_API_KEY_SECRET:?BLAZEMETER_API_KEY_SECRET must be set}}"
+  # Azure DevOps passes an undefined $(VAR) macro through as literal text,
+  # which would get past the checks above and fail later as a misleading 401.
+  # (The value is never printed -- it could be a real secret.)
+  local secret_name
+  for secret_name in BLAZEMETER_API_KEY_ID BLAZEMETER_API_KEY_SECRET; do
+    case "${{!secret_name}}" in
+      *'$('*)
+        echo "ERROR: $secret_name is not defined -- the pipeline passed an unexpanded \$(...) macro. Create it as a secret pipeline variable." >&2
+        exit 1
+        ;;
+    esac
+  done
 {host_check}{project_check}{scenario_check}{precheck_comments}
   local results_dir="run-output/${{environment_slug}}_${{scenario_slug}}"
   mkdir -p "$results_dir"

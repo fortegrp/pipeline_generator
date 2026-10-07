@@ -15,6 +15,9 @@ All notable changes to `pipeline-generator` are documented here.
   password credential `blazemeter-api-key`. The generated README's TODOs
   now say exactly what to create per platform (and drop the vague "fill
   secret variable names" line).
+  `run-blazemeter.sh` also stops with a clear error when a credential
+  arrives as an unexpanded Azure `$(...)` macro (an undefined secret
+  variable), instead of failing later with a misleading 401.
 
 - **Breaking:** scenarios now belong to an environment.
   `catalog.scenarios` (a flat top-level list) is removed; each
