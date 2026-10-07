@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from pipeline_generator.config.placeholders import TODO_VALUE
-from pipeline_generator.config.schema import DEFAULT_JMETER_DOCKER_IMAGE, PRE_RUN_CHECKS
-from pipeline_generator.generator.generic_model import GenericPipelinePackage, InputOption
+from pipeline_generator.config.schema import DEFAULT_JMETER_DOCKER_IMAGE, LOAD_PROFILE_FIELDS, PRE_RUN_CHECKS
+from pipeline_generator.generator.generic_model import GenericPipelinePackage, InputOption, LoadInput
 from pipeline_generator.renderers.quoting import safe_filename_component, shell_quote
 
 
@@ -96,7 +96,30 @@ def _render_summary_capture_start() -> str:
 """
 
 
-def _render_summary_write(tool_type: str) -> str:
+def _render_guard_helpers() -> str:
+    return """require_value() {
+  if [ -z "$2" ] || [ "$2" = "TODO" ]; then
+    echo "ERROR: $1 is not set (still TODO). Fill it in customer.yaml and regenerate, or pass it as a flag." >&2
+    exit 1
+  fi
+}
+
+require_number() {
+  require_value "$1" "$2"
+  case "$2" in
+    *[!0-9]*) echo "ERROR: $1 must be a whole number, got: $2" >&2; exit 1 ;;
+  esac
+}"""
+
+
+def _render_summary_write(tool_type: str, load_inputs: list[LoadInput]) -> str:
+    # Every tool writes the same keys (one shared schema). Numeric load values
+    # are already require_number-checked, so they're embedded raw; a tool
+    # without them (LoadRunner: load shape lives in the .lrs) writes null.
+    # test_type is free text and goes through json_escape.
+    present = {item.name for item in load_inputs}
+    numeric_format = "".join(f', "{name}": %s' for name in LOAD_PROFILE_FIELDS)
+    numeric_args = "".join(f' "${name}"' if name in present else " null" for name in LOAD_PROFILE_FIELDS)
     return f"""  local ended_at_iso
   local ended_at_epoch
   ended_at_iso="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -110,13 +133,15 @@ def _render_summary_write(tool_type: str) -> str:
   scenario_escaped="$(json_escape "$scenario_key")"
   run_id_escaped="$(json_escape "$run_id")"
   report_link_escaped="$(json_escape "$report_link")"
-  printf '{{"tool": "{tool_type}", "run_id": "%s", "environment": "%s", "scenario": "%s", "status": "%s", "started_at": "%s", "ended_at": "%s", "duration_seconds": %s, "report_link": "%s", "results_dir": "%s", "artifact_status": "%s"}}' \\
-    "$run_id_escaped" "$environment_escaped" "$scenario_escaped" "$summary_status" "$started_at_iso" "$ended_at_iso" "$duration_seconds" "$report_link_escaped" "$results_dir" "$artifact_status" \\
+  local test_type_escaped
+  test_type_escaped="$(json_escape "$test_type")"
+  printf '{{"tool": "{tool_type}", "run_id": "%s", "environment": "%s", "scenario": "%s", "status": "%s", "started_at": "%s", "ended_at": "%s", "duration_seconds": %s, "report_link": "%s", "results_dir": "%s", "artifact_status": "%s", "test_type": "%s"{numeric_format}}}' \\
+    "$run_id_escaped" "$environment_escaped" "$scenario_escaped" "$summary_status" "$started_at_iso" "$ended_at_iso" "$duration_seconds" "$report_link_escaped" "$results_dir" "$artifact_status" "$test_type_escaped"{numeric_args} \\
     > "$results_dir/run-summary.json"
 """
 
 
-def _render_arg_parsing(include_timeout: bool = False) -> str:
+def _render_arg_parsing(load_inputs: list[LoadInput], include_timeout: bool = False) -> str:
     timeout_local = ""
     timeout_case = ""
     timeout_required_check = ""
@@ -136,21 +161,34 @@ def _render_arg_parsing(include_timeout: bool = False) -> str:
   esac
 """
 
+    # Load values default to customer.yaml's load_profile, baked in at
+    # generation time; the manual pipeline's trigger inputs override them.
+    load_locals = "".join(f"  local {item.name}={shell_quote(item.default)}\n" for item in load_inputs)
+    load_cases = "".join(f'      {item.flag}) {item.name}="$2"; shift 2 ;;\n' for item in load_inputs)
+    load_usage = "".join(
+        f" [{item.flag} {'LABEL' if item.name == 'test_type' else 'N'}]" for item in load_inputs
+    )
+    load_checks = "".join(
+        f'  require_number "load_profile.{item.name}" "${item.name}"\n'
+        for item in load_inputs
+        if item.name != "test_type"
+    )
+
     return f"""  local environment_key=""
   local scenario_key=""
-{timeout_local}  while [ $# -gt 0 ]; do
+{timeout_local}{load_locals}  while [ $# -gt 0 ]; do
     case "$1" in
       --environment) environment_key="$2"; shift 2 ;;
       --scenario) scenario_key="$2"; shift 2 ;;
-{timeout_case}      *) echo "Unknown argument: $1" >&2; exit 1 ;;
+{timeout_case}{load_cases}      *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
   done
 
   if [ -z "$environment_key" ] || [ -z "$scenario_key" ]{timeout_required_check}; then
-    echo "Usage: $0 --environment <key> --scenario <key>{timeout_usage}" >&2
+    echo "Usage: $0 --environment <key> --scenario <key>{timeout_usage}{load_usage}" >&2
     exit 1
   fi
-{timeout_numeric_check}
+{timeout_numeric_check}{load_checks}
   local environment_identifier
   local scenario_identifier
   environment_identifier="$(resolve_environment_identifier "$environment_key")"
@@ -198,12 +236,17 @@ set -euo pipefail
 
 {_render_json_escape_helper()}
 
+{_render_guard_helpers()}
+
 main() {{
-{_render_arg_parsing()}
+{_render_arg_parsing(package.load_inputs)}
   mkdir -p run-output
 
   local test_plan_path={shell_quote(test_plan_path)}
   local docker_image={shell_quote(docker_image)}
+  require_value "tool.connection.test_plan_path" "$test_plan_path"
+  require_value "catalog environment identifier for $environment_key" "$environment_identifier"
+  require_value "catalog scenario identifier for $scenario_key" "$scenario_identifier"
 {scenario_check}{docker_check}{precheck_comments}
   local environment_slug
   local scenario_slug
@@ -224,7 +267,10 @@ main() {{
   local run_status=0
   if ! docker run --rm -v "$(pwd):/workspace" -w /workspace "$docker_image" \\
     -n -t "$test_plan_path" -l "$results_dir/results.jtl" -e -o "$results_dir/report" \\
-    -Jenvironment="$environment_identifier" -Jscenario="$scenario_identifier"; then
+    -Jenvironment="$environment_identifier" -Jscenario="$scenario_identifier" \\
+    -Jtest_type="$test_type" -Jusers="$users" -Jramp_up_seconds="$ramp_up_seconds" \\
+    -Jduration_seconds="$((duration_minutes * 60))" \\
+    -Jthroughput_rps="$throughput_rps" -Jthroughput_per_minute="$((throughput_rps * 60))"; then
     run_status=1
   fi
 
@@ -236,7 +282,7 @@ main() {{
   if [ -f "$results_dir/results.jtl" ] && [ -f "$results_dir/report/index.html" ]; then
     artifact_status="complete"
   fi
-{_render_summary_write("jmeter")}
+{_render_summary_write("jmeter", package.load_inputs)}
   exit "$run_status"
 }}
 
@@ -303,8 +349,17 @@ set -euo pipefail
 
 {_render_json_escape_helper()}
 
+{_render_guard_helpers()}
+
 main() {{
-{_render_arg_parsing(include_timeout=True)}
+{_render_arg_parsing(package.load_inputs, include_timeout=True)}
+  local base_url={shell_quote(base_url)}
+  local workspace_id={shell_quote(workspace_id)}
+  local project_id={shell_quote(project_id)}
+  require_value "tool.connection.base_url" "$base_url"
+  require_value "tool.connection.workspace_id" "$workspace_id"
+  require_value "tool.connection.project_id" "$project_id"
+  require_value "catalog scenario identifier for $scenario_key" "$scenario_identifier"
   mkdir -p run-output
 
   if ! command -v jq >/dev/null 2>&1; then
@@ -313,10 +368,6 @@ main() {{
   fi
   : "${{BLAZEMETER_API_KEY_ID:?BLAZEMETER_API_KEY_ID must be set}}"
   : "${{BLAZEMETER_API_KEY_SECRET:?BLAZEMETER_API_KEY_SECRET must be set}}"
-
-  local base_url={shell_quote(base_url)}
-  local workspace_id={shell_quote(workspace_id)}
-  local project_id={shell_quote(project_id)}
 {host_check}{project_check}{scenario_check}{precheck_comments}
   local environment_slug
   local scenario_slug
@@ -324,6 +375,24 @@ main() {{
   scenario_slug="$(resolve_scenario_slug "$scenario_key")"
   local results_dir="run-output/${{environment_slug}}_${{scenario_slug}}"
   mkdir -p "$results_dir"
+
+  # Applies the load profile to the BlazeMeter test. Field names are our
+  # best understanding of API v4 -- verify against a live account. This
+  # persists on the test in BlazeMeter, not just for this run. Built with
+  # printf rather than jq: every value is already require_number-checked.
+  local throughput_json=""
+  if [ "$throughput_rps" -gt 0 ]; then
+    throughput_json=", \\"throughput\\": $throughput_rps"
+  fi
+  local overrides
+  overrides="$(printf '{{"overrideExecutions": [{{"concurrency": %s, "rampUp": "%ss", "holdFor": "%sm"%s}}]}}' \\
+    "$users" "$ramp_up_seconds" "$duration_minutes" "$throughput_json")"
+  if ! curl -sf -o /dev/null -u "$BLAZEMETER_API_KEY_ID:$BLAZEMETER_API_KEY_SECRET" \\
+    -X PATCH -H "Content-Type: application/json" -d "$overrides" \\
+    "$base_url/api/v4/tests/$scenario_identifier"; then
+    echo "ERROR: failed to apply load profile to BlazeMeter test $scenario_identifier" >&2
+    exit 1
+  fi
 
   local start_response
   start_response="$(curl -s -u "$BLAZEMETER_API_KEY_ID:$BLAZEMETER_API_KEY_SECRET" \\
@@ -388,7 +457,7 @@ main() {{
       ;;
   esac
 
-{_render_summary_write("blazemeter")}
+{_render_summary_write("blazemeter", package.load_inputs)}
   exit "$run_status"
 }}
 
@@ -435,11 +504,14 @@ set -euo pipefail
 
 {_render_json_escape_helper()}
 
+{_render_guard_helpers()}
+
 main() {{
-{_render_arg_parsing()}
+{_render_arg_parsing(package.load_inputs)}
   mkdir -p run-output
 
   local wlrun_path={shell_quote(wlrun_path)}
+  require_value "catalog scenario identifier for $scenario_key" "$scenario_identifier"
 {controller_check}{scenario_check}{precheck_comments}
   local environment_slug
   local scenario_slug
@@ -470,7 +542,7 @@ main() {{
   if [ -n "$(ls -A "$results_dir" 2>/dev/null)" ]; then
     artifact_status="complete"
   fi
-{_render_summary_write("loadrunner_professional")}
+{_render_summary_write("loadrunner_professional", package.load_inputs)}
   exit "$run_status"
 }}
 

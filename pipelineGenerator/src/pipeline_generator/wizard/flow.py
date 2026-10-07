@@ -8,6 +8,10 @@ from pipeline_generator.config.placeholders import TODO_VALUE
 from pipeline_generator.config.schema import (
     DEFAULT_JMETER_DOCKER_IMAGE,
     GENERATION_MODES,
+    LOAD_PROFILE_FIELDS,
+    LOAD_PROFILE_LABELS,
+    LOAD_PROFILE_MINIMUMS,
+    LOAD_PROFILE_TOOLS,
     PRE_RUN_CHECKS,
     PRE_RUN_CHECKS_BY_TOOL,
     SUPPORTED_CICD,
@@ -20,12 +24,13 @@ from pipeline_generator.wizard.id_builder import generate_unique_setup_id
 from pipeline_generator.wizard.prompts import (
     prompt_bool,
     prompt_choice,
+    prompt_int_or_todo,
     prompt_multi_choice,
     prompt_positive_int,
     prompt_text,
 )
 
-TOTAL_STEPS = 7
+TOTAL_STEPS = 8
 
 CATALOG_IDENTIFIER_PROMPTS = {
     "jmeter": {
@@ -105,8 +110,27 @@ def _step_connection(config: dict, output_path: Path) -> None:
     save_config(output_path, config)
 
 
+def _step_load_profile(config: dict, output_path: Path) -> None:
+    _section(4, "Test parameters")
+    profile = config["load_profile"]
+    print(
+        "Test type is a label passed to your test script and recorded in run-summary.json -- "
+        "it doesn't change how the test runs."
+    )
+    profile["test_type"] = prompt_text(LOAD_PROFILE_LABELS["test_type"], default=profile.get("test_type") or "load")
+    if config["tool"]["type"] not in LOAD_PROFILE_TOOLS:
+        print("Users, ramp-up, duration and throughput come from the LoadRunner scenario (.lrs) itself.")
+    else:
+        print("Type TODO (or leave a TODO default) for anything you don't know yet.")
+        for name in LOAD_PROFILE_FIELDS:
+            profile[name] = prompt_int_or_todo(
+                LOAD_PROFILE_LABELS[name], profile.get(name, TODO_VALUE), LOAD_PROFILE_MINIMUMS[name]
+            )
+    save_config(output_path, config)
+
+
 def _step_manual_pipeline(config: dict, output_path: Path) -> None:
-    _section(4, "Manual pipeline")
+    _section(5, "Manual pipeline")
     if config["setup"]["generation_mode"] in {"manual_only", "both"}:
         config["manual_pipeline"]["enabled"] = True
         config["manual_pipeline"]["name"] = prompt_text(
@@ -123,7 +147,7 @@ def _step_manual_pipeline(config: dict, output_path: Path) -> None:
 
 
 def _step_catalog(config: dict, output_path: Path) -> None:
-    _section(5, "Environments and scenarios")
+    _section(6, "Environments and scenarios")
     tool_type = config["tool"]["type"]
     config["catalog"]["environments"] = _prompt_catalog_section(
         "environment", config["catalog"]["environments"], tool_type
@@ -135,7 +159,7 @@ def _step_catalog(config: dict, output_path: Path) -> None:
 
 
 def _step_automated_jobs(config: dict, output_path: Path) -> None:
-    _section(6, "Automated jobs")
+    _section(7, "Automated jobs")
     if config["setup"]["generation_mode"] in {"automated_only", "both"}:
         config["automated_jobs"] = _prompt_automated_jobs_section(config)
     elif config["setup"]["generation_mode"] == "manual_only":
@@ -144,7 +168,7 @@ def _step_automated_jobs(config: dict, output_path: Path) -> None:
 
 
 def _step_checks_and_finalize(config: dict, output_path: Path) -> None:
-    _section(7, "Pre-run checks")
+    _section(8, "Pre-run checks")
     config["pre_run_checks"] = _prompt_checks(config.get("pre_run_checks", []), config["tool"]["type"])
     config["readme"]["include_manual_usage"] = config["manual_pipeline"]["enabled"]
     config["readme"]["include_automated_usage"] = bool(config["automated_jobs"])
@@ -162,6 +186,7 @@ def run_wizard(output_path: Path, resume: bool = False) -> dict:
     _step_setup_basics(config, output_path)
     _step_cicd_and_tool(config, output_path)
     _step_connection(config, output_path)
+    _step_load_profile(config, output_path)
     _step_manual_pipeline(config, output_path)
     _step_catalog(config, output_path)
     _step_automated_jobs(config, output_path)
@@ -299,5 +324,10 @@ def _print_summary(config: dict) -> None:
 
 
 def _is_incomplete(config: dict) -> bool:
+    # Any remaining warning (e.g. a TODO test plan path or load value) keeps the
+    # config a draft, so `generate` still produces the package; the generated
+    # script's TODO guard then stops the run naming the exact field to fill.
     values_to_check = [value for _, value in required_field_values(config)]
-    return any(value in {"", TODO_VALUE, None} for value in values_to_check)
+    if any(value in {"", TODO_VALUE, None} for value in values_to_check):
+        return True
+    return bool(validate_config(config).warnings)

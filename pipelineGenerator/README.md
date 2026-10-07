@@ -177,12 +177,19 @@ BlazeMeter.
 
 ## Interactive Wizard
 
-`pipeline-generator wizard` walks through the config in seven numbered
+`pipeline-generator wizard` walks through the config in eight numbered
 sections (what to generate, CI/CD + tool selection, tool connection
-details, manual pipeline, environments/scenarios, automated jobs, pre-run
-checks), saving progress to `--output` after each section. A few things
+details, test parameters, manual pipeline, environments/scenarios,
+automated jobs, pre-run checks), saving progress to `--output` after each
+section. A few things
 about how it behaves:
 
+- **Test parameters.** A test type label (e.g. `load`, `soak` — passed to
+  your test script and recorded in `run-summary.json`, never changes
+  behavior) for every tool; for JMeter and BlazeMeter also users, ramp-up
+  (seconds), duration (minutes) and throughput (requests/second, `0` = no
+  cap). Type `TODO` for anything you don't know yet. LoadRunner takes all
+  of these from the `.lrs` scenario, so it's only asked the label.
 - **Inline hints.** Choices with non-obvious implications (`generation_mode`)
   show a one-line explanation of what each option means.
 - **Resuming never discards existing entries.** If you `--resume` a draft
@@ -203,8 +210,11 @@ about how it behaves:
 ## Draft vs. Complete Setups (the `incomplete` flag)
 
 Every config has a top-level `incomplete: true|false` flag — the wizard sets
-it automatically based on whether required fields are still filled with
-`TODO`, and it can also be set by hand.
+it to `true` while anything is still `TODO` (or any validation warning
+remains), and it can also be set by hand. A draft still generates a full
+package: the generated script then refuses to run while a value it needs
+is `TODO`, printing the exact `customer.yaml` field to fill (e.g.
+`ERROR: load_profile.users is not set (still TODO)`).
 
 - **`incomplete: true` (a draft):** `generate` only ever blocks on hard
   **errors** (an unsupported `cicd.type` or `tool.type`).
@@ -243,7 +253,7 @@ job, in each case.
 The `scripts/run-<tool_type>.sh` file is always present alongside those
 CI/CD files, regardless of platform, since every generated pipeline calls it
 the same way (`./scripts/run-<tool_type>.sh --environment "$ENVIRONMENT"
---scenario "$SCENARIO"`).
+--scenario "$SCENARIO"`, plus the load-profile flags for manual runs).
 
 ## Config Shape
 
@@ -280,7 +290,27 @@ automated_jobs:
 pre_run_checks:
   - verify_controller_access
   - verify_scenario_exists
+load_profile:
+  test_type: load   # LoadRunner: only the label; load shape comes from the .lrs
 ```
+
+For JMeter and BlazeMeter, `load_profile` also carries the load shape:
+
+```yaml
+load_profile:
+  test_type: load
+  users: 20
+  ramp_up_seconds: 60
+  duration_minutes: 10
+  throughput_rps: 0   # 0 = no cap
+```
+
+These are baked into the generated script as defaults, exposed as
+pre-filled trigger inputs on the manual pipeline (so one run can use more
+users without regenerating), and used as-is by automated jobs. JMeter
+receives them as `-J` properties your `.jmx` reads via `${__P(...)}` (the
+generated README lists the exact names); BlazeMeter applies them to the
+test via its API before starting it.
 
 `cicd.type` supports `github_actions`, `azure_devops`, and `jenkins`.
 `tool.type` supports `loadrunner_professional`, `blazemeter`, and `jmeter`.

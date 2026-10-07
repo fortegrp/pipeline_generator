@@ -33,6 +33,20 @@ class AutomatedJobSpec:
 
 
 @dataclass
+class LoadInput:
+    name: str  # load_profile field name, e.g. "ramp_up_seconds"
+    default: str  # config value as text, or TODO ("" allowed for test_type)
+
+    @property
+    def flag(self) -> str:
+        return "--" + self.name.replace("_", "-")
+
+    @property
+    def env_var(self) -> str:
+        return self.name.upper()
+
+
+@dataclass
 class GenericPipelinePackage:
     setup_id: str
     cicd_type: str
@@ -41,3 +55,4 @@ class GenericPipelinePackage:
     automated_jobs: list[AutomatedJobSpec] = field(default_factory=list)
     environments: list[InputOption] = field(default_factory=list)
     scenarios: list[InputOption] = field(default_factory=list)
+    load_inputs: list[LoadInput] = field(default_factory=list)

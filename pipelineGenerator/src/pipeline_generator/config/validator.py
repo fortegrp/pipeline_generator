@@ -6,6 +6,9 @@ from dataclasses import dataclass, field
 from pipeline_generator.config.placeholders import is_placeholder
 from pipeline_generator.config.schema import (
     GENERATION_MODES,
+    LOAD_PROFILE_FIELDS,
+    LOAD_PROFILE_MINIMUMS,
+    LOAD_PROFILE_TOOLS,
     PRE_RUN_CHECKS,
     SUPPORTED_CICD,
     SUPPORTED_TOOLS,
@@ -59,6 +62,33 @@ def _as_list_of_dicts(value: object, path: str, result: ValidationResult) -> lis
         else:
             result.errors.append(f"{path}[{index}] must be a mapping, got: {item!r}")
     return items
+
+
+def _is_int_at_least(value: object, minimum: int) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= minimum
+
+
+def _warn_timeouts_shorter_than_test(
+    load_profile: dict, manual_pipeline: dict, automated_jobs: list[dict], result: ValidationResult
+) -> None:
+    ramp_up, duration = load_profile.get("ramp_up_seconds"), load_profile.get("duration_minutes")
+    if not (_is_int_at_least(ramp_up, 0) and _is_int_at_least(duration, 1)):
+        return
+    test_minutes = ramp_up / 60 + duration
+    timeouts = []
+    if manual_pipeline.get("enabled"):
+        timeouts.append(("manual_pipeline", manual_pipeline.get("timeout_minutes")))
+    timeouts += [
+        (f"automated job '{job.get('name', 'unknown')}'", job.get("timeout_minutes", 240))
+        for job in automated_jobs
+        if job.get("enabled", True)
+    ]
+    for label, timeout in timeouts:
+        if isinstance(timeout, int) and timeout <= test_minutes:
+            result.warnings.append(
+                f"{label} timeout ({timeout} min) is not longer than ramp-up + duration "
+                f"({test_minutes:g} min) -- the CI job would be killed before the test finishes."
+            )
 
 
 def validate_config(config: dict) -> ValidationResult:
@@ -156,6 +186,18 @@ def validate_config(config: dict) -> ValidationResult:
             value = connection.get(key)
             if is_placeholder(value):
                 result.warnings.append(f"tool.connection.{key} is missing for JMeter.")
+
+    load_profile = _as_dict(config.get("load_profile", {}), "load_profile", result)
+    if tool_type in LOAD_PROFILE_TOOLS:
+        for name in LOAD_PROFILE_FIELDS:
+            value = load_profile.get(name)
+            if is_placeholder(value):
+                result.warnings.append(f"load_profile.{name} is missing.")
+            elif not _is_int_at_least(value, LOAD_PROFILE_MINIMUMS[name]):
+                result.errors.append(
+                    f"load_profile.{name} must be a whole number >= {LOAD_PROFILE_MINIMUMS[name]}, got: {value!r}"
+                )
+        _warn_timeouts_shorter_than_test(load_profile, manual_pipeline, automated_jobs, result)
 
     for check in config.get("pre_run_checks", []):
         if check not in PRE_RUN_CHECKS:

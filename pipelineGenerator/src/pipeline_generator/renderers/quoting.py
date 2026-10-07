@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shlex
 
+from pipeline_generator.generator.generic_model import LoadInput
 from pipeline_generator.text_utils import slugify
 
 
@@ -39,6 +40,14 @@ def safe_filename_component(value: str) -> str:
     other filesystem-unsafe characters from reaching the generated path.
     """
     return slugify(value)
+
+
+def load_flags(load_inputs: list[LoadInput], separator: str = " ") -> str:
+    """Render the load-profile flags for a manual pipeline's script call. Each
+    value is referenced as "$ENV_VAR" -- delivered by the platform's env
+    mapping -- never spliced into the command text.
+    """
+    return "".join(f'{separator}{item.flag} "${item.env_var}"' for item in load_inputs)
 
 
 def blazemeter_timeout_flag(tool_type: str, timeout_minutes: int, separator: str = " ") -> str:

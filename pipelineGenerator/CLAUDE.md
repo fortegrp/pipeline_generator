@@ -97,7 +97,14 @@ Pipeline: **customer YAML → validate → generic pipeline model → CI/CD rend
   file only fills in what's missing. `cli.py` refuses to touch an existing
   `--output` file unless `--resume` is passed (no silent overwrite), and
   resuming a draft with existing environments/scenarios/automated jobs offers
-  keep-as-is/add-more/start-over rather than discarding the list.
+  keep-as-is/add-more/start-over rather than discarding the list. Step 4
+  ("Test parameters", `_step_load_profile`) asks the `load_profile`
+  `test_type` label for every tool and — only for `LOAD_PROFILE_TOOLS`
+  (JMeter, BlazeMeter) — users/ramp-up/duration/throughput via
+  `prompt_int_or_todo` (accepts `TODO`); LoadRunner's load shape comes from
+  its `.lrs`, so it's never asked. `_is_incomplete` keeps the config
+  `incomplete: true` while any validation warning remains (not just a
+  missing required field), so a config with TODOs still generates.
   `id_builder.py` builds the setup ID from `cicd_type + tool_type`, and the
   wizard assigns it silently the moment both are chosen (no separate
   prompt) via `generate_unique_setup_id()`, which appends a short random
@@ -218,6 +225,29 @@ gave JMeter its own `results_dir` for the first time — it previously wrote
 flat into `run-output/`, so a second run silently overwrote the first.
 BlazeMeter's own `summary.json`/`report_link.json` (its raw API-report
 passthrough) are unchanged and remain separate from `run-summary.json`.
+
+Load profile: `config/schema.py`'s `LOAD_PROFILE_FIELDS`/`_MINIMUMS`/
+`_LABELS`/`_TOOLS` are the single source for the fields; `context.py`
+turns `load_profile` into `GenericPipelinePackage.load_inputs`
+(`LoadInput`: name, default text, derived `flag`/`env_var`) — `test_type`
+for every tool, plus the four numbers for JMeter/BlazeMeter. Scripts bake
+each default as a `local` and accept the matching `--flag` override,
+`require_number`-checking the numeric ones; JMeter passes them as `-J`
+properties (plus derived `duration_seconds`/`throughput_per_minute`),
+BlazeMeter `PATCH`es `overrideExecutions` onto the test before starting it
+(body built with `printf`, not `jq` — values are already validated
+numbers, and the tests' fake `jq` only knows the script's read filters).
+`run-summary.json` adds `test_type` plus the four numbers (`null` for
+LoadRunner, so every tool keeps one key set). Manual pipelines expose
+each `LoadInput` as a pre-filled trigger input delivered via env var
+(`quoting.load_flags` renders the `--flag "$ENV_VAR"` tail); automated
+jobs pass no load flags and use the baked defaults.
+
+TODO guard: every script defines `require_value`/`require_number` and,
+before any pre-run check or tool call, checks each value it uses
+(connection fields, resolved catalog identifiers, load values), exiting
+with `ERROR: <config path> is not set (still TODO)` — no
+`run-summary.json` is written for this, same as a pre-run-check failure.
 
 `generate` re-validates the config before doing anything (`cli.py` calls
 `validate_config`, then `_blocks_action()` — see the `config/` bullet above

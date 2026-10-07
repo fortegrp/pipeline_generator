@@ -4,6 +4,37 @@ All notable changes to `pipeline-generator` are documented here.
 
 ## [Unreleased]
 
+- Added test parameters. New `load_profile` config section: `test_type`
+  (free-text label, every tool) and, for JMeter and BlazeMeter, `users`,
+  `ramp_up_seconds`, `duration_minutes`, `throughput_rps` (`0` = no cap).
+  LoadRunner Professional deliberately takes its load shape from the
+  `.lrs` scenario; there is no ramp-down. The wizard asks them in a new
+  Step 4 ("Test parameters"; it's now 8 steps), accepting `TODO`. The
+  values are baked into `scripts/run-<tool>.sh` as defaults, overridable
+  with `--users`/`--ramp-up-seconds`/`--duration-minutes`/
+  `--throughput-rps`/`--test-type`; the manual pipeline (all three CI/CD
+  platforms) exposes them as pre-filled trigger inputs delivered via env
+  vars; automated jobs use the config values. JMeter receives them as
+  `-J` properties (plus derived `duration_seconds` and
+  `throughput_per_minute`) that the `.jmx` reads via `${__P(...)}` — the
+  generated README lists them. BlazeMeter applies them with
+  `PATCH /api/v4/tests/<id>` (`overrideExecutions`) before starting; this
+  persists on the test and is pending verification against a live
+  account. `run-summary.json` gains `test_type`, `users`,
+  `ramp_up_seconds`, `duration_minutes`, `throughput_rps` (numbers are
+  `null` for LoadRunner, keeping one shared key set). The validator warns
+  on TODO load values (JMeter/BlazeMeter only), errors on out-of-range
+  ones, and warns when a pipeline timeout isn't longer than ramp-up +
+  duration.
+- Generated scripts now stop before any pre-run check or tool call when a
+  value they need is still `TODO` (connection fields, the resolved catalog
+  identifier, load values), with one line naming the `customer.yaml` field
+  — instead of handing the literal string `TODO` to the tool.
+- The wizard now keeps a config `incomplete: true` while any validation
+  warning remains (e.g. a TODO test plan path or load value), not only
+  while a required field is missing. Previously such a config was saved as
+  `incomplete: false` and `generate` then refused it.
+
 - Removed the `verify_load_generators_connected` pre-run check (offered
   for LoadRunner Professional) from `PRE_RUN_CHECKS` and
   `PRE_RUN_CHECKS_BY_TOOL`. Same issue as `collect_results` before it: it

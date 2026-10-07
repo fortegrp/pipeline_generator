@@ -50,10 +50,8 @@ def test_render_azure_devops_writes_valid_pipelines(tmp_path: Path) -> None:
     # The parameter value must be delivered via env:, never spliced directly
     # into the script: text.
     run_step = manual_doc["jobs"][0]["steps"][1]
-    assert run_step["env"] == {
-        "ENVIRONMENT": "${{ parameters.environment }}",
-        "SCENARIO": "${{ parameters.scenario }}",
-    }
+    assert run_step["env"]["ENVIRONMENT"] == "${{ parameters.environment }}"
+    assert run_step["env"]["SCENARIO"] == "${{ parameters.scenario }}"
     assert "./scripts/run-jmeter.sh" in manual_text
     assert '--environment "$ENVIRONMENT"' in manual_text
     assert '--scenario "$SCENARIO"' in manual_text
@@ -137,3 +135,48 @@ def test_render_azure_devops_includes_timeout_flag_for_blazemeter(tmp_path: Path
 
     assert "--timeout-minutes 120" in manual_text
     assert "--timeout-minutes 60" in automated_text
+
+
+_LOAD_PROFILE = {"test_type": "load", "users": 20, "ramp_up_seconds": 60, "duration_minutes": 10, "throughput_rps": 0}
+
+
+def _manual_doc(tmp_path: Path) -> dict:
+    return yaml.safe_load((tmp_path / "azure" / "performance-manual.yml").read_text(encoding="utf-8"))
+
+
+def test_render_azure_devops_manual_pipeline_exposes_load_parameters(tmp_path: Path) -> None:
+    config = _config()
+    config["load_profile"] = dict(_LOAD_PROFILE)
+    render_azure_devops(config, build_generic_package(config), tmp_path)
+
+    doc = _manual_doc(tmp_path)
+    parameters = {item["name"]: item for item in doc["parameters"]}
+    assert parameters["users"]["default"] == "20"
+    assert parameters["users"]["type"] == "string"
+    assert parameters["test_type"]["default"] == "load"
+    step = doc["jobs"][0]["steps"][1]
+    assert step["env"]["USERS"] == "${{ parameters.users }}"
+    assert '--users "$USERS"' in step["script"]
+    assert "parameters.users" not in step["script"]
+
+
+def test_render_azure_devops_loadrunner_manual_pipeline_has_only_test_type(tmp_path: Path) -> None:
+    config = _config()
+    config["tool"] = {"type": "loadrunner_professional", "connection": {"wlrun_path": "wlrun"}}
+    config["load_profile"] = dict(_LOAD_PROFILE)
+    render_azure_devops(config, build_generic_package(config), tmp_path)
+
+    names = {item["name"] for item in _manual_doc(tmp_path)["parameters"]}
+    assert "test_type" in names
+    assert "users" not in names
+
+
+def test_render_azure_devops_automated_job_passes_no_load_flags(tmp_path: Path) -> None:
+    config = _config()
+    config["load_profile"] = dict(_LOAD_PROFILE)
+    render_azure_devops(config, build_generic_package(config), tmp_path)
+
+    automated = [p for p in (tmp_path / "azure").iterdir() if p.name != "performance-manual.yml"]
+    assert automated
+    for path in automated:
+        assert "--users" not in path.read_text(encoding="utf-8")

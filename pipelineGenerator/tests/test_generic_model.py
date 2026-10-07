@@ -45,3 +45,50 @@ def test_build_generic_package_defaults_missing_identifier_to_todo_placeholder()
     package = build_generic_package(config)
 
     assert package.environments[0].identifier == TODO_VALUE
+
+
+def test_build_generic_package_builds_load_inputs_for_jmeter() -> None:
+    config = _config()
+    config["load_profile"] = {
+        "test_type": "soak",
+        "users": 20,
+        "ramp_up_seconds": 60,
+        "duration_minutes": 10,
+        "throughput_rps": 0,
+    }
+
+    package = build_generic_package(config)
+
+    assert [(item.name, item.default) for item in package.load_inputs] == [
+        ("test_type", "soak"),
+        ("users", "20"),
+        ("ramp_up_seconds", "60"),
+        ("duration_minutes", "10"),
+        ("throughput_rps", "0"),
+    ]
+
+
+def test_build_generic_package_only_has_test_type_for_loadrunner() -> None:
+    config = _config()
+    config["tool"] = {"type": "loadrunner_professional", "connection": {}}
+    config["load_profile"] = {"test_type": "load", "users": 20}
+
+    package = build_generic_package(config)
+
+    assert [item.name for item in package.load_inputs] == ["test_type"]
+
+
+def test_build_generic_package_defaults_missing_load_values_to_todo() -> None:
+    package = build_generic_package(_config())
+
+    defaults = {item.name: item.default for item in package.load_inputs}
+    assert defaults["users"] == TODO_VALUE
+    assert defaults["test_type"] == ""
+
+
+def test_load_input_flag_and_env_var() -> None:
+    package = build_generic_package(_config())
+
+    ramp_up = next(item for item in package.load_inputs if item.name == "ramp_up_seconds")
+    assert ramp_up.flag == "--ramp-up-seconds"
+    assert ramp_up.env_var == "RAMP_UP_SECONDS"

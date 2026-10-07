@@ -4,7 +4,14 @@ import re
 from pathlib import Path
 
 from pipeline_generator.generator.generic_model import AutomatedJobSpec, GenericPipelinePackage
-from pipeline_generator.renderers.quoting import blazemeter_timeout_flag, safe_filename_component, shell_quote, yaml_dquote
+from pipeline_generator.config.schema import LOAD_PROFILE_LABELS
+from pipeline_generator.renderers.quoting import (
+    blazemeter_timeout_flag,
+    load_flags,
+    safe_filename_component,
+    shell_quote,
+    yaml_dquote,
+)
 
 
 def render_github_actions(config: dict, package: GenericPipelinePackage, setup_dir: Path) -> list[str]:
@@ -44,6 +51,19 @@ def _render_manual_workflow(package: GenericPipelinePackage) -> str:
     scenario_options = ", ".join(yaml_dquote(item.value) for item in package.manual_pipeline.inputs[1].options)
     timeout = package.manual_pipeline.timeout_minutes
     timeout_flag = blazemeter_timeout_flag(package.tool_type, timeout, separator="\n          ")
+    load_input_blocks = "".join(
+        f"""
+      {item.name}:
+        description: {yaml_dquote(LOAD_PROFILE_LABELS[item.name])}
+        required: false
+        type: string
+        default: {yaml_dquote(item.default)}"""
+        for item in package.load_inputs
+    )
+    load_env = "".join(
+        f"\n          {item.env_var}: ${{{{ github.event.inputs.{item.name} }}}}" for item in package.load_inputs
+    )
+    load_flag_text = load_flags(package.load_inputs, separator="\n          ")
     return f"""name: {yaml_dquote(package.manual_pipeline.name)}
 
 on:
@@ -58,7 +78,7 @@ on:
         description: Select scenario
         required: true
         type: choice
-        options: [{scenario_options}]
+        options: [{scenario_options}]{load_input_blocks}
 
 jobs:
   run-performance-test:
@@ -69,11 +89,11 @@ jobs:
       - name: Run performance wrapper
         env:
           ENVIRONMENT: ${{{{ github.event.inputs.environment }}}}
-          SCENARIO: ${{{{ github.event.inputs.scenario }}}}
+          SCENARIO: ${{{{ github.event.inputs.scenario }}}}{load_env}
         run: >
           ./scripts/run-{package.tool_type}.sh
           --environment "$ENVIRONMENT"
-          --scenario "$SCENARIO"{timeout_flag}
+          --scenario "$SCENARIO"{load_flag_text}{timeout_flag}
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4

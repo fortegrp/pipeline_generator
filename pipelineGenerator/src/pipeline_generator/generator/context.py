@@ -1,7 +1,22 @@
 from __future__ import annotations
 
 from pipeline_generator.config.placeholders import TODO_VALUE
-from pipeline_generator.generator.generic_model import AutomatedJobSpec, GenericPipelinePackage, InputOption, ManualPipelineSpec, PipelineInput
+from pipeline_generator.config.schema import LOAD_PROFILE_FIELDS, LOAD_PROFILE_TOOLS
+from pipeline_generator.generator.generic_model import (
+    AutomatedJobSpec,
+    GenericPipelinePackage,
+    InputOption,
+    LoadInput,
+    ManualPipelineSpec,
+    PipelineInput,
+)
+
+
+def _load_default(load_profile: dict, name: str) -> str:
+    value = load_profile.get(name)
+    if value is None or value == "":
+        return "" if name == "test_type" else TODO_VALUE
+    return str(value)  # not `or`: throughput_rps / ramp_up_seconds may legitimately be 0
 
 
 def build_generic_package(config: dict) -> GenericPipelinePackage:
@@ -42,6 +57,10 @@ def build_generic_package(config: dict) -> GenericPipelinePackage:
                 )
             )
 
+    load_profile = config.get("load_profile", {})
+    load_names = ("test_type", *LOAD_PROFILE_FIELDS) if tool_type in LOAD_PROFILE_TOOLS else ("test_type",)
+    load_inputs = [LoadInput(name, _load_default(load_profile, name)) for name in load_names]
+
     return GenericPipelinePackage(
         setup_id=setup["id"],
         cicd_type=cicd_type,
@@ -50,4 +69,5 @@ def build_generic_package(config: dict) -> GenericPipelinePackage:
         automated_jobs=automated_jobs,
         environments=environments,
         scenarios=scenarios,
+        load_inputs=load_inputs,
     )

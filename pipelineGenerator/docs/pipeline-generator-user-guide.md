@@ -107,7 +107,7 @@ what gets written for each CI/CD platform.
 ## 4. The Interactive Wizard
 
 `pipeline-generator wizard --output <path>` is the recommended way to create
-or edit a `customer.yaml`. It's organized into seven numbered sections,
+or edit a `customer.yaml`. It's organized into eight numbered sections,
 prints one-line hints on the choices whose implications aren't obvious, and
 finishes by showing you a summary plus the same check `validate` would run.
 
@@ -125,7 +125,7 @@ finishes by showing you a summary plus the same check `validate` would run.
 
 | Prompt | What it means |
 |---|---|
-| `Generation mode` (`manual_only` / `automated_only` / `both`) | Whether to generate the on-demand manual pipeline (a human triggers it, picking environment/scenario each run), the reusable automated job(s) (no human involved — another pipeline calls it with a fixed environment/scenario), or both. This also decides whether Step 4 (manual pipeline) and Step 6 (automated jobs) run at all. |
+| `Generation mode` (`manual_only` / `automated_only` / `both`) | Whether to generate the on-demand manual pipeline (a human triggers it, picking environment/scenario each run), the reusable automated job(s) (no human involved — another pipeline calls it with a fixed environment/scenario), or both. This also decides whether Step 5 (manual pipeline) and Step 7 (automated jobs) run at all. |
 
 ### Step 2 — CI/CD platform and performance tool
 
@@ -175,7 +175,40 @@ scenario combination), rather than a remote name — see section 10 for why.
 | `test_plan_path` | Required — path to the `.jmx` test plan, relative to your repository root, e.g. `performance/checkout.jmx`. |
 | `docker_image` | Optional — Docker image JMeter runs in; blank uses `justb4/jmeter:5.6.3`. The agent/runner needs Docker installed, not a local JMeter install. |
 
-### Step 4 — Manual pipeline
+### Step 4 — Test parameters
+
+| Prompt | Asked for | Notes |
+|---|---|---|
+| `Test type label` | every tool | Free text (`load`, `stress`, `soak`, `spike`, …), default `load`. Only a label: passed to your test script (`-Jtest_type` for JMeter) and recorded in `run-summary.json`; it never changes how the test runs. |
+| `Number of users` | JMeter, BlazeMeter | Whole number ≥ 1. |
+| `Ramp-up (seconds)` | JMeter, BlazeMeter | Whole number ≥ 0. |
+| `Duration at full load (minutes)` | JMeter, BlazeMeter | Whole number ≥ 1 — the steady-state/hold time after ramp-up. |
+| `Target throughput (requests/second, 0 = no cap)` | JMeter, BlazeMeter | Whole number ≥ 0. |
+
+Type `TODO` (or keep a `TODO` default) for anything you don't know yet —
+the setup stays a draft, still generates, and the generated script refuses
+to run until it's filled in. LoadRunner Professional is only asked the
+label: users, ramp-up, duration and throughput come from the `.lrs`
+scenario itself. There is no ramp-down setting.
+
+How the values reach the tool:
+
+- **JMeter** — passed as `-J` properties your `.jmx` must read:
+  `${__P(users,1)}` (Number of Threads), `${__P(ramp_up_seconds,0)}`
+  (Ramp-up), `${__P(duration_seconds,60)}` (Thread Group → Specify thread
+  lifetime → Duration; derived from minutes), `${__P(throughput_per_minute,0)}`
+  (Constant Throughput Timer; derived from req/s), `${__P(throughput_rps,0)}`
+  and `${__P(test_type)}`.
+- **BlazeMeter** — applied to the test with one API call
+  (`overrideExecutions`: concurrency, rampUp, holdFor, throughput) before it
+  starts. This persists on the test in BlazeMeter, and the field names are
+  pending verification against a live account.
+
+The manual pipeline shows each value as a trigger input pre-filled from
+`customer.yaml`, so a single run can use different values without
+regenerating. Automated jobs always use the `customer.yaml` values.
+
+### Step 5 — Manual pipeline
 
 Only asked if Step 1's generation mode included the manual pipeline
 (`manual_only` or `both`) — choosing that mode already means you want a
@@ -186,7 +219,7 @@ asking again:
 - `Manual pipeline timeout minutes` — must be a positive whole number;
   invalid input re-prompts rather than silently falling back to a default.
 
-### Step 5 — Environments and scenarios
+### Step 6 — Environments and scenarios
 
 For a brand-new config, you're asked "Add environments now?" / "Add
 scenarios now?" (yes/no); saying no leaves the catalog empty for now (fine
@@ -227,20 +260,20 @@ placeholder if you don't have it yet):
   used by the generated script; only the `key` affects the results-folder
   name.
 
-### Step 6 — Automated jobs
+### Step 7 — Automated jobs
 
 Only asked if generation mode included automated jobs (`automated_only` or
-`both`). Same keep-as-is/add-more/start-over pattern as Step 5 when
+`both`). Same keep-as-is/add-more/start-over pattern as Step 6 when
 resuming. For each new job you enter:
 
 - **Job name** (blank to stop adding jobs)
 - **Environment key** and **Scenario key** — if you already have catalog
-  entries from Step 5, these are presented as a numbered choice from that
+  entries from Step 6, these are presented as a numbered choice from that
   catalog (not free text), so a job can't accidentally reference an
   environment/scenario that doesn't exist.
-- **Timeout minutes** — same positive-integer prompt as Step 4.
+- **Timeout minutes** — same positive-integer prompt as Step 5.
 
-### Step 7 — Pre-run checks
+### Step 8 — Pre-run checks
 
 One screen listing the checks applicable to whichever tool you picked in
 Step 2 — JMeter sees 2 (`verify_scenario_exists`, `verify_docker_available`);
@@ -254,7 +287,7 @@ selected). Type comma-separated numbers to select specific ones, `all`,
 `none`, or just press Enter to keep whatever was already enabled (useful
 when resuming).
 
-### After Step 7
+### After Step 8
 
 The wizard prints a plain-language summary (setup ID, CI/CD, tool, whether
 the manual pipeline is enabled, and counts of environments/scenarios/
@@ -305,6 +338,14 @@ catalog:
 pre_run_checks:
   - verify_controller_access
   - verify_scenario_exists
+
+load_profile:
+  test_type: load                  # label only; LoadRunner takes load shape from the .lrs
+  # JMeter / BlazeMeter also use:
+  # users: 20
+  # ramp_up_seconds: 60
+  # duration_minutes: 10
+  # throughput_rps: 0              # 0 = no cap
 
 readme:
   include_manual_usage: true
@@ -393,6 +434,15 @@ dependency on `pipeline-generator` or Python. This is the command the
 ```bash
 ./scripts/run-jmeter.sh --environment qa --scenario checkout_smoke
 ```
+
+Load values default to `customer.yaml`'s `load_profile`; JMeter and
+BlazeMeter scripts accept `--users`, `--ramp-up-seconds`,
+`--duration-minutes` and `--throughput-rps` to override them for one run,
+and every script accepts `--test-type`. Before doing anything else, the
+script checks every value it needs (connection fields, the resolved
+catalog identifiers, load values) and stops with one line naming the
+field if any is still `TODO`, e.g.
+`ERROR: load_profile.users is not set (still TODO). Fill it in customer.yaml and regenerate, or pass it as a flag.`
 
 You can also run it by hand from inside a generated (or already-committed)
 setup folder, before ever triggering the real pipeline, since it's just a
@@ -505,9 +555,18 @@ every generated script writes one JSON file to
   "duration_seconds": 252,
   "report_link": "run-output/staging_smoke-test/report/index.html",
   "results_dir": "run-output/staging_smoke-test",
-  "artifact_status": "complete"
+  "artifact_status": "complete",
+  "test_type": "load",
+  "users": 20,
+  "ramp_up_seconds": 60,
+  "duration_minutes": 10,
+  "throughput_rps": 0
 }
 ```
+
+The load fields are the values the run actually used (after any
+override). LoadRunner writes `test_type` and `null` for the four numbers,
+so the key set is the same for every tool.
 
 `status` is `passed`, `failed`, or `error` (`error` only occurs for
 BlazeMeter, when it times out before reaching a terminal API status —
@@ -667,12 +726,14 @@ pipeline-generator wizard --output setups/acme-bm.yaml
 #            github-actions-blazemeter-4f2a9c)
 #    Step 3: base_url=https://a.blazemeter.com, workspace_id=12345,
 #            project_id=67890
-#    Step 4: name="Acme BlazeMeter Manual Run", timeout=180
-#    Step 5: add environments (qa), add scenarios (checkout_smoke_qa,
+#    Step 4: test_type=load, users=20, ramp-up=60, duration=10,
+#            throughput=0
+#    Step 5: name="Acme BlazeMeter Manual Run", timeout=180
+#    Step 6: add environments (qa), add scenarios (checkout_smoke_qa,
 #            identifier = the real BlazeMeter Test ID, e.g. 1234567)
-#    Step 6: add one automated job: post-deploy-smoke, env=qa,
+#    Step 7: add one automated job: post-deploy-smoke, env=qa,
 #            scenario=checkout_smoke_qa, timeout=60
-#    Step 7: enable verify_host_reachable, verify_project_exists,
+#    Step 8: enable verify_host_reachable, verify_project_exists,
 #            verify_scenario_exists
 #    -> wizard prints a summary and validation result, then exits
 

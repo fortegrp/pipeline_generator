@@ -45,6 +45,19 @@ PRE_RUN_CHECKS_BY_TOOL = {
     ),
 }
 
+LOAD_PROFILE_FIELDS = ("users", "ramp_up_seconds", "duration_minutes", "throughput_rps")
+LOAD_PROFILE_MINIMUMS = {"users": 1, "ramp_up_seconds": 0, "duration_minutes": 1, "throughput_rps": 0}
+# LoadRunner Professional is deliberately absent: wlrun has no CLI for
+# Vusers/schedule, so its load shape always comes from the .lrs itself.
+LOAD_PROFILE_TOOLS = ("jmeter", "blazemeter")
+LOAD_PROFILE_LABELS = {
+    "test_type": "Test type label (e.g. load, stress, soak, spike)",
+    "users": "Number of users",
+    "ramp_up_seconds": "Ramp-up (seconds)",
+    "duration_minutes": "Duration at full load (minutes)",
+    "throughput_rps": "Target throughput (requests/second, 0 = no cap)",
+}
+
 
 REQUIRED_FIELD_PATHS = (
     "setup.id",
@@ -93,6 +106,10 @@ def base_config() -> dict:
         "catalog": {
             "environments": [],
             "scenarios": [],
+        },
+        "load_profile": {
+            "test_type": "load",
+            **{name: TODO_VALUE for name in LOAD_PROFILE_FIELDS},
         },
         "pre_run_checks": [],
         "readme": {

@@ -22,6 +22,48 @@ def _todo_lines(tool_type: str, script_name: str) -> list[str]:
     return lines
 
 
+def _load_profile_lines(package: GenericPipelinePackage, script_name: str) -> list[str]:
+    lines = [f"- `{item.name}`: `{item.default or '(none)'}`" for item in package.load_inputs]
+    flags = " ".join(f"{item.flag} ..." for item in package.load_inputs)
+    lines.append(
+        f"- Override per run from the manual pipeline's trigger inputs, or pass `{flags}` to `{script_name}`. "
+        "Automated jobs always use the values above."
+    )
+    if package.tool_type == "jmeter":
+        lines.extend(
+            [
+                "",
+                "Wire your `.jmx` to these JMeter properties (the script passes them with `-J`):",
+                "",
+                "- Thread Group → Number of Threads: `${__P(users,1)}`",
+                "- Thread Group → Ramp-up period: `${__P(ramp_up_seconds,0)}`",
+                "- Thread Group → Specify thread lifetime → Duration: `${__P(duration_seconds,60)}`",
+                "- Constant Throughput Timer → Target throughput (per minute): `${__P(throughput_per_minute,0)}` "
+                "(`${__P(throughput_rps,0)}` is also available)",
+                "- Test type label, if your plan uses it: `${__P(test_type)}`",
+            ]
+        )
+    elif package.tool_type == "blazemeter":
+        lines.append(
+            "- Applied to the BlazeMeter test (`overrideExecutions`) before each run — this persists on the "
+            "test in BlazeMeter."
+        )
+    elif package.tool_type == "loadrunner_professional":
+        lines.append(
+            "- Users, ramp-up, duration and throughput come from the LoadRunner scenario (`.lrs`) itself; "
+            "only the test type label is passed through (into `run-summary.json`)."
+        )
+    return lines
+
+
+def _load_todo_lines(package: GenericPipelinePackage) -> list[str]:
+    return [
+        f"- Fill `load_profile.{item.name}` in `customer.yaml` (the generated script stops while it's TODO)."
+        for item in package.load_inputs
+        if item.default == "TODO"
+    ]
+
+
 def _connection_details_lines(config: dict) -> list[str]:
     tool_type = config["tool"]["type"]
     connection = config.get("tool", {}).get("connection", {})
@@ -177,10 +219,15 @@ def render_setup_readme(config: dict, package: GenericPipelinePackage) -> str:
         "## Remaining TODOs",
         "",
         *_todo_lines(tool_type, script_name),
+        *_load_todo_lines(package),
         "",
         "## Connection Details",
         "",
         *_connection_details_lines(config),
+        "",
+        "## Load Profile",
+        "",
+        *_load_profile_lines(package, script_name),
         "",
     ]
 

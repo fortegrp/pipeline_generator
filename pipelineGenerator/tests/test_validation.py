@@ -82,6 +82,13 @@ def _complete_jmeter_config() -> dict:
     config["tool"]["connection"] = {"test_plan_path": "performance/checkout.jmx"}
     config["catalog"]["environments"] = [{"key": "qa", "identifier": "env-qa"}]
     config["catalog"]["scenarios"] = [{"key": "checkout_smoke", "identifier": "SC-1"}]
+    config["load_profile"] = {
+        "test_type": "load",
+        "users": 10,
+        "ramp_up_seconds": 30,
+        "duration_minutes": 5,
+        "throughput_rps": 0,
+    }
     return config
 
 
@@ -237,3 +244,84 @@ def test_validation_does_not_warn_when_an_automated_job_is_enabled() -> None:
 
     assert not any("will generate no" in warning for warning in result.warnings)
 
+
+
+def test_validation_warns_about_todo_load_value_for_jmeter() -> None:
+    config = _complete_jmeter_config()
+    config["load_profile"]["users"] = "TODO"
+
+    result = validate_config(config)
+
+    assert "load_profile.users is missing." in result.warnings
+
+
+def test_validation_ignores_load_profile_for_loadrunner() -> None:
+    config = _complete_jmeter_config()
+    config["tool"] = {"type": "loadrunner_professional", "connection": {}}
+    config["load_profile"] = {"test_type": "load"}
+
+    result = validate_config(config)
+
+    assert not any("load_profile" in message for message in result.warnings + result.errors)
+
+
+def test_validation_errors_on_out_of_range_load_values() -> None:
+    for bad in (0, "ten", True, -5):
+        config = _complete_jmeter_config()
+        config["load_profile"]["users"] = bad
+
+        result = validate_config(config)
+
+        assert any("load_profile.users" in error for error in result.errors), bad
+
+
+def test_validation_accepts_zero_throughput_and_ramp_up() -> None:
+    config = _complete_jmeter_config()
+    config["load_profile"]["throughput_rps"] = 0
+    config["load_profile"]["ramp_up_seconds"] = 0
+
+    result = validate_config(config)
+
+    assert not any("load_profile" in message for message in result.warnings + result.errors)
+
+
+def test_validation_does_not_require_test_type() -> None:
+    config = _complete_jmeter_config()
+    del config["load_profile"]["test_type"]
+
+    result = validate_config(config)
+
+    assert not any("test_type" in message for message in result.warnings + result.errors)
+
+
+def test_validation_warns_when_timeout_is_shorter_than_test() -> None:
+    config = _complete_jmeter_config()
+    config["load_profile"]["ramp_up_seconds"] = 60
+    config["load_profile"]["duration_minutes"] = 5
+    config["manual_pipeline"]["timeout_minutes"] = 5
+
+    result = validate_config(config)
+
+    assert any("manual_pipeline timeout" in warning for warning in result.warnings)
+
+
+def test_validation_does_not_warn_when_timeout_covers_test() -> None:
+    config = _complete_jmeter_config()
+    config["load_profile"]["ramp_up_seconds"] = 60
+    config["load_profile"]["duration_minutes"] = 5
+    config["manual_pipeline"]["timeout_minutes"] = 10
+
+    result = validate_config(config)
+
+    assert not any("timeout" in warning for warning in result.warnings)
+
+
+def test_validation_warns_when_automated_job_timeout_is_shorter_than_test() -> None:
+    config = _complete_jmeter_config()
+    config["automated_jobs"] = [
+        {"name": "nightly", "environment_ref": "qa", "scenario_ref": "checkout_smoke", "timeout_minutes": 3}
+    ]
+
+    result = validate_config(config)
+
+    assert any("automated job 'nightly' timeout" in warning for warning in result.warnings)

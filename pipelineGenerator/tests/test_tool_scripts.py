@@ -25,6 +25,13 @@ def _base_config(tool_type: str, connection: dict, checks: list[str] | None = No
         },
         "manual_pipeline": {"enabled": True, "name": "Performance Manual Run", "timeout_minutes": 30},
         "automated_jobs": [],
+        "load_profile": {
+            "test_type": "load",
+            "users": 10,
+            "ramp_up_seconds": 30,
+            "duration_minutes": 5,
+            "throughput_rps": 2,
+        },
     }
 
 
@@ -251,7 +258,7 @@ def test_render_blazemeter_script_requires_timeout_minutes_flag(tmp_path: Path) 
     content = script_path.read_text(encoding="utf-8")
 
     assert '--timeout-minutes) timeout_minutes="$2"; shift 2 ;;' in content
-    assert 'echo "Usage: $0 --environment <key> --scenario <key> --timeout-minutes <minutes>" >&2' in content
+    assert 'echo "Usage: $0 --environment <key> --scenario <key> --timeout-minutes <minutes> [--test-type LABEL] [--users N]' in content
 
     # Calling main without --timeout-minutes must fail fast during arg
     # parsing, before any network call -- safe to actually execute. main's
@@ -726,7 +733,11 @@ exit 0
     assert set(summary.keys()) == {
         "tool", "run_id", "environment", "scenario", "status", "started_at", "ended_at",
         "duration_seconds", "report_link", "results_dir", "artifact_status",
+        "test_type", "users", "ramp_up_seconds", "duration_minutes", "throughput_rps",
     }
+    assert summary["test_type"] == "load"
+    assert summary["users"] == 10
+    assert summary["throughput_rps"] == 2
 
 
 def test_render_jmeter_script_writes_failing_run_summary_and_propagates_exit_code(tmp_path: Path) -> None:
@@ -1459,3 +1470,244 @@ exit 0
 
     run_output = tmp_path / "run-output"
     assert not run_output.exists() or not list(run_output.rglob("run-summary.json"))
+
+
+
+# --- load profile + TODO guard -------------------------------------------------
+
+
+def _stub_bin_with(tmp_path: Path, **scripts: str) -> dict:
+    stub_bin = tmp_path / "stub-bin"
+    stub_bin.mkdir(exist_ok=True)
+    for name, body in scripts.items():
+        (stub_bin / name).write_text(f"#!/usr/bin/env bash\n{body}")
+        (stub_bin / name).chmod(0o755)
+    env = dict(os.environ)
+    env["PATH"] = f"{stub_bin}:{env['PATH']}"
+    env["BLAZEMETER_API_KEY_ID"] = "id"
+    env["BLAZEMETER_API_KEY_SECRET"] = "secret"
+    return env
+
+
+def _logging_docker(tmp_path: Path) -> str:
+    return f"""echo "$@" > "{tmp_path / 'docker-args'}"
+prev=""; logfile=""; outdir=""
+for arg in "$@"; do
+  if [ "$prev" = "-l" ]; then logfile="$arg"; fi
+  if [ "$prev" = "-o" ]; then outdir="$arg"; fi
+  prev="$arg"
+done
+mkdir -p "$outdir"; echo "<html></html>" > "$outdir/index.html"; touch "$logfile"
+"""
+
+
+_FAKE_JQ = """input="$(cat)"
+case "${@: -1}" in
+  '.result.id') echo "$input" | grep -o '"id": *[0-9]*' | grep -o '[0-9]*$' ;;
+  '.result.status') echo "$input" | grep -o '"status": *"[A-Z]*"' | grep -o '"[A-Z]*"$' | tr -d '"' ;;
+  *) exit 1 ;;
+esac
+"""
+
+
+def _logging_curl(tmp_path: Path) -> str:
+    return f"""echo "$@" >> "{tmp_path / 'curl-log'}"
+if [[ "$*" == *"/start"* ]]; then echo '{{"result": {{"id": 999}}}}'; exit 0; fi
+if [[ "$*" == *"/status"* ]]; then echo '{{"result": {{"status": "ENDED"}}}}'; exit 0; fi
+if [[ "$*" == *"/summary"* ]]; then echo '{{}}'; exit 0; fi
+exit 0
+"""
+
+
+def _render(tmp_path: Path, config: dict) -> Path:
+    package = build_generic_package(config)
+    render_tool_script(config, package, tmp_path)
+    return tmp_path / "scripts" / f"run-{config['tool']['type']}.sh"
+
+
+def _run(script_path: Path, args: list[str], env: dict, cwd: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(["bash", str(script_path), *args], capture_output=True, text=True, env=env, cwd=cwd)
+
+
+_QA = ["--environment", "qa", "--scenario", "checkout_smoke"]
+_BLAZEMETER_CONNECTION = {"base_url": "https://a.blazemeter.com", "workspace_id": "12345", "project_id": "67890"}
+
+
+def test_jmeter_script_passes_load_profile_as_properties(tmp_path: Path) -> None:
+    script_path = _render(tmp_path, _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""}))
+    env = _stub_bin_with(tmp_path, docker=_logging_docker(tmp_path))
+
+    result = _run(script_path, _QA, env, tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    args = (tmp_path / "docker-args").read_text().split()
+    for expected in (
+        "-Jtest_type=load",
+        "-Jusers=10",
+        "-Jramp_up_seconds=30",
+        "-Jduration_seconds=300",
+        "-Jthroughput_rps=2",
+        "-Jthroughput_per_minute=120",
+    ):
+        assert expected in args
+
+
+def test_jmeter_script_flag_overrides_baked_load_value(tmp_path: Path) -> None:
+    script_path = _render(tmp_path, _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""}))
+    env = _stub_bin_with(tmp_path, docker=_logging_docker(tmp_path))
+
+    result = _run(script_path, [*_QA, "--users", "50", "--test-type", "stress"], env, tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    args = (tmp_path / "docker-args").read_text().split()
+    assert "-Jusers=50" in args
+    assert "-Jtest_type=stress" in args
+    summary = json.loads((tmp_path / "run-output" / "qa_checkout-smoke" / "run-summary.json").read_text())
+    assert summary["users"] == 50
+    assert summary["test_type"] == "stress"
+
+
+def test_jmeter_script_rejects_non_numeric_load_flag(tmp_path: Path) -> None:
+    script_path = _render(tmp_path, _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""}))
+    env = _stub_bin_with(tmp_path, docker=_logging_docker(tmp_path))
+
+    result = _run(script_path, [*_QA, "--users", "abc"], env, tmp_path)
+
+    assert result.returncode == 1
+    assert "load_profile.users must be a whole number" in result.stderr
+    assert not (tmp_path / "docker-args").exists()
+
+
+def test_jmeter_script_stops_on_todo_load_value(tmp_path: Path) -> None:
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
+    config["load_profile"]["users"] = "TODO"
+    script_path = _render(tmp_path, config)
+    env = _stub_bin_with(tmp_path, docker=_logging_docker(tmp_path))
+
+    result = _run(script_path, _QA, env, tmp_path)
+
+    assert result.returncode == 1
+    assert "load_profile.users is not set (still TODO)" in result.stderr
+    assert not (tmp_path / "docker-args").exists()
+    assert not (tmp_path / "run-output" / "qa_checkout-smoke" / "run-summary.json").exists()
+
+
+def test_jmeter_script_stops_on_todo_test_plan_path(tmp_path: Path) -> None:
+    script_path = _render(tmp_path, _base_config("jmeter", {"test_plan_path": "", "docker_image": ""}))
+    env = _stub_bin_with(tmp_path, docker=_logging_docker(tmp_path))
+
+    result = _run(script_path, _QA, env, tmp_path)
+
+    assert result.returncode == 1
+    assert "tool.connection.test_plan_path is not set (still TODO)" in result.stderr
+    assert not (tmp_path / "docker-args").exists()
+
+
+def test_jmeter_script_stops_on_todo_scenario_identifier(tmp_path: Path) -> None:
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
+    config["catalog"]["scenarios"] = [{"key": "checkout_smoke", "identifier": "TODO"}]
+    script_path = _render(tmp_path, config)
+    env = _stub_bin_with(tmp_path, docker=_logging_docker(tmp_path))
+
+    result = _run(script_path, _QA, env, tmp_path)
+
+    assert result.returncode == 1
+    assert "scenario identifier for checkout_smoke is not set" in result.stderr
+    assert not (tmp_path / "docker-args").exists()
+
+
+def test_blazemeter_script_patches_load_profile_before_start(tmp_path: Path) -> None:
+    script_path = _render(tmp_path, _base_config("blazemeter", _BLAZEMETER_CONNECTION))
+    env = _stub_bin_with(tmp_path, curl=_logging_curl(tmp_path), jq=_FAKE_JQ)
+
+    result = _run(script_path, [*_QA, "--timeout-minutes", "1"], env, tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    calls = (tmp_path / "curl-log").read_text().splitlines()
+    patch_index = next(i for i, call in enumerate(calls) if "-X PATCH" in call)
+    start_index = next(i for i, call in enumerate(calls) if "/start" in call)
+    assert patch_index < start_index
+    patch = calls[patch_index]
+    assert "/api/v4/tests/SC-1" in patch
+    assert '"concurrency": 10' in patch
+    assert '"rampUp": "30s"' in patch
+    assert '"holdFor": "5m"' in patch
+    assert '"throughput": 2' in patch
+
+
+def test_blazemeter_script_omits_throughput_when_uncapped(tmp_path: Path) -> None:
+    config = _base_config("blazemeter", _BLAZEMETER_CONNECTION)
+    config["load_profile"]["throughput_rps"] = 0
+    script_path = _render(tmp_path, config)
+    env = _stub_bin_with(tmp_path, curl=_logging_curl(tmp_path), jq=_FAKE_JQ)
+
+    result = _run(script_path, [*_QA, "--timeout-minutes", "1"], env, tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    patch = next(call for call in (tmp_path / "curl-log").read_text().splitlines() if "-X PATCH" in call)
+    assert "throughput" not in patch
+
+
+def test_blazemeter_script_stops_on_todo_project_id_before_any_api_call(tmp_path: Path) -> None:
+    script_path = _render(tmp_path, _base_config("blazemeter", {**_BLAZEMETER_CONNECTION, "project_id": ""}))
+    env = _stub_bin_with(tmp_path, curl=_logging_curl(tmp_path), jq=_FAKE_JQ)
+
+    result = _run(script_path, [*_QA, "--timeout-minutes", "1"], env, tmp_path)
+
+    assert result.returncode == 1
+    assert "tool.connection.project_id is not set (still TODO)" in result.stderr
+    assert not (tmp_path / "curl-log").exists()
+
+
+def test_blazemeter_run_summary_includes_load_profile(tmp_path: Path) -> None:
+    script_path = _render(tmp_path, _base_config("blazemeter", _BLAZEMETER_CONNECTION))
+    env = _stub_bin_with(tmp_path, curl=_logging_curl(tmp_path), jq=_FAKE_JQ)
+
+    result = _run(script_path, [*_QA, "--timeout-minutes", "1"], env, tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    summary = json.loads((tmp_path / "run-output" / "qa_checkout-smoke" / "run-summary.json").read_text())
+    assert summary["test_type"] == "load"
+    assert summary["duration_minutes"] == 5
+
+
+def test_loadrunner_script_accepts_only_test_type(tmp_path: Path) -> None:
+    config = _base_config("loadrunner_professional", {"wlrun_path": "wlrun"})
+    script_path = _render(tmp_path, config)
+    content = script_path.read_text(encoding="utf-8")
+
+    assert "--test-type" in content
+    assert "--users" not in content
+    assert "-Jusers" not in content
+
+
+def test_loadrunner_run_summary_has_test_type_but_no_load_numbers(tmp_path: Path) -> None:
+    config = _base_config("loadrunner_professional", {"wlrun_path": "wlrun"})
+    script_path = _render(tmp_path, config)
+    env = _stub_bin_with(
+        tmp_path,
+        wlrun='prev=""; for a in "$@"; do [ "$prev" = "-ResultName" ] && mkdir -p "$a" && echo r > "$a/results.xml"; prev="$a"; done\n',
+    )
+
+    result = _run(script_path, [*_QA, "--test-type", "soak"], env, tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    summary = json.loads((tmp_path / "run-output" / "qa_checkout-smoke" / "run-summary.json").read_text())
+    assert summary["test_type"] == "soak"
+    # Same key set as the other tools (one shared schema), but LoadRunner's
+    # load shape comes from the .lrs, so the numbers are null.
+    assert summary["users"] is None
+    assert summary["throughput_rps"] is None
+
+
+def test_loadrunner_script_stops_on_todo_scenario_identifier(tmp_path: Path) -> None:
+    config = _base_config("loadrunner_professional", {"wlrun_path": "wlrun"})
+    config["catalog"]["scenarios"] = [{"key": "checkout_smoke", "identifier": "TODO"}]
+    script_path = _render(tmp_path, config)
+    env = _stub_bin_with(tmp_path, wlrun=f'touch "{tmp_path / "wlrun-called"}"\n')
+
+    result = _run(script_path, _QA, env, tmp_path)
+
+    assert result.returncode == 1
+    assert "scenario identifier for checkout_smoke is not set" in result.stderr
+    assert not (tmp_path / "wlrun-called").exists()

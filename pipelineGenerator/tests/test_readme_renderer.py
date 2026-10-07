@@ -261,3 +261,48 @@ def test_readme_artifacts_section_per_tool() -> None:
     assert "summary.json" in section
     assert "report_link.json" in section
     assert "run-summary.json" in section
+
+
+_LOAD_PROFILE = {"test_type": "soak", "users": 20, "ramp_up_seconds": 60, "duration_minutes": 10, "throughput_rps": 0}
+
+
+def test_readme_lists_load_profile() -> None:
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
+    config["load_profile"] = dict(_LOAD_PROFILE)
+
+    section = _section(render_setup_readme(config, build_generic_package(config)), "Load Profile")
+
+    assert "`users`: `20`" in section
+    assert "`test_type`: `soak`" in section
+    assert "--users" in section  # how to override per run
+
+
+def test_readme_tells_jmeter_users_which_properties_to_wire() -> None:
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
+    config["load_profile"] = dict(_LOAD_PROFILE)
+
+    section = _section(render_setup_readme(config, build_generic_package(config)), "Load Profile")
+
+    for prop in ("${__P(users,1)}", "${__P(ramp_up_seconds,0)}", "${__P(duration_seconds,60)}",
+                 "${__P(throughput_per_minute,0)}", "${__P(test_type)}"):
+        assert prop in section
+
+
+def test_readme_says_loadrunner_load_shape_comes_from_lrs() -> None:
+    config = _base_config("loadrunner_professional", {"wlrun_path": "wlrun"})
+    config["load_profile"] = {"test_type": "load"}
+
+    section = _section(render_setup_readme(config, build_generic_package(config)), "Load Profile")
+
+    assert ".lrs" in section
+    assert "`users`" not in section
+
+
+def test_readme_todos_list_unfilled_load_values() -> None:
+    config = _base_config("jmeter", {"test_plan_path": "plan.jmx", "docker_image": ""})
+    config["load_profile"] = {**_LOAD_PROFILE, "users": "TODO"}
+
+    todos = _section(render_setup_readme(config, build_generic_package(config)), "Remaining TODOs")
+
+    assert "`load_profile.users`" in todos
+    assert "`load_profile.duration_minutes`" not in todos

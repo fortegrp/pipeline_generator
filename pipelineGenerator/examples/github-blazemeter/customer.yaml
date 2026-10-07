@@ -34,3 +34,9 @@ pre_run_checks:
 readme:
   include_manual_usage: true
   include_automated_usage: true
+load_profile:
+  test_type: load
+  users: 20
+  ramp_up_seconds: 60
+  duration_minutes: 10
+  throughput_rps: 0

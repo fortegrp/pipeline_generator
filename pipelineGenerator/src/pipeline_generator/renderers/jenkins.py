@@ -3,7 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from pipeline_generator.generator.generic_model import AutomatedJobSpec, GenericPipelinePackage
-from pipeline_generator.renderers.quoting import blazemeter_timeout_flag, groovy_squote, safe_filename_component
+from pipeline_generator.config.schema import LOAD_PROFILE_LABELS
+from pipeline_generator.renderers.quoting import blazemeter_timeout_flag, groovy_squote, load_flags, safe_filename_component
 
 
 def render_jenkins(config: dict, package: GenericPipelinePackage, setup_dir: Path) -> list[str]:
@@ -35,6 +36,12 @@ def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
     )
     timeout = package.manual_pipeline.timeout_minutes
     timeout_flag = blazemeter_timeout_flag(package.tool_type, timeout)
+    load_parameters = "".join(
+        f"\n        string(name: {groovy_squote(item.env_var)}, defaultValue: {groovy_squote(item.default)}, "
+        f"description: {groovy_squote(LOAD_PROFILE_LABELS[item.name])})"
+        for item in package.load_inputs
+    )
+    load_flag_text = load_flags(package.load_inputs)
     return f"""pipeline {{
     agent any
     parameters {{
@@ -51,7 +58,7 @@ def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
 {scenario_choices}
             ],
             description: 'Select scenario'
-        )
+        ){load_parameters}
     }}
     options {{
         timeout(time: {timeout}, unit: 'MINUTES')
@@ -63,7 +70,7 @@ def _render_manual_pipeline(package: GenericPipelinePackage) -> str:
                 // Jenkins; referencing them here (rather than Groovy-interpolating
                 // ${{params.X}} into the command text) avoids splicing a
                 // build-triggerer-controlled value directly into the shell script.
-                sh './scripts/run-{package.tool_type}.sh --environment "$ENVIRONMENT" --scenario "$SCENARIO"{timeout_flag}'
+                sh './scripts/run-{package.tool_type}.sh --environment "$ENVIRONMENT" --scenario "$SCENARIO"{load_flag_text}{timeout_flag}'
             }}
         }}
     }}

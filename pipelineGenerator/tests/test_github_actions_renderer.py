@@ -52,10 +52,8 @@ def test_render_github_actions_writes_valid_workflows(tmp_path: Path) -> None:
     # spliced directly into the run: shell text (workflow_dispatch's `choice`
     # restriction is only enforced by GitHub's UI, not its dispatch API).
     step = manual_doc["jobs"]["run-performance-test"]["steps"][1]
-    assert step["env"] == {
-        "ENVIRONMENT": "${{ github.event.inputs.environment }}",
-        "SCENARIO": "${{ github.event.inputs.scenario }}",
-    }
+    assert step["env"]["ENVIRONMENT"] == "${{ github.event.inputs.environment }}"
+    assert step["env"]["SCENARIO"] == "${{ github.event.inputs.scenario }}"
     assert "./scripts/run-jmeter.sh" in manual_text
     assert '--environment "$ENVIRONMENT"' in manual_text
     assert '--scenario "$SCENARIO"' in manual_text
@@ -143,3 +141,59 @@ def test_render_github_actions_includes_timeout_flag_for_blazemeter(tmp_path: Pa
 
     assert "--timeout-minutes 120" in manual_text
     assert "--timeout-minutes 60" in automated_text
+
+
+_LOAD_PROFILE = {"test_type": "load", "users": 20, "ramp_up_seconds": 60, "duration_minutes": 10, "throughput_rps": 0}
+
+
+def test_render_github_actions_manual_workflow_exposes_load_inputs(tmp_path: Path) -> None:
+    config = _config()
+    config["load_profile"] = dict(_LOAD_PROFILE)
+    render_github_actions(config, build_generic_package(config), tmp_path)
+
+    manual_text = (tmp_path / ".github" / "workflows" / "performance-manual.yml").read_text(encoding="utf-8")
+    manual_doc = yaml.safe_load(manual_text)
+    inputs = manual_doc[True]["workflow_dispatch"]["inputs"]
+    assert inputs["users"]["default"] == "20"
+    assert inputs["users"]["type"] == "string"
+    assert inputs["throughput_rps"]["default"] == "0"
+    assert inputs["test_type"]["default"] == "load"
+    step = manual_doc["jobs"]["run-performance-test"]["steps"][1]
+    assert step["env"]["USERS"] == "${{ github.event.inputs.users }}"
+    assert step["env"]["RAMP_UP_SECONDS"] == "${{ github.event.inputs.ramp_up_seconds }}"
+    assert '--users "$USERS"' in step["run"]
+    assert '--throughput-rps "$THROUGHPUT_RPS"' in step["run"]
+    assert "inputs.users" not in step["run"]
+
+
+def test_render_github_actions_shows_todo_default_for_unknown_load_value(tmp_path: Path) -> None:
+    config = _config()
+    config["load_profile"] = {**_LOAD_PROFILE, "users": "TODO"}
+    render_github_actions(config, build_generic_package(config), tmp_path)
+
+    manual_doc = yaml.safe_load((tmp_path / ".github" / "workflows" / "performance-manual.yml").read_text())
+    assert manual_doc[True]["workflow_dispatch"]["inputs"]["users"]["default"] == "TODO"
+
+
+def test_render_github_actions_loadrunner_manual_workflow_has_only_test_type(tmp_path: Path) -> None:
+    config = _config()
+    config["tool"] = {"type": "loadrunner_professional", "connection": {"wlrun_path": "wlrun"}}
+    config["load_profile"] = dict(_LOAD_PROFILE)
+    render_github_actions(config, build_generic_package(config), tmp_path)
+
+    manual_doc = yaml.safe_load((tmp_path / ".github" / "workflows" / "performance-manual.yml").read_text())
+    inputs = manual_doc[True]["workflow_dispatch"]["inputs"]
+    assert "test_type" in inputs
+    assert "users" not in inputs
+
+
+def test_render_github_actions_automated_job_passes_no_load_flags(tmp_path: Path) -> None:
+    config = _config()
+    config["load_profile"] = dict(_LOAD_PROFILE)
+    render_github_actions(config, build_generic_package(config), tmp_path)
+
+    automated_text = (
+        tmp_path / ".github" / "workflows" / "performance-automated-post-deploy-smoke.yml"
+    ).read_text(encoding="utf-8")
+    assert "--users" not in automated_text
+    assert "--test-type" not in automated_text

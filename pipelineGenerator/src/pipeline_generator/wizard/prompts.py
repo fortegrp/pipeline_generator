@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Iterable
 
+from pipeline_generator.config.placeholders import TODO_VALUE
+
 
 def prompt_text(label: str, default: str | None = None, allow_blank: bool = True) -> str:
     suffix = f" [{default}]" if default not in (None, "") else ""
@@ -80,3 +82,15 @@ def prompt_positive_int(label: str, default: int) -> int:
         if value.isdigit() and int(value) > 0:
             return int(value)
         print("Please enter a positive whole number.")
+
+
+def prompt_int_or_todo(label: str, default: object, minimum: int) -> int | str:
+    while True:
+        value = input(f"{label} [{default}]: ").strip()
+        if not value:
+            return default
+        if value.upper() == TODO_VALUE:
+            return TODO_VALUE
+        if value.isdigit() and int(value) >= minimum:
+            return int(value)
+        print(f"Enter a whole number >= {minimum}, or TODO if you don't know yet.")

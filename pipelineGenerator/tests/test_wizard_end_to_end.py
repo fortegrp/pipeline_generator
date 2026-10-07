@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from pipeline_generator.config.schema import merged_base_config
-from pipeline_generator.wizard.flow import _step_cicd_and_tool, run_wizard
+from pipeline_generator.wizard.flow import _is_incomplete, _step_cicd_and_tool, _step_load_profile, run_wizard
 
 
 def test_run_wizard_full_flow_produces_expected_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -15,6 +15,11 @@ def test_run_wizard_full_flow_produces_expected_config(tmp_path: Path, monkeypat
             "3",  # performance tool -> jmeter
             "performance/checkout.jmx",  # jmeter test plan path
             "",  # docker image -> blank (uses default)
+            "",  # test type label -> default load
+            "20",  # users
+            "60",  # ramp-up seconds
+            "10",  # duration minutes
+            "0",  # throughput rps (no cap)
             "",  # manual pipeline name -> default
             "",  # manual pipeline timeout -> default 240
             "y",  # add environments now?
@@ -60,6 +65,13 @@ def test_run_wizard_full_flow_produces_expected_config(tmp_path: Path, monkeypat
             "timeout_minutes": 240,
         }
     ]
+    assert config["load_profile"] == {
+        "test_type": "load",
+        "users": 20,
+        "ramp_up_seconds": 60,
+        "duration_minutes": 10,
+        "throughput_rps": 0,
+    }
     assert config["pre_run_checks"] == ["verify_scenario_exists"]
     assert config["readme"]["include_manual_usage"] is True
     assert config["readme"]["include_automated_usage"] is True
@@ -82,3 +94,60 @@ def test_step_cicd_and_tool_preserves_existing_setup_id_on_resume(
 
     assert config["tool"]["type"] == "blazemeter"
     assert config["setup"]["id"] == "already-assigned-id"
+
+
+def _jmeter_config() -> dict:
+    config = merged_base_config(None)
+    config["tool"]["type"] = "jmeter"
+    return config
+
+
+def test_step_load_profile_asks_all_values_for_jmeter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config = _jmeter_config()
+    responses = iter(["soak", "50", "todo", "-1", "abc", "30", ""])
+    monkeypatch.setattr("builtins.input", lambda *_: next(responses))
+
+    _step_load_profile(config, tmp_path / "draft.yaml")
+
+    assert config["load_profile"] == {
+        "test_type": "soak",
+        "users": 50,
+        "ramp_up_seconds": "TODO",
+        "duration_minutes": 30,  # "-1" and "abc" were re-asked
+        "throughput_rps": "TODO",  # blank keeps the TODO default
+    }
+
+
+def test_step_load_profile_asks_only_test_type_for_loadrunner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = merged_base_config(None)
+    config["tool"]["type"] = "loadrunner_professional"
+    responses = iter(["stress"])
+    monkeypatch.setattr("builtins.input", lambda *_: next(responses))
+
+    _step_load_profile(config, tmp_path / "draft.yaml")
+
+    assert config["load_profile"]["test_type"] == "stress"
+    assert config["load_profile"]["users"] == "TODO"  # untouched, never asked
+
+
+def test_step_load_profile_resume_keeps_existing_values(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config = _jmeter_config()
+    config["load_profile"].update({"test_type": "spike", "users": 5, "ramp_up_seconds": 0,
+                                   "duration_minutes": 2, "throughput_rps": 9})
+    responses = iter(["", "", "", "", ""])
+    monkeypatch.setattr("builtins.input", lambda *_: next(responses))
+
+    _step_load_profile(config, tmp_path / "draft.yaml")
+
+    assert config["load_profile"] == {"test_type": "spike", "users": 5, "ramp_up_seconds": 0,
+                                      "duration_minutes": 2, "throughput_rps": 9}
+
+
+def test_config_with_todo_load_value_stays_incomplete() -> None:
+    config = _jmeter_config()
+    config["setup"]["id"] = "some-setup"
+    config["cicd"]["type"] = "github_actions"
+
+    assert _is_incomplete(config) is True

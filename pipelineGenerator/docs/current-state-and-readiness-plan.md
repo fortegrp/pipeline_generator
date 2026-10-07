@@ -280,6 +280,14 @@ This is what the generated pipeline's step actually calls
 `pipeline-generator` or Python at execution time. It can also be run by hand
 from a checkout of the generated setup.
 
+Every script first checks each value it needs (connection fields, the
+resolved catalog identifiers, load values) and exits with
+`ERROR: <config path> is not set (still TODO)` if any is still `TODO`.
+Load values default to `customer.yaml`'s `load_profile` and can be
+overridden per run with `--users`/`--ramp-up-seconds`/`--duration-minutes`/
+`--throughput-rps`/`--test-type` (the manual pipeline exposes these as
+trigger inputs).
+
 - For **JMeter**, it's real and complete: it resolves `--environment`/
   `--scenario` to their catalog identifiers, optionally checks the test plan
   file exists first (if `verify_scenario_exists` is in `pre_run_checks`)
@@ -289,7 +297,9 @@ from a checkout of the generated setup.
   "$(pwd):/workspace" -w /workspace <docker_image> -n -t <test_plan_path>
   -l run-output/<environment_slug>_<scenario_slug>/results.jtl -e -o
   run-output/<environment_slug>_<scenario_slug>/report
-  -Jenvironment=... -Jscenario=...` for real. The whole working directory is
+  -Jenvironment=... -Jscenario=... -Jtest_type=... -Jusers=...
+  -Jramp_up_seconds=... -Jduration_seconds=... -Jthroughput_rps=...
+  -Jthroughput_per_minute=...` for real. The whole working directory is
   bind-mounted at `/workspace` so relative-path CSV data sets/fragments
   still resolve, and results land directly on the host filesystem.
 - For **LoadRunner Professional**, it's also real and complete: it resolves
@@ -302,6 +312,8 @@ from a checkout of the generated setup.
 - For **BlazeMeter**, it's also real and complete: it optionally checks the
   host is reachable / the project exists / the test exists
   (`verify_host_reachable`/`verify_project_exists`/`verify_scenario_exists`),
+  applies the load profile via `PATCH /api/v4/tests/<id>`
+  (`overrideExecutions`; persists on the test, pending live verification),
   then starts a test via `POST /api/v4/tests/<id>/start`, polls
   `GET /api/v4/masters/<id>/status` until it finishes (bounded by
   `--timeout-minutes`), and downloads a summary report.
@@ -324,6 +336,9 @@ Major sections:
 - `automated_jobs`: reusable automated job definitions.
 - `catalog`: available environments and scenarios.
 - `pre_run_checks`: checks requested before execution.
+- `load_profile`: `test_type` label for every tool; for JMeter/BlazeMeter
+  also `users`, `ramp_up_seconds`, `duration_minutes`, `throughput_rps`
+  (LoadRunner takes its load shape from the `.lrs`).
 - `readme`: generated documentation options.
 
 Supported generation modes:
@@ -387,7 +402,9 @@ been replaced by the flow baked into the generated
 `scripts/run-<tool_type>.sh` itself, which runs standalone, later, on
 whatever machine the CI/CD job executes on:
 
-1. Parse `--environment` and `--scenario` (both required).
+1. Parse `--environment` and `--scenario` (both required), plus optional
+   load-profile overrides; reject non-numeric load values and stop on any
+   value still `TODO`.
 2. Resolve each to its catalog `identifier` via generated shell functions
    (`resolve_environment_identifier`/`resolve_scenario_identifier`) — an
    unrecognized key prints `Unknown environment key: ...` /
@@ -412,7 +429,8 @@ whatever machine the CI/CD job executes on:
 5. Write `run-output/<environment_slug>_<scenario_slug>/run-summary.json`
    — one shared schema across all three tools (`tool`, `run_id`,
    `environment`, `scenario`, `status`, `started_at`/`ended_at`/
-   `duration_seconds`, `report_link`, `results_dir`, `artifact_status`),
+   `duration_seconds`, `report_link`, `results_dir`, `artifact_status`,
+   `test_type`, and the four load values — `null` for LoadRunner),
    written once the tool run is attempted and its outcome is known (never
    for a pre-run-check failure). See "Normalize Runtime Output" below.
 

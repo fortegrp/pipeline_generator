@@ -125,3 +125,40 @@ def test_render_jenkins_includes_timeout_flag_for_blazemeter(tmp_path: Path) -> 
 
     assert "--timeout-minutes 120" in manual_text
     assert "--timeout-minutes 60" in automated_text
+
+
+_LOAD_PROFILE = {"test_type": "load", "users": 20, "ramp_up_seconds": 60, "duration_minutes": 10, "throughput_rps": 0}
+
+
+def test_render_jenkins_manual_pipeline_exposes_load_parameters(tmp_path: Path) -> None:
+    config = _config()
+    config["load_profile"] = dict(_LOAD_PROFILE)
+    render_jenkins(config, build_generic_package(config), tmp_path)
+
+    text = (tmp_path / "jenkins" / "Jenkinsfile.performance-manual").read_text(encoding="utf-8")
+    assert "string(name: 'USERS', defaultValue: '20'" in text
+    assert "string(name: 'TEST_TYPE', defaultValue: 'load'" in text
+    assert '--users "$USERS"' in text
+    assert "params.USERS" not in text
+
+
+def test_render_jenkins_loadrunner_manual_pipeline_has_only_test_type(tmp_path: Path) -> None:
+    config = _config()
+    config["tool"] = {"type": "loadrunner_professional", "connection": {"wlrun_path": "wlrun"}}
+    config["load_profile"] = dict(_LOAD_PROFILE)
+    render_jenkins(config, build_generic_package(config), tmp_path)
+
+    text = (tmp_path / "jenkins" / "Jenkinsfile.performance-manual").read_text(encoding="utf-8")
+    assert "name: 'TEST_TYPE'" in text
+    assert "name: 'USERS'" not in text
+
+
+def test_render_jenkins_automated_job_passes_no_load_flags(tmp_path: Path) -> None:
+    config = _config()
+    config["load_profile"] = dict(_LOAD_PROFILE)
+    render_jenkins(config, build_generic_package(config), tmp_path)
+
+    automated = [p for p in (tmp_path / "jenkins").iterdir() if "manual" not in p.name]
+    assert automated
+    for path in automated:
+        assert "--users" not in path.read_text(encoding="utf-8")
